@@ -45,6 +45,10 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      - db
+      - redis-cache
+      - redis-queue
 
   create-site:
     image: frappe/erpnext:v15.63.0
@@ -78,6 +82,10 @@ services:
         done;
         echo "sites/common_site_config.json found";
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default frontend;
+    depends_on:
+      - db
+      - redis-cache
+      - redis-queue
 
   db:
     image: mariadb:10.6
@@ -176,6 +184,8 @@ services:
     deploy:
       restart_policy:
         condition: on-failure
+    volumes:
+      - redis-cache-data:/data
 
   scheduler:
     image: frappe/erpnext:v15.63.0
@@ -208,6 +218,7 @@ services:
 volumes:
   db-data:
   redis-queue-data:
+  redis-cache-data:
   sites:
   logs:
 
