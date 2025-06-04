@@ -201,6 +201,11 @@ services:
       - frappe_network
     depends_on:
       - websocket
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(\`${SITE_NAME}\`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
     deploy:
       restart_policy:
         condition: on-failure
@@ -328,6 +333,27 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     container_name: ${SITE_NAME}-websocket # Dynamically set container name
 
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--accesslog=true"
+      - "--log.level=DEBUG"
+    ports:
+        - "${HTTP_PORT}:80"
+        - "${HTTPS_PORT}:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik-letsencrypt:/letsencrypt"
+    networks:
+      - frappe_network
+    container_name: ${SITE_NAME}-traefik # Dynamically set container name
 
 networks:
   frappe_network:
@@ -339,6 +365,7 @@ volumes:
   db-data:
   redis-queue-data:
   redis-cache-data:
+  traefik-letsencrypt:
 EOF
 
 echo "Generated files in $SITE_NAME/:"
