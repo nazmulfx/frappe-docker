@@ -135,3 +135,15 @@ docker-compose exec backend bench list-sites
 # Edit site config
 sudo nano /var/lib/docker/volumes/docker-15_sites_volume/_data/site1.local/site_config.json
 ```
+
+
+docker system prune -a --volumes
+
+docker stop $(docker ps -aq)
+docker rm $(docker ps -aq)
+docker volume prune -f
+docker volume rm $(docker volume ls -q)
+docker network prune -f
+docker system prune -a --volumes -f
+
+
