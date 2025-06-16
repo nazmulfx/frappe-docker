@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "Docker is not installed. Please install Docker and try again."
+    exit 1
+fi
+
+
 # Function to check if a port is in use
 check_port() {
     if ss -ltn "sport = :$1" 2>/dev/null | grep -q LISTEN; then
@@ -87,10 +94,29 @@ fi
 if ! check_traefik; then
     echo "Traefik is not running. Creating traefik-docker-compose.yml..."
     
-    # Ask for Cloudflare API token
-    read -p "Enter your Cloudflare API token for Let's Encrypt DNS challenge: " CF_API_TOKEN
-    read -p "Enter email for Let's Encrypt notifications: " EMAIL
-    
+    # Ask for Cloudflare API token (leave blank to use HTTP-01 challenge)
+    read -p "Enter your Cloudflare API token (leave blank for HTTP challenge): " CF_API_TOKEN
+    read  -p "Enter email for Let's Encrypt notifications: " EMAIL
+
+    # Prepare ACME challenge options based on token presence
+    if [[ -n "$CF_API_TOKEN" ]]; then
+      ACME_CHALLENGE_OPTIONS=(
+        "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+        "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
+      )
+      ENV_SECTION=$(cat << EOF
+    environment:
+      - CF_DNS_API_TOKEN=${CF_API_TOKEN}
+EOF
+)
+    else
+      ACME_CHALLENGE_OPTIONS=(
+        "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+        "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      )
+      ENV_SECTION=""
+    fi
+
     cat > "traefik-docker-compose.yml" << EOF
 version: "3"
 
@@ -99,9 +125,6 @@ services:
     image: traefik:v2.10
     command:
       - "--api.insecure=true"
-      - "--api.dashboard=true"
-      - "--ping=true"
-      - "--ping.entryPoint=web"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -112,10 +135,10 @@ services:
       - "--serversTransport.insecureSkipVerify=true"
       - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.myresolver.acme.dnschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
+$(printf '      - "%s"\n' "${ACME_CHALLENGE_OPTIONS[@]}")
       - "--accesslog=true"
       - "--log.level=DEBUG"
+      - "--api.dashboard=true"
     ports:
       - "80:80"
       - "443:443"
@@ -125,8 +148,7 @@ services:
       - "./traefik-letsencrypt:/letsencrypt"
     networks:
       - traefik_proxy
-    environment:
-      - CF_DNS_API_TOKEN=${CF_API_TOKEN}
+${ENV_SECTION}
     container_name: traefik
     restart: unless-stopped
 
@@ -490,13 +512,52 @@ volumes:
   redis-cache-data:
 EOF
 
-echo "Generated files in $SAFE_SITE_NAME/:"
-echo "  - $SAFE_SITE_NAME-docker-compose.yml"
-echo "  - .env"
+
+sudo docker compose -f $SAFE_SITE_NAME/${SAFE_SITE_NAME}-docker-compose.yml up -d
+
+# echo "Generated files in $SAFE_SITE_NAME/:"
+# echo "  - $SAFE_SITE_NAME-docker-compose.yml"
+# echo "  - .env"
+# echo ""
+
 echo ""
+echo ""
+echo ""
+
+for ((i = 30; i >= 1; i--)); do
+    dot_count=$(( (30 - i) % 4 ))  # Cycles through 0,1,2,3
+    dots=$(printf '%*s' "$dot_count" '' | tr ' ' '.')
+    printf "\rPreparing your site — it’ll be live in approximately %2d seconds%s  " "$i" "$dots"
+    sleep 1
+done
+
+
 echo "To start your ERPNext stack:"
-echo "docker compose -f $SAFE_SITE_NAME/${SAFE_SITE_NAME}-docker-compose.yml up -d"
+
+echo ""
+echo "We're preparing your site — it’ll be live in approximately 2 minutes."
 echo ""
 echo "Your site will be available at: https://${SITE_NAME}"
 echo ""
 echo "To add another domain/site, just run this script again with a different site name."
+
+# Ping the site until it's available (max 300 seconds wait)
+echo "Checking site availability..."
+echo ""
+
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+for ((i = 1; i <= 300; i++)); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${SITE_NAME}")
+    if [[ "$STATUS" == "200" ]]; then
+        echo ""
+        echo -e "${GREEN}🎉 Congrats! Your site is live at: https://${SITE_NAME}${NC}"
+        break
+    fi
+
+    printf "\rWaiting for site to go live... %ds" "$((i * 2))"
+    sleep 2
+done
+
+echo ""
