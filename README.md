@@ -134,9 +134,20 @@ docker-compose exec backend bench list-sites
 
 # Edit site config
 sudo nano /var/lib/docker/volumes/docker-15_sites_volume/_data/site1.local/site_config.json
-```
+
+# View logs from Traefik
+sudo docker logs -f frappe_cloudbookbd_com-traefik
+
+# View logs from Traefik last 100 line
+
+docker logs frappe_cloudbookbd_com-frontend --tail 100
+
+# docker process list by filter 
+docker ps | grep traefik
 
 
+# 🧹 Cleanup Commands Warning: The following will delete all containers, volumes, and networks.
+ 
 docker system prune -a --volumes
 
 docker stop $(docker ps -aq)
