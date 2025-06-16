@@ -1,19 +1,169 @@
 #!/bin/bash
 
-# Prompt user for inputs
-read -p "Enter site name (e.g. frappe_docker_test): " SITE_NAME
-read -p "Do you want to enable SSL? (yes/no): " SSL_CHOICE
+# Function to check if a port is in use
+check_port() {
+    if ss -ltn "sport = :$1" 2>/dev/null | grep -q LISTEN; then
+        return 0  # Port is in use
+    else
+        return 1  # Port is free
+    fi
+}
 
-EMAIL=""
-if [[ "$SSL_CHOICE" == "yes" ]]; then
-  read -p "Enter email for Let's Encrypt (e.g. mail@example.com): " EMAIL
+# Function to get process using a port
+get_port_process() {
+    ss -ltnp "sport = :$1" 2>/dev/null | grep LISTEN | awk '{print $7}'
+}
+
+# Function to check if traefik is running
+check_traefik() {
+    if docker ps | grep -q traefik; then
+        return 0  # Traefik is running
+    else
+        return 1  # Traefik is not running
+    fi
+}
+
+# Function to validate domain name
+validate_domain() {
+    local domain=$1
+    if [[ ! $domain =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9][a-zA-Z0-9-]*)*\.[a-zA-Z]{2,}$ ]]; then
+        echo "Error: Invalid domain name format. Please use format like 'example.com' or 'subdomain.example.com'"
+        exit 1
+    fi
+}
+
+# Check if ports 80 and 443 are in use
+if check_port 80 || check_port 443; then
+    echo "Warning: Port 80 or 443 is already in use!"
+    echo "This might be another web server or Traefik instance running."
+    echo ""
+    
+    if check_port 80; then
+        echo "Port 80 is being used by:"
+        get_port_process 80
+    fi
+    if check_port 443; then
+        echo "Port 443 is being used by:"
+        get_port_process 443
+    fi
+    echo ""
+    read -p "Do you want to stop the existing service? (y/n): " STOP_SERVICE
+    if [[ $STOP_SERVICE == "y" ]]; then
+        echo "Stopping existing services..."
+        # Try to stop any existing Traefik containers
+        docker compose -f traefik-docker-compose.yml down 2>/dev/null
+        # If that doesn't work, try to stop the process using the ports
+        if check_port 80; then
+            sudo kill $(get_port_process 80 | cut -d',' -f2 | cut -d'=' -f2) 2>/dev/null
+        fi
+        if check_port 443; then
+            sudo kill $(get_port_process 443 | cut -d',' -f2 | cut -d'=' -f2) 2>/dev/null
+        fi
+        sleep 2
+        if check_port 80 || check_port 443; then
+            echo "Error: Could not free up ports 80 and 443. Please stop the services manually and try again."
+            exit 1
+        fi
+    else
+        echo "Please stop the existing service manually and try again."
+        exit 1
+    fi
 fi
 
+# Check if traefik_proxy network exists, create if it doesn't
+if ! docker network ls | grep -q traefik_proxy; then
+    echo "Creating traefik_proxy network..."
+    docker network create traefik_proxy
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create traefik_proxy network"
+        exit 1
+    fi
+    echo "traefik_proxy network created successfully"
+else
+    echo "traefik_proxy network already exists"
+fi
+
+# Check if Traefik is running, if not, create and start it
+if ! check_traefik; then
+    echo "Traefik is not running. Creating traefik-docker-compose.yml..."
+    
+    # Ask for Cloudflare API token
+    read -p "Enter your Cloudflare API token for Let's Encrypt DNS challenge: " CF_API_TOKEN
+    read -p "Enter email for Let's Encrypt notifications: " EMAIL
+    
+    cat > "traefik-docker-compose.yml" << EOF
+version: "3"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--ping=true"
+      - "--ping.entryPoint=web"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      - "--serversTransport.insecureSkipVerify=true"
+      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
+      - "--accesslog=true"
+      - "--log.level=DEBUG"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik-letsencrypt:/letsencrypt"
+    networks:
+      - traefik_proxy
+    environment:
+      - CF_DNS_API_TOKEN=${CF_API_TOKEN}
+    container_name: traefik
+    restart: unless-stopped
+
+networks:
+  traefik_proxy:
+    external: true
+EOF
+
+    echo "Starting Traefik..."
+    docker compose -f traefik-docker-compose.yml up -d
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to start Traefik"
+        exit 1
+    fi
+    echo "Traefik started successfully"
+else
+    echo "Traefik is already running"
+fi
+
+# Now handle the ERPNext stack creation
+read -p "Enter site name (e.g. example.com): " SITE_NAME
+validate_domain "$SITE_NAME"
+
+# Generate a safe version for container naming
+SAFE_SITE_NAME=$(echo "$SITE_NAME" | sed 's/[^a-zA-Z0-9]/_/g')
+
 # Create directory for site files
-mkdir -p "$SITE_NAME"
+mkdir -p "$SAFE_SITE_NAME"
+
+# Create acme.json file with correct permissions
+ACME_FILE_DIR="$SAFE_SITE_NAME/traefik-letsencrypt"
+mkdir -p "$ACME_FILE_DIR"
+touch "$ACME_FILE_DIR/acme.json"
+chmod 600 "$ACME_FILE_DIR/acme.json"
 
 # Prepare .env content
-cat > "$SITE_NAME/.env" << EOF
+cat > "$SAFE_SITE_NAME/.env" << EOF
 ERPNEXT_VERSION=v15.63.0
 
 DB_PASSWORD=123
@@ -43,43 +193,11 @@ PROXY_READ_TIMEOUT=
 
 CLIENT_MAX_BODY_SIZE=
 
-SITES=\`${SITE_NAME}\`
+SITES=${SITE_NAME}
 EOF
 
-
-is_port_free() {
-  ss -ltn "sport = :$1" 2>/dev/null | grep -q LISTEN && return 1 || return 0
-}
-
-# Find free ports starting from defaults
-DEFAULT_HTTP_PORT=80
-DEFAULT_HTTPS_PORT=443
-DEFAULT_DASHBOARD_PORT=8080
-
-HTTP_PORT=$DEFAULT_HTTP_PORT
-HTTPS_PORT=$DEFAULT_HTTPS_PORT
-DASHBOARD_PORT=$DEFAULT_DASHBOARD_PORT
-
-while ! is_port_free $HTTP_PORT; do
-  ((HTTP_PORT++))
-done
-
-while ! is_port_free $HTTPS_PORT; do
-  ((HTTPS_PORT++))
-done
-
-while ! is_port_free $DASHBOARD_PORT; do
-  ((DASHBOARD_PORT++))
-done
-
-echo "Using ports:"
-echo "  HTTP (80): $HTTP_PORT"
-echo "  HTTPS (443): $HTTPS_PORT"
-echo "  Dashboard (8080): $DASHBOARD_PORT"
-
 # Prepare docker-compose.yml content with replaced site name
-# Here-doc with variable expansion enabled
-cat > "$SITE_NAME/${SITE_NAME}-docker-compose.yml" << EOF
+cat > "$SAFE_SITE_NAME/${SAFE_SITE_NAME}-docker-compose.yml" << EOF
 version: "3"
 
 services:
@@ -98,7 +216,7 @@ services:
       DB_PORT: "3306"
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
-    container_name: ${SITE_NAME}-backend # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-backend # Dynamically set container name
 
   configurator:
     image: frappe/erpnext:v15.63.0
@@ -132,7 +250,7 @@ services:
       - db
       - redis-cache
       - redis-queue
-    container_name: ${SITE_NAME}-configurator # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-configurator # Dynamically set container name
 
   create-site:
     image: frappe/erpnext:v15.63.0
@@ -170,7 +288,7 @@ services:
       - db
       - redis-cache
       - redis-queue
-    container_name: ${SITE_NAME}-create-site # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-create-site # Dynamically set container name
 
   db:
     image: mariadb:10.6
@@ -193,19 +311,34 @@ services:
       MARIADB_ROOT_PASSWORD: admin
     volumes:
       - db-data:/var/lib/mysql
-    container_name: ${SITE_NAME}-db # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-db # Dynamically set container name
 
   frontend:
     image: frappe/erpnext:v15.63.0
     networks:
       - frappe_network
+      - traefik_proxy
     depends_on:
+      - backend
       - websocket
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(\`${SITE_NAME}\`)"
-      - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.services.${SAFE_SITE_NAME}-frontend.loadbalancer.server.port=8080"
+      - "traefik.http.services.${SAFE_SITE_NAME}-frontend.loadbalancer.passHostHeader=true"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-http.rule=Host(\`${SITE_NAME}\`)"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-http.entrypoints=web"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-http.service=${SAFE_SITE_NAME}-frontend"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-http.middlewares=${SAFE_SITE_NAME}-redirect-to-https"
+      - "traefik.http.middlewares.${SAFE_SITE_NAME}-redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.rule=Host(\`${SITE_NAME}\`)"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.entrypoints=websecure"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.tls=true"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.tls.certresolver=myresolver"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.service=${SAFE_SITE_NAME}-frontend"
+      - "traefik.http.middlewares.${SAFE_SITE_NAME}-strip-prefix.stripprefix.prefixes=/"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.middlewares=${SAFE_SITE_NAME}-strip-prefix"
+      - "traefik.http.routers.${SAFE_SITE_NAME}-frontend-https.priority=100"
     deploy:
       restart_policy:
         condition: on-failure
@@ -220,14 +353,24 @@ services:
       UPSTREAM_REAL_IP_RECURSIVE: "off"
       PROXY_READ_TIMEOUT: 120
       CLIENT_MAX_BODY_SIZE: 50m
+      VIRTUAL_HOST: ${SITE_NAME}
+      VIRTUAL_PORT: 8080
+      NGINX_WORKER_PROCESSES: auto
+      NGINX_WORKER_CONNECTIONS: 1024
+      NGINX_KEEPALIVE_TIMEOUT: 65
+      NGINX_CLIENT_MAX_BODY_SIZE: 50m
+      NGINX_PROXY_READ_TIMEOUT: 120
+      NGINX_PROXY_CONNECT_TIMEOUT: 60
+      NGINX_PROXY_SEND_TIMEOUT: 60
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    # ports:
-    #   - "${HTTP_PORT}:80"
-    #   - "${HTTPS_PORT}:443"
-    #   - "${DASHBOARD_PORT}:8080"
-    container_name: ${SITE_NAME}-frontend # Dynamically set container name
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/method/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    container_name: ${SAFE_SITE_NAME}-frontend
 
   queue-long:
     image: frappe/erpnext:v15.63.0
@@ -244,7 +387,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    container_name: ${SITE_NAME}-queue-long # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-queue-long # Dynamically set container name
 
   queue-short:
     image: frappe/erpnext:v15.63.0
@@ -261,7 +404,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    container_name: ${SITE_NAME}-queue-short # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-queue-short # Dynamically set container name
 
   queue-default:
     image: frappe/erpnext:v15.63.0
@@ -278,7 +421,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    container_name: ${SITE_NAME}-queue-default
+    container_name: ${SAFE_SITE_NAME}-queue-default
 
 
   redis-queue:
@@ -290,7 +433,7 @@ services:
         condition: on-failure
     volumes:
       - redis-queue-data:/data
-    container_name: ${SITE_NAME}-redis-queue # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-redis-queue # Dynamically set container name
 
   redis-cache:
     image: redis:6.2-alpine
@@ -301,7 +444,7 @@ services:
         condition: on-failure
     volumes:
       - redis-cache-data:/data
-    container_name: ${SITE_NAME}-redis-cache # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-redis-cache # Dynamically set container name
 
   scheduler:
     image: frappe/erpnext:v15.63.0
@@ -316,7 +459,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    container_name: ${SITE_NAME}-scheduler # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-scheduler # Dynamically set container name
 
   websocket:
     image: frappe/erpnext:v15.63.0
@@ -331,33 +474,13 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    container_name: ${SITE_NAME}-websocket # Dynamically set container name
-
-  traefik:
-    image: traefik:v2.10
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--accesslog=true"
-      - "--log.level=DEBUG"
-    ports:
-        - "${HTTP_PORT}:80"
-        - "${HTTPS_PORT}:443"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "traefik-letsencrypt:/letsencrypt"
-    networks:
-      - frappe_network
-    container_name: ${SITE_NAME}-traefik # Dynamically set container name
+    container_name: ${SAFE_SITE_NAME}-websocket # Dynamically set container name
 
 networks:
   frappe_network:
     driver: bridge
+  traefik_proxy:
+    external: true
 
 volumes:
   sites:
@@ -365,11 +488,15 @@ volumes:
   db-data:
   redis-queue-data:
   redis-cache-data:
-  traefik-letsencrypt:
 EOF
 
-echo "Generated files in $SITE_NAME/:"
-echo "  - $SITE_NAME-docker-compose.yml"
+echo "Generated files in $SAFE_SITE_NAME/:"
+echo "  - $SAFE_SITE_NAME-docker-compose.yml"
 echo "  - .env"
-
-docker compose -f "$SITE_NAME/${SITE_NAME}-docker-compose.yml" up
+echo ""
+echo "To start your ERPNext stack:"
+echo "docker compose -f $SAFE_SITE_NAME/${SAFE_SITE_NAME}-docker-compose.yml up -d"
+echo ""
+echo "Your site will be available at: https://${SITE_NAME}"
+echo ""
+echo "To add another domain/site, just run this script again with a different site name."
