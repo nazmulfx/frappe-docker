@@ -924,48 +924,41 @@ fi
 
 sudo docker compose -f $SAFE_SITE_NAME/${SAFE_SITE_NAME}-docker-compose.yml up -d
 
-# echo "Generated files in $SAFE_SITE_NAME/:"
-# echo "  - $SAFE_SITE_NAME-docker-compose.yml"
-# echo "  - .env"
-# echo ""
+echo ""
+echo ""
+echo ""
 
-echo ""
-echo ""
-echo ""
 
 for ((i = 30; i >= 1; i--)); do
     dot_count=$(( (30 - i) % 4 ))  # Cycles through 0,1,2,3
     dots=$(printf '%*s' "$dot_count" '' | tr ' ' '.')
-    printf "\rPreparing your site — it'll be live in approximately %2d seconds%s  " "$i" "$dots"
+    printf "\rExecuting your commands — Please wait %2d seconds%s  " "$i" "$dots"
     sleep 1
 done
 
-
-echo "To start your ERPNext stack:"
-
 echo ""
-echo "We're preparing your site — it'll be live in approximately 2 minutes."
-echo ""
+echo "🚀 Preparing your site — it will be live in approximately 5 minutes..."
 if [[ "$USE_SSL" == true ]]; then
-    echo "Your site will be available at: https://${SITE_NAME}"
-    SITE_URL="https://${SITE_NAME}"
+    echo "🔒 Your site will be accessible at: https://${SITE_NAME}"
 else
-    echo "Your site will be available at: http://${SITE_NAME}"
-    SITE_URL="http://${SITE_NAME}"
+    echo "🌐 Your site will be accessible at: http://${SITE_NAME}"
 fi
-echo ""
-echo "To add another domain/site, just run this script again with a different site name."
 
-# Ping the site until it's available (max 300 seconds wait)
-echo "Checking site availability..."
+echo ""
+echo "To add another domain or site, simply run this script again with a different site name."
+echo ""
+
+# Checking site availability
+echo "🔍 Checking site availability..."
 echo ""
 
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
 for ((i = 1; i <= 300; i++)); do
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}")
-    if [[ "$STATUS" == "200" ]]; then
+    STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "${SITE_URL}")
+
+    if [[ "$STATUS" =~ ^2|^3 ]]; then
         echo ""
         echo -e "${GREEN}🎉 Congrats! Your site is live at: ${SITE_URL}${NC}"
         break
@@ -976,3 +969,12 @@ for ((i = 1; i <= 300; i++)); do
 done
 
 echo ""
+
+if [[ "$STATUS" != "200" ]]; then
+    echo ""
+    echo "⏳ Your site is still starting up. Please wait a few more minutes and check:"
+    echo "   ${SITE_URL}"
+    echo ""
+    echo "💡 If you encounter issues, check the logs:"
+    echo "   docker logs ${SAFE_SITE_NAME}-frontend"
+fi
