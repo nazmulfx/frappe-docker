@@ -952,29 +952,142 @@ echo ""
 echo "🔍 Checking site availability..."
 echo ""
 
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+# Introduce a short delay before checking
+sleep 15  # Wait for 15 seconds before starting checks
 
-for ((i = 1; i <= 300; i++)); do
-    STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "${SITE_URL}")
+MAX_RETRIES=15  # Increase the number of retries
+RETRY_INTERVAL=10  # Wait longer between retries
 
-    if [[ "$STATUS" =~ ^2|^3 ]]; then
-        echo ""
+for ((i = 1; i <= MAX_RETRIES; i++)); do
+    # Check with curl
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}")
+    
+    if [[ "$STATUS" == "200" ]]; then
         echo -e "${GREEN}🎉 Congrats! Your site is live at: ${SITE_URL}${NC}"
         break
     fi
 
-    printf "\rWaiting for site to go live... %ds" "$((i * 2))"
-    sleep 2
-done
+    # Check with wget as a fallback
+    STATUS=$(wget --spider --server-response "${SITE_URL}" 2>&1 | grep "HTTP/" | awk '{print $2}')
+    
+    if [[ "$STATUS" == "200" ]]; then
+        echo -e "${GREEN}🎉 Congrats! Your site is live at: ${SITE_URL}${NC}"
+        break
+    fi
 
-echo ""
+    # If not live, provide feedback and wait before retrying
+    echo "Attempt $i: Site not live yet. Retrying in ${RETRY_INTERVAL} seconds..."
+    sleep $RETRY_INTERVAL
+done
 
 if [[ "$STATUS" != "200" ]]; then
     echo ""
     echo "⏳ Your site is still starting up. Please wait a few more minutes and check:"
     echo "   ${SITE_URL}"
     echo ""
-    echo "💡 If you encounter issues, check the logs:"
-    echo "   docker logs ${SAFE_SITE_NAME}-frontend"
+    echo "💡 If you encounter issues, check the logs:"    
+    echo "   docker logs ${SAFE_SITE_NAME}-frontend --tail 50"
+fi
+
+# if want to check frontend logs
+echo ""
+read -p "Do you want to check frontend logs? (y/n): " CHECK_LOGS
+
+if [[ "$CHECK_LOGS" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "📋 Checking frontend logs..."
+    echo "----------------------------------------"
+    sudo docker logs ${SAFE_SITE_NAME}-frontend --tail 50
+    echo "----------------------------------------"
+    echo ""
+    
+    read -p "Do you want to follow the logs in real-time? (y/n): " FOLLOW_LOGS
+    
+    if [[ "$FOLLOW_LOGS" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "🔍 Following frontend logs (Press Ctrl+C to stop)..."
+        echo "----------------------------------------"
+        sudo docker logs -f ${SAFE_SITE_NAME}-frontend
+    fi
+fi
+
+# if want to check the process
+echo ""
+read -p "Do you want to check running processes? (y/n): " CHECK_PROCESS
+
+if [[ "$CHECK_PROCESS" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "📋 Checking running Docker processes..."
+    echo "----------------------------------------"
+    sudo docker ps | grep "${SAFE_SITE_NAME}"
+    echo "----------------------------------------"
+    echo ""
+    
+    read -p "Do you want to see all Docker processes? (y/n): " ALL_PROCESS
+    
+    if [[ "$ALL_PROCESS" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "🔍 All running Docker processes:"
+        echo "----------------------------------------"
+        sudo docker ps
+        echo "----------------------------------------"
+    fi
+fi
+
+# if want to check sites directory
+echo ""
+read -p "Do you want to check sites directory? (y/n): " CHECK_SITES
+
+if [[ "$CHECK_SITES" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "📂 Checking sites directory..."
+    echo "----------------------------------------"
+    sudo docker exec -it ${SAFE_SITE_NAME}-backend ls /home/frappe/frappe-bench/sites
+    echo "----------------------------------------"
+    echo ""
+    
+    read -p "Do you want to see detailed site information? (y/n): " DETAILED_SITES
+    
+    if [[ "$DETAILED_SITES" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "🔍 Detailed sites directory listing:"
+        echo "----------------------------------------"
+        sudo docker exec -it ${SAFE_SITE_NAME}-backend ls -la /home/frappe/frappe-bench/sites
+        echo "----------------------------------------"
+    fi
+fi
+
+
+# if want to access frontend container for installing additional apps
+echo ""
+read -p "Do you want to access frontend container for installing additional apps? (y/n): " ACCESS_FRONTEND
+
+if [[ "$ACCESS_FRONTEND" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "🐳 Accessing frontend container..."
+    echo "----------------------------------------"
+    echo "Note: You can install apps in both backend and frontend containers"
+    echo "Backend container: ${SAFE_SITE_NAME}-backend"
+    echo "Frontend container: ${SAFE_SITE_NAME}-frontend"
+    echo "----------------------------------------"
+    
+    read -p "Which container do you want to access? (backend/frontend): " CONTAINER_CHOICE
+    
+    if [[ "$CONTAINER_CHOICE" =~ ^[Bb]ackend$ ]]; then
+        echo ""
+        echo "🔧 Accessing backend container..."
+        echo "Use 'bench install-app <app_name>' to install apps"
+        echo "Use 'bench list-apps' to see installed apps"
+        echo "----------------------------------------"
+        sudo docker exec -it ${SAFE_SITE_NAME}-backend bash
+    elif [[ "$CONTAINER_CHOICE" =~ ^[Ff]rontend$ ]]; then
+        echo ""
+        echo "🔧 Accessing frontend container..."
+        echo "Use 'bench install-app <app_name>' to install apps"
+        echo "Use 'bench list-apps' to see installed apps"
+        echo "----------------------------------------"
+        sudo docker exec -it ${SAFE_SITE_NAME}-frontend bash
+    else
+        echo "❌ Invalid choice. Please select 'backend' or 'frontend'"
+    fi
 fi
