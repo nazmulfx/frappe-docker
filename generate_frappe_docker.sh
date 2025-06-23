@@ -428,7 +428,9 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
+        apt-get update && apt-get install -y nano;
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default ${SITE_NAME};
+        echo "${SITE_NAME}" > sites/currentsite.txt;
     depends_on:
       - db
       - redis-cache
@@ -723,7 +725,9 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
+        apt-get update && apt-get install -y nano;
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default ${SITE_NAME};
+        echo "${SITE_NAME}" > sites/currentsite.txt;
     depends_on:
       - db
       - redis-cache
@@ -944,6 +948,14 @@ else
     echo "🌐 Your site will be accessible at: http://${SITE_NAME}"
 fi
 
+
+echo ""
+echo "📋 Frappe Version: v15.63.0"
+echo "👤 Default Username: Administrator"
+echo "🔑 Default Password: admin"
+echo ""
+echo "💡 You can change the password after first login."
+
 echo ""
 echo "To add another domain or site, simply run this script again with a different site name."
 echo ""
@@ -952,142 +964,63 @@ echo ""
 echo "🔍 Checking site availability..."
 echo ""
 
-# Introduce a short delay before checking
-sleep 15  # Wait for 15 seconds before starting checks
+sleep 10  # Wait for 10 seconds before starting checks
 
-MAX_RETRIES=15  # Increase the number of retries
-RETRY_INTERVAL=10  # Wait longer between retries
+MAX_RETRIES=10
+RETRY_INTERVAL=10
 
 for ((i = 1; i <= MAX_RETRIES; i++)); do
-    # Check with curl
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}")
-    
-    if [[ "$STATUS" == "200" ]]; then
+    # First check without -L
+    STATUS_NO_L=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}")
+
+    if [[ "$STATUS_NO_L" == "200" ]]; then
         echo -e "${GREEN}🎉 Congrats! Your site is live at: ${SITE_URL}${NC}"
         break
     fi
 
-    # Check with wget as a fallback
-    STATUS=$(wget --spider --server-response "${SITE_URL}" 2>&1 | grep "HTTP/" | awk '{print $2}')
-    
-    if [[ "$STATUS" == "200" ]]; then
+    # Then check with -L
+    STATUS_L=$(curl -s -o /dev/null -w "%{http_code}" -L "${SITE_URL}")
+
+    if [[ "$STATUS_L" == "200" ]]; then
         echo -e "${GREEN}🎉 Congrats! Your site is live at: ${SITE_URL}${NC}"
         break
     fi
 
-    # If not live, provide feedback and wait before retrying
-    echo "Attempt $i: Site not live yet. Retrying in ${RETRY_INTERVAL} seconds..."
+    echo "Attempt $i: Site not live yet (Status: ${STATUS_NO_L}/${STATUS_L}). Retrying in ${RETRY_INTERVAL} seconds..."
     sleep $RETRY_INTERVAL
 done
 
-if [[ "$STATUS" != "200" ]]; then
+# After loop ends, if not successful
+if [[ "$STATUS_NO_L" != "200" && "$STATUS_L" != "200" ]]; then
     echo ""
     echo "⏳ Your site is still starting up. Please wait a few more minutes and check:"
     echo "   ${SITE_URL}"
     echo ""
-    echo "💡 If you encounter issues, check the logs:"    
+    echo "💡 If you encounter issues, check the logs:"
     echo "   docker logs ${SAFE_SITE_NAME}-frontend --tail 50"
 fi
 
+
 # if want to check frontend logs
 echo ""
-read -p "Do you want to check frontend logs? (y/n): " CHECK_LOGS
+# sudo docker-manager
+read -p "Do you want to access the docker-manager? (y/n): " ACCESS_MANAGER
 
-if [[ "$CHECK_LOGS" =~ ^[Yy]$ ]]; then
+if [[ "$ACCESS_MANAGER" =~ ^[Yy]$ ]]; then
     echo ""
-    echo "📋 Checking frontend logs..."
-    echo "----------------------------------------"
-    sudo docker logs ${SAFE_SITE_NAME}-frontend --tail 50
-    echo "----------------------------------------"
+    echo "🚀 Launching Docker Manager..."
     echo ""
-    
-    read -p "Do you want to follow the logs in real-time? (y/n): " FOLLOW_LOGS
-    
-    if [[ "$FOLLOW_LOGS" =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "🔍 Following frontend logs (Press Ctrl+C to stop)..."
-        echo "----------------------------------------"
-        sudo docker logs -f ${SAFE_SITE_NAME}-frontend
-    fi
-fi
-
-# if want to check the process
-echo ""
-read -p "Do you want to check running processes? (y/n): " CHECK_PROCESS
-
-if [[ "$CHECK_PROCESS" =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "📋 Checking running Docker processes..."
-    echo "----------------------------------------"
-    sudo docker ps | grep "${SAFE_SITE_NAME}"
-    echo "----------------------------------------"
-    echo ""
-    
-    read -p "Do you want to see all Docker processes? (y/n): " ALL_PROCESS
-    
-    if [[ "$ALL_PROCESS" =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "🔍 All running Docker processes:"
-        echo "----------------------------------------"
-        sudo docker ps
-        echo "----------------------------------------"
-    fi
-fi
-
-# if want to check sites directory
-echo ""
-read -p "Do you want to check sites directory? (y/n): " CHECK_SITES
-
-if [[ "$CHECK_SITES" =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "📂 Checking sites directory..."
-    echo "----------------------------------------"
-    sudo docker exec -it ${SAFE_SITE_NAME}-backend ls /home/frappe/frappe-bench/sites
-    echo "----------------------------------------"
-    echo ""
-    
-    read -p "Do you want to see detailed site information? (y/n): " DETAILED_SITES
-    
-    if [[ "$DETAILED_SITES" =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "🔍 Detailed sites directory listing:"
-        echo "----------------------------------------"
-        sudo docker exec -it ${SAFE_SITE_NAME}-backend ls -la /home/frappe/frappe-bench/sites
-        echo "----------------------------------------"
-    fi
-fi
-
-
-# if want to access frontend container for installing additional apps
-echo ""
-read -p "Do you want to access frontend container for installing additional apps? (y/n): " ACCESS_FRONTEND
-
-if [[ "$ACCESS_FRONTEND" =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "🐳 Accessing frontend container..."
-    echo "----------------------------------------"
-    echo "Note: You can install apps in both backend and frontend containers"
-    echo "Backend container: ${SAFE_SITE_NAME}-backend"
-    echo "Frontend container: ${SAFE_SITE_NAME}-frontend"
-    echo "----------------------------------------"
-    
-    read -p "Which container do you want to access? (backend/frontend): " CONTAINER_CHOICE
-    
-    if [[ "$CONTAINER_CHOICE" =~ ^[Bb]ackend$ ]]; then
-        echo ""
-        echo "🔧 Accessing backend container..."
-        echo "Use 'bench install-app <app_name>' to install apps"
-        echo "Use 'bench list-apps' to see installed apps"
-        echo "----------------------------------------"
-        sudo docker exec -it ${SAFE_SITE_NAME}-backend bash
-    elif [[ "$CONTAINER_CHOICE" =~ ^[Ff]rontend$ ]]; then
-        echo ""
-        echo "🔧 Accessing frontend container..."
-        echo "Use 'bench install-app <app_name>' to install apps"
-        echo "Use 'bench list-apps' to see installed apps"
-        echo "----------------------------------------"
-        sudo docker exec -it ${SAFE_SITE_NAME}-frontend bash
+    # Check if docker-manager is available in PATH
+    if command -v docker-manager &> /dev/null; then
+        sudo docker-manager
     else
-        echo "❌ Invalid choice. Please select 'backend' or 'frontend'"
+        echo "❌ docker-manager not found in PATH."
     fi
+else
+    echo ""
+    echo "💡 You can access the docker-manager anytime by running:"
+    echo " sudo docker-manager"
 fi
+
+
+

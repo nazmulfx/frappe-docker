@@ -146,15 +146,18 @@ docker logs frappe_cloudbookbd_com-frontend --tail 100
 docker ps | grep traefik
 
 
+sudo docker cp 20250602_files.tar pos_com-backend:/home/frappe/
+
+
 # 🧹 Cleanup Commands Warning: The following will delete all containers, volumes, and networks.
  
-docker system prune -a --volumes
+sudo docker system prune -a --volumes
 
-docker stop $(docker ps -aq)
-docker rm $(docker ps -aq)
-docker volume prune -f
-docker volume rm $(docker volume ls -q)
-docker network prune -f
-docker system prune -a --volumes -f
+sudo docker stop $(docker ps -aq)
+sudo docker rm $(docker ps -aq)
+sudo docker volume prune -f
+sudo docker volume rm $(docker volume ls -q)
+sudo docker network prune -f
+sudo docker system prune -a --volumes -f
 
 
