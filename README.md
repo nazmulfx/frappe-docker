@@ -8,6 +8,7 @@ A comprehensive collection of scripts to automatically deploy Frappe/ERPNext wit
 - **`generate_frappe_docker.sh`** - Complete ERPNext deployment script with Cloudflare support
 
 ### Management & Fix Scripts  
+- **`docker-manager.sh`** - Interactive Docker container management tool ([Documentation](DOCKER_MANAGER.md))
 - **`manual_fix_traefik.sh`** - Quick manual upgrade of Traefik to HTTPS support
 - **`fix_traefik_https.sh`** - Comprehensive Traefik upgrade with Cloudflare DNS challenge
 - **`test_mixed_setup.sh`** - Test and verify mixed HTTP/HTTPS configurations
@@ -112,7 +113,25 @@ traefik-docker-compose.yml                 # Traefik reverse proxy
 
 ## 🔧 Managing Your Site
 
-### Start/Stop Containers
+### Using Docker Manager (Recommended)
+For easy container management, use the interactive Docker Manager script:
+
+```bash
+# Make executable and run
+chmod +x docker-manager.sh
+./docker-manager.sh
+```
+
+**Key Features:**
+- 🐚 **Shell Access**: Quick access to backend, frontend, and database containers
+- 📋 **Log Inspection**: View container logs with one command
+- 📁 **File Transfer**: Copy files to/from containers easily
+- 🔄 **Bulk Operations**: Restart or remove all containers for a project
+- 🛡️ **Safety Features**: Confirmation prompts for destructive operations
+
+📖 **[Full Docker Manager Documentation](DOCKER_MANAGER.md)**
+
+### Manual Docker Commands
 ```bash
 cd your-domain-com
 
