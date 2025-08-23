@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Cleanup - Web Docker Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-broom"></i> Docker System Cleanup</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- System Information -->
+{% if system_info %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Current Docker Space Usage</h5>
+            </div>
+            <div class="card-body">
+                {% if system_info.raw_output %}
+                <pre class="mb-0">{{ system_info.raw_output }}</pre>
+                {% else %}
+                <p>System information available via API</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Cleanup Options -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Safe Cleanup Options</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">These options are safe and won't remove important data:</p>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-success" onclick="cleanupSystem('containers')">
+                        <i class="fas fa-box"></i> Clean Stopped Containers
+                        <br><small class="text-muted">Remove containers that are not running</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-success" onclick="cleanupSystem('images')">
+                        <i class="fas fa-images"></i> Clean Dangling Images
+                        <br><small class="text-muted">Remove unused and untagged images</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-success" onclick="cleanupSystem('networks')">
+                        <i class="fas fa-network-wired"></i> Clean Unused Networks
+                        <br><small class="text-muted">Remove networks not used by containers</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-success" onclick="cleanupSystem('system')">
+                        <i class="fas fa-broom"></i> General System Cleanup
+                        <br><small class="text-muted">Clean containers, networks, and dangling images</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Destructive Cleanup Options</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text text-danger">
+                    <strong>⚠️ WARNING:</strong> These options will remove data and cannot be undone!
+                </p>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-danger" onclick="cleanupSystem('volumes')">
+                        <i class="fas fa-database"></i> Clean Unused Volumes
+                        <br><small class="text-muted">⚠️ This will remove unused volumes and may delete data!</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-danger" onclick="cleanupSystem('all')">
+                        <i class="fas fa-trash-alt"></i> Complete System Cleanup
+                        <br><small class="text-muted">⚠️ Remove everything unused including volumes!</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cleanup Tips -->
+<div class="row">
+    <div class="col-12">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-lightbulb"></i> Cleanup Tips</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-check-circle text-success"></i> Safe Practices:</h6>
+                        <ul>
+                            <li>Start with <strong>General System Cleanup</strong> - it's safe and effective</li>
+                            <li>Clean <strong>dangling images</strong> regularly to save space</li>
+                            <li>Remove <strong>stopped containers</strong> you no longer need</li>
+                            <li>Clean <strong>unused networks</strong> to reduce clutter</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-exclamation-triangle text-warning"></i> Be Careful With:</h6>
+                        <ul>
+                            <li><strong>Volume cleanup</strong> - this removes persistent data</li>
+                            <li><strong>Complete cleanup</strong> - this removes everything unused</li>
+                            <li>Always backup important data before destructive operations</li>
+                            <li>Check what volumes contain before removing them</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Space Usage Breakdown -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Understanding Docker Space Usage</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center">
+                        <i class="fas fa-images fa-3x text-primary mb-2"></i>
+                        <h6>Images</h6>
+                        <p class="small text-muted">Base images for containers</p>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <i class="fas fa-box fa-3x text-success mb-2"></i>
+                        <h6>Containers</h6>
+                        <p class="small text-muted">Running and stopped containers</p>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <i class="fas fa-database fa-3x text-warning mb-2"></i>
+                        <h6>Volumes</h6>
+                        <p class="small text-muted">Persistent data storage</p>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <i class="fas fa-network-wired fa-3x text-info mb-2"></i>
+                        <h6>Networks</h6>
+                        <p class="small text-muted">Container networking</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
