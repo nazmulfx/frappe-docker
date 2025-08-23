@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Frappe Manager - {{ container_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons - Single, reliable icon system -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         .security-badge {
             background: linear-gradient(45deg, #28a745, #20c997);
@@ -32,6 +33,14 @@
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+        
+        /* Bootstrap Icons - Clean, simple icon system */
+        .bi {
+            font-size: 1em;
+            vertical-align: middle;
+        }
+        
+        /* No Font Awesome fallbacks needed; using Bootstrap Icons only */
         .security-warning {
             background: rgba(255, 193, 7, 0.1);
             border: 1px solid rgba(255, 193, 7, 0.3);
@@ -46,24 +55,24 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="fas fa-shield-alt"></i> Secure Docker Manager
+                <i class="bi bi-shield-check"></i> Secure Frappe Manager
                 <span class="security-badge">
-                    <i class="fas fa-lock"></i> SECURED
+                    <i class="bi bi-lock-fill"></i> SECURED
                 </span>
             </a>
             
             <div class="navbar-nav ms-auto">
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-user"></i> {{ session.username }}
+                        <i class="bi bi-person-circle"></i> {{ session.username }}
                     </a>
                     <ul class="dropdown-menu">
                         <li><a class="dropdown-item" href="{{ url_for('index') }}">
-                            <i class="fas fa-tachometer-alt"></i> Dashboard
+                            <i class="bi bi-speedometer2"></i> Dashboard
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="{{ url_for('logout') }}">
-                            <i class="fas fa-sign-out-alt"></i> Logout
+                            <i class="bi bi-box-arrow-right"></i> Logout
                         </a></li>
                     </ul>
                 </div>
@@ -75,7 +84,7 @@
         <!-- Security Warning -->
         <div class="security-warning">
             <div class="d-flex align-items-center">
-                <i class="fas fa-shield-alt text-warning fa-2x me-3"></i>
+                <i class="bi bi-shield-check text-warning fs-2 me-3"></i>
                 <div>
                     <h6 class="mb-1">🔒 Secure Frappe Manager</h6>
                     <small class="text-muted">
@@ -88,17 +97,18 @@
         <!-- Header -->
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h1 class="h2">
-                <i class="fas fa-cube text-primary"></i> {{ container_name }}
+                <i class="bi bi-box text-primary"></i> {{ container_name }}
                 <small class="text-muted">Secure Frappe Manager</small>
             </h1>
             <div class="btn-toolbar mb-2 mb-md-0">
                 <div class="btn-group me-2">
-                    <button class="btn btn-sm btn-success" onclick="refreshPage()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
+                                    <button class="btn btn-sm btn-success" onclick="refreshPage()" 
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Refresh page data">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
                 </div>
                 <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
                 </a>
             </div>
         </div>
@@ -108,7 +118,7 @@
             <div class="col-12">
                 <div class="card border-primary">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Container Information</h5>
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Container Information</h5>
                     </div>
                     <div class="card-body">
                         <div class="row">
@@ -137,23 +147,27 @@
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-terminal"></i> Safe Bench Commands</h5>
+                        <h5 class="mb-0"><i class="bi bi-terminal"></i> Safe Bench Commands</h5>
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
                             <label class="form-label">Pre-approved Commands:</label>
                             <div class="d-grid gap-2">
-                                <button class="btn btn-outline-primary" onclick="executeSafeCommand('bench --site all list-apps')">
-                                    <i class="fas fa-list"></i> List Apps
+                                <button class="btn btn-outline-primary" onclick="executeSafeCommand('bench --site all list-apps')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="List all installed Frappe apps">
+                                    <i class="bi bi-list"></i> List Apps
                                 </button>
-                                <button class="btn btn-outline-success" onclick="executeSafeCommand('bench --site all clear-cache')">
-                                    <i class="fas fa-broom"></i> Clear Cache
+                                <button class="btn btn-outline-success" onclick="executeSafeCommand('bench --site all clear-cache')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Clear Redis and website cache">
+                                    <i class="bi bi-broom"></i> Clear Cache
                                 </button>
-                                <button class="btn btn-outline-info" onclick="executeSafeCommand('bench version')">
-                                    <i class="fas fa-info"></i> Show Version
+                                <button class="btn btn-outline-info" onclick="executeSafeCommand('bench version')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Show bench version information">
+                                    <i class="bi bi-info-circle"></i> Show Version
                                 </button>
-                                <button class="btn btn-outline-warning" onclick="executeSafeCommand('bench doctor')">
-                                    <i class="fas fa-stethoscope"></i> System Check
+                                <button class="btn btn-outline-warning" onclick="executeSafeCommand('bench doctor')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Run system health check">
+                                    <i class="bi bi-activity"></i> System Check
                                 </button>
                             </div>
                         </div>
@@ -165,8 +179,9 @@
                             <div class="input-group">
                                 <input type="text" class="form-control" id="customCommand" 
                                        placeholder="bench --site all ..." maxlength="200">
-                                <button class="btn btn-outline-primary" onclick="executeCustomCommand()">
-                                    <i class="fas fa-play"></i> Execute
+                                <button class="btn btn-outline-primary" onclick="executeCustomCommand()" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Execute custom bench command">
+                                    <i class="bi bi-play-fill"></i> Execute
                                 </button>
                             </div>
                             <small class="form-text text-muted">
@@ -180,28 +195,28 @@
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Security Features</h5>
+                        <h5 class="mb-0"><i class="bi bi-shield-check"></i> Security Features</h5>
                     </div>
                     <div class="card-body">
                         <div class="list-group list-group-flush">
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-check text-success"></i> Input Sanitization</span>
+                                <span><i class="bi bi-check-circle text-success"></i> Input Sanitization</span>
                                 <span class="badge bg-success">Active</span>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-check text-success"></i> Command Validation</span>
+                                <span><i class="bi bi-check-circle text-success"></i> Command Validation</span>
                                 <span class="badge bg-success">Active</span>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-check text-success"></i> CSRF Protection</span>
+                                <span><i class="bi bi-check-circle text-success"></i> CSRF Protection</span>
                                 <span class="badge bg-success">Active</span>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-check text-success"></i> Authentication</span>
+                                <span><i class="bi bi-check-circle text-success"></i> Authentication</span>
                                 <span class="badge bg-success">Required</span>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-check text-success"></i> Command Timeout</span>
+                                <span><i class="bi bi-check-circle text-success"></i> Command Timeout</span>
                                 <span class="badge bg-info">5 min max</span>
                             </div>
                         </div>
@@ -215,28 +230,32 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+                        <h5 class="mb-0"><i class="bi bi-lightning-charge"></i> Quick Actions</h5>
                     </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-3 mb-2">
-                                <button class="btn btn-outline-success w-100" onclick="executeSafeCommand('bench --site all clear-cache && bench --site all clear-website-cache')">
-                                    <i class="fas fa-broom"></i><br>Clear All Cache
+                                <button class="btn btn-outline-success w-100" onclick="executeSafeCommand('bench --site all clear-cache && bench --site all clear-website-cache')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Clear all Redis and website cache">
+                                    <i class="bi bi-broom"></i><br>Clear All Cache
                                 </button>
                             </div>
                             <div class="col-md-3 mb-2">
-                                <button class="btn btn-outline-info w-100" onclick="executeSafeCommand('bench --site all backup --with-files')">
-                                    <i class="fas fa-download"></i><br>Create Backup
+                                <button class="btn btn-outline-info w-100" onclick="executeSafeCommand('bench --site all backup --with-files')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Create backup of all sites with files">
+                                    <i class="bi bi-download"></i><br>Create Backup
                                 </button>
                             </div>
                             <div class="col-md-3 mb-2">
-                                <button class="btn btn-outline-warning w-100" onclick="executeSafeCommand('bench --site all migrate')">
-                                    <i class="fas fa-database"></i><br>Run Migration
+                                <button class="btn btn-outline-warning w-100" onclick="executeSafeCommand('bench --site all migrate')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="Run database migrations for all sites">
+                                    <i class="bi bi-database"></i><br>Run Migration
                                 </button>
                             </div>
                             <div class="col-md-3 mb-2">
-                                <button class="btn btn-outline-primary w-100" onclick="executeSafeCommand('bench --site all list-apps')">
-                                    <i class="fas fa-list"></i><br>List Apps
+                                <button class="btn btn-outline-primary w-100" onclick="executeSafeCommand('bench --site all list-apps')" 
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="List all installed applications">
+                                    <i class="bi bi-list"></i><br>List Apps
                                 </button>
                             </div>
                         </div>
@@ -358,6 +377,12 @@
         function refreshPage() {
             location.reload();
         }
+
+        // Initialize all tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
 
         // Enter key support for custom command
         $('#customCommand').keypress(function(e) {

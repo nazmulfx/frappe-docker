@@ -306,16 +306,16 @@ def before_request():
     # Force HTTPS in production
     if SECURITY_CONFIG['REQUIRE_HTTPS'] and not request.is_secure:
         return redirect(request.url.replace('http://', 'https://'))
-    
-    # Add security headers
-    @app.after_request
-    def after_request(response):
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net"
-        return response
+
+@app.after_request
+def after_request(response):
+    """Add security headers after each request"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net"
+    return response
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -389,6 +389,30 @@ def container_action_api(container_name):
     action = request.json.get('action')
     result = SecureDockerManager.container_action(container_name, action)
     return jsonify(result)
+
+@app.route('/api/container/<container_name>/logs')
+@require_auth
+def container_logs_api(container_name):
+    """Get container logs API"""
+    if not SecurityManager.validate_container_name(container_name):
+        return jsonify({'success': False, 'error': 'Invalid container name'})
+    
+    # Get container logs with limit
+    cmd = f"sudo docker logs --tail 100 {container_name}"
+    result = SecureDockerManager.run_command(cmd, timeout=30)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'logs': result['stdout'],
+            'container': container_name
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': result['stderr'],
+            'container': container_name
+        })
 
 @app.route('/frappe/<container_name>')
 @require_auth
