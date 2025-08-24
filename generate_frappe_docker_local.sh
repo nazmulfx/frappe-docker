@@ -4,6 +4,7 @@
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # --- Helper Functions ---
@@ -28,54 +29,107 @@ is_traefik_running() {
     docker ps --filter "name=traefik" --format "{{.Names}}" | grep -q "traefik"
 }
 
-# Validate a domain name
+# Validate a domain name (modified to allow localhost domains)
 validate_domain() {
     local domain=$1
+    # Allow localhost domains
+    if [[ $domain =~ \.localhost$ ]]; then
+        return 0
+    fi
+    # Standard domain validation
     if [[ ! $domain =~ ^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9][a-zA-Z0-9-]*)*\.[a-zA-Z]{2,}$ ]]; then
-        echo -e "${RED}Error: Invalid domain name format. Please use a format like 'example.com' or 'subdomain.example.com'.${NC}"
+        echo -e "${RED}Error: Invalid domain name format. Please use a format like 'example.com', 'subdomain.example.com', or 'mysite.localhost'.${NC}"
         return 1
     fi
     return 0
+}
+
+# Load local Traefik configuration if it exists
+load_local_config() {
+    if [[ -f ".traefik-local-config" ]]; then
+        source .traefik-local-config
+        echo -e "${BLUE}📋 Loaded local Traefik configuration${NC}"
+        echo "  • HTTP Port: ${TRAEFIK_HTTP_PORT}"
+        if [[ -n "$TRAEFIK_HTTPS_PORT" ]]; then
+            echo "  • HTTPS Port: ${TRAEFIK_HTTPS_PORT}"
+        fi
+        if [[ "$USE_LOCALHOST" == "true" ]]; then
+            echo "  • Using localhost domains"
+        fi
+        echo ""
+        return 0
+    fi
+    return 1
+}
+
+# Function to manage hosts file entries
+manage_hosts_entry() {
+    local domain=$1
+    local action=$2  # "add" or "remove"
+    
+    if [[ $domain =~ \.localhost$ ]]; then
+        return 0  # .localhost domains don't need hosts file entries
+    fi
+    
+    case $action in
+        "add")
+            if grep -q "$domain" /etc/hosts; then
+                echo -e "${YELLOW}⚠️  Domain $domain already exists in hosts file${NC}"
+                return 0
+            else
+                if echo "127.0.0.1 $domain" | tee -a /etc/hosts > /dev/null; then
+                    echo -e "${GREEN}✅ Added $domain to hosts file${NC}"
+                    return 0
+                else
+                    echo -e "${RED}❌ Failed to add domain to hosts file${NC}"
+                    return 1
+                fi
+            fi
+            ;;
+        "remove")
+            if grep -q "$domain" /etc/hosts; then
+                # Create a temporary file without the domain
+                sudo sed "/$domain/d" /etc/hosts > /tmp/hosts.tmp
+                if sudo mv /tmp/hosts.tmp /etc/hosts; then
+                    echo -e "${GREEN}✅ Removed $domain from hosts file${NC}"
+                    return 0
+                else
+                    echo -e "${RED}❌ Failed to remove domain from hosts file${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${YELLOW}⚠️  Domain $domain not found in hosts file${NC}"
+                return 0
+            fi
+            ;;
+    esac
 }
 
 # Generate the docker-compose.yml file
 generate_docker_compose() {
     local safe_site_name=$1
     local site_name=$2
-    local use_ssl=$3
     local compose_file="$safe_site_name/${safe_site_name}-docker-compose.yml"
+    
+    # Load local config to check for custom ports
+    local http_entrypoint="web"
+    
+    if load_local_config; then
+        # Use the configured entrypoint
+        http_entrypoint="web"
+    fi
 
-    local frontend_labels=""
-    if [[ "$use_ssl" == true ]]; then
-        frontend_labels=$(cat <<EOF
+    # HTTP-only labels for local development
+    local frontend_labels=$(cat <<EOF
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_proxy"
       - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.server.port=8080"
       - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.passHostHeader=true"
       - "traefik.http.routers.${safe_site_name}-frontend-http.rule=Host(\`${site_name}\`)"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.entrypoints=web"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.middlewares=${safe_site_name}-redirect-to-https"
-      - "traefik.http.middlewares.${safe_site_name}-redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.${safe_site_name}-redirect-to-https.redirectscheme.permanent=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.rule=Host(\`${site_name}\`)"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.entrypoints=websecure"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.tls=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.tls.certresolver=myresolver"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.service=${safe_site_name}-frontend"
-EOF
-)
-    else
-        frontend_labels=$(cat <<EOF
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik_proxy"
-      - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.server.port=8080"
-      - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.passHostHeader=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.rule=Host(\`${site_name}\`)"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.entrypoints=web"
+      - "traefik.http.routers.${safe_site_name}-frontend-http.entrypoints=${http_entrypoint}"
       - "traefik.http.routers.${safe_site_name}-frontend-http.service=${safe_site_name}-frontend"
 EOF
 )
-    fi
 
     cat > "$compose_file" << EOF
 version: "3.8"
@@ -362,40 +416,47 @@ if ! command_exists docker; then
     exit 1
 fi
 
-# Welcome message
-echo -e "${GREEN}Welcome to Frappe/ERPNext Docker Setup!${NC}"
-echo "========================================="
+# Check if running with sudo (needed for hosts file management)
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${RED}❌ This script must be run with sudo for hosts file management${NC}"
+    echo -e "${YELLOW}💡 Please run: sudo ./generate_frappe_docker_local.sh${NC}"
+    exit 1
+fi
 
-# Prompt for SSL
-read -p "Do you want to enable SSL/HTTPS? (y/n): " enable_ssl
-if [[ "$enable_ssl" =~ ^[Yy]$ ]]; then
-    echo -e "${GREEN}SSL/HTTPS will be enabled with Let's Encrypt certificates.${NC}"
-    use_ssl=true
-else
-    echo -e "${YELLOW}SSL/HTTPS will be disabled. Site will run on HTTP only.${NC}"
-    use_ssl=false
+# Welcome message
+echo -e "${GREEN}Welcome to Frappe/ERPNext Docker Setup (Local-Aware Edition)!${NC}"
+echo "=============================================================="
+echo ""
+
+# For local development, we don't need SSL
+echo -e "${BLUE}📍 Local Development Environment${NC}"
+echo -e "${YELLOW}HTTP-only setup (no SSL certificates needed for local)${NC}"
+
+# Check if we have a local Traefik configuration
+if load_local_config; then
+    echo -e "${GREEN}✅ Using existing local Traefik configuration${NC}"
 fi
 echo ""
 
-# Check for port conflicts
-if ! is_traefik_running; then
+# Check for port conflicts (skip if local config exists and handled)
+if ! is_traefik_running && [[ ! -f ".traefik-local-config" ]]; then
     blocked_ports=""
     if is_port_in_use 80; then blocked_ports="80"; fi
     if is_port_in_use 443; then blocked_ports="$blocked_ports 443"; fi
 
     if [[ -n "$blocked_ports" ]]; then
         echo -e "${YELLOW}Warning: Ports $blocked_ports are in use by other processes.${NC}"
-        echo "Traefik needs both ports 80 and 443 to work properly."
+        echo "Traefik needs these ports to work properly."
+        echo ""
+        echo -e "${BLUE}💡 TIP: Run ./setup-traefik-local.sh first to handle port conflicts${NC}"
+        echo ""
         for port in $blocked_ports; do
             echo "Port $port is being used by: $(get_process_on_port $port)"
         done
-        read -p "Do you want to stop these services and continue? (y/n): " stop_service
-        if [[ "$stop_service" =~ ^[Yy]$ ]]; then
-            echo "Attempting to stop conflicting services..."
-            # Add logic to stop services here
-        else
-            echo -e "${RED}Setup cancelled. Please free up ports 80 and 443 manually and try again.${NC}"
-            exit 1
+        read -p "Do you want to exit and run setup-traefik-local.sh first? (y/n): " exit_setup
+        if [[ "$exit_setup" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Please run: ./setup-traefik-local.sh${NC}"
+            exit 0
         fi
     fi
 fi
@@ -406,30 +467,37 @@ if ! docker network ls | grep -q traefik_proxy; then
     docker network create traefik_proxy
 fi
 
-# Check and configure Traefik
+# Check if Traefik is running
 if ! is_traefik_running; then
-    echo "Traefik is not running. Creating traefik-docker-compose.yml..."
-    
-    if [[ "$use_ssl" == true ]]; then
-        read -p "Enter your Cloudflare API token (leave blank for HTTP challenge): " cf_api_token
-        read -p "Enter email for Let's Encrypt notifications: " email
+    echo -e "${RED}⚠️  Traefik is not running!${NC}"
+    echo ""
+    echo "Please run one of the following first:"
+    echo "  1. ./setup-traefik-local.sh (for local environment)"
+    echo "  2. Start Traefik manually"
+    echo ""
+    read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
+    if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
+        exit 1
     fi
-
-    # Generate Traefik config
-    # ... (omitted for brevity, but would be here)
-
-    echo "Starting Traefik..."
-    docker compose -f traefik-docker-compose.yml up -d
-    sleep 3
+else
+    echo -e "${GREEN}✅ Traefik is running${NC}"
 fi
 
-# Get site name
+# Get site name with localhost suggestion for local env
+echo ""
+echo -e "${BLUE}💡 For local development, use a .localhost domain (e.g., mysite.localhost)${NC}"
+echo -e "${BLUE}   Or use any domain like mysite.local (will be auto-added to hosts file)${NC}"
+
 while true; do
-    read -p "Enter site name (e.g. example.com): " site_name
+    read -p "Enter site name (e.g. example.com or mysite.localhost): " site_name
     if validate_domain "$site_name"; then
         break
     fi
 done
+
+
+USE_LOCALHOST=false
+echo -e "${BLUE}📝 Custom domain detected - will be added to hosts file${NC}"
 
 # Sanitize site name
 safe_site_name=$(echo "$site_name" | sed 's/[^a-zA-Z0-9]/_/g')
@@ -441,26 +509,53 @@ mkdir -p "$safe_site_name"
 cat > "$safe_site_name/.env" << EOF
 ERPNEXT_VERSION=v15.63.0
 DB_PASSWORD=admin
-LETSENCRYPT_EMAIL=${email}
 FRAPPE_SITE_NAME_HEADER=${site_name}
 SITES=${site_name}
 EOF
 
+# No email needed for local HTTP-only setup
+
 # Generate docker-compose
-generate_docker_compose "$safe_site_name" "$site_name" "$use_ssl"
+generate_docker_compose "$safe_site_name" "$site_name"
 
 # Start containers
 echo -e "${GREEN}Starting your Frappe/ERPNext site...${NC}"
 docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
 
-# Final messages
+# Auto-add domain to hosts file for local access
+echo ""
+echo -e "${BLUE}🔧 Managing hosts file for local access...${NC}"
+if manage_hosts_entry "$site_name" "add"; then
+    if [[ ! $site_name =~ \.localhost$ ]]; then
+        echo -e "${BLUE}   You can now access your site at: http://$site_name${NC}"
+        echo -e "${YELLOW}   💡 To remove this domain later, run: ./manage-hosts.sh${NC}"
+    fi
+fi
+
+# Final messages with port-aware URLs
 echo ""
 echo -e "${GREEN}🚀 Your site is being prepared and will be live in approximately 5 minutes...${NC}"
-if [[ "$use_ssl" == true ]]; then
-    echo -e "🔒 Your site will be accessible at: https://${site_name}"
+
+# Determine the access URL based on configuration
+if [[ -f ".traefik-local-config" ]]; then
+    source .traefik-local-config
+    if [[ "$USE_LOCALHOST" == "true" ]]; then
+        # For localhost domains, show the correct port
+        if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
+            echo -e "🌐 Your site will be accessible at: http://${site_name}:${TRAEFIK_HTTP_PORT}"
+        else
+            echo -e "🌐 Your site will be accessible at: http://${site_name}"
+        fi
+    elif [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
+        echo -e "🌐 Your site will be accessible at: http://${site_name}:${TRAEFIK_HTTP_PORT}"
+    else
+        echo -e "🌐 Your site will be accessible at: http://${site_name}"
+    fi
 else
+    # Default to port 80 if no config
     echo -e "🌐 Your site will be accessible at: http://${site_name}"
 fi
+
 echo ""
 echo "📋 Frappe Version: v15.63.0"
 echo "👤 Default Username: Administrator"
@@ -471,30 +566,34 @@ echo ""
 echo "To add another domain or site, simply run this script again with a different site name."
 echo ""
 
-# Site availability check
-# ... (omitted for brevity)
-
-# Docker Manager prompt
-# ... (omitted for brevity)
-echo ""
-# sudo docker-manager
+# Docker Manager prompt (if needed)
 read -p "Do you want to access the docker-manager? (y/n): " ACCESS_MANAGER
 
 if [[ "$ACCESS_MANAGER" =~ ^[Yy]$ ]]; then
     echo ""
     echo "🚀 Launching Docker Manager..."
     echo ""
-    # Check if docker-manager is available in PATH
+    
+    # Try different ways to launch docker-manager
     if command -v docker-manager &> /dev/null; then
+        echo "✅ Found docker-manager in PATH"
         sudo docker-manager
+    elif [[ -f "./docker-manager.sh" ]]; then
+        echo "✅ Found docker-manager.sh in current directory"
+        sudo ./docker-manager.sh
+    elif [[ -f "/var/www/html/docker2 15/docker-manager.sh" ]]; then
+        echo "✅ Found docker-manager.sh in project directory"
+        sudo /var/www/html/docker2\ 15/docker-manager.sh
     else
-        echo "❌ docker-manager not found in PATH."
+        echo "❌ docker-manager not found in common locations"
+        echo ""
+        echo "💡 Try these commands:"
+        echo "   sudo ./docker-manager.sh"
+        echo "   sudo /var/www/html/docker2\ 15/docker-manager.sh"
+        echo "   sudo docker-manager (if installed globally)"
     fi
 else
     echo ""
     echo "💡 You can access the docker-manager anytime by running:"
-    echo " sudo docker-manager"
+    echo "   sudo ./docker-manager.sh"
 fi
-
-
-

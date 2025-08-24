@@ -105,7 +105,7 @@ restart_all_containers() {
     fi
 }
 
-# Function: Remove all containers by site name
+# Function: Remove all containers by site name with space cleanup
 remove_all_containers() {
     [[ -z "$1" ]] && { echo -e "${RED}❌ No site name specified.${NC}"; return 1; }
     
@@ -118,31 +118,153 @@ remove_all_containers() {
     fi
     
     echo "Found containers for site: $1"
-    sudo docker ps -a --filter "name=$1-" --format "table {{.Names}}\t{{.Status}}"
+    sudo docker ps -a --filter "name=$1-" --format "table {{.Names}}\t{{.Status}}\t{{.Size}}"
     echo ""
-    echo -e "${RED}⚠️ WARNING: This will permanently remove ALL containers for site: $1${NC}"
-    read -p "⚠️ Are you absolutely sure you want to remove ALL containers? (y/n): " confirm1
+    
+    # Show space usage before cleanup
+    echo -e "${YELLOW}📊 Current Docker Space Usage:${NC}"
+    sudo docker system df
+    echo ""
+    
+    # Check for associated volumes and networks
+    echo "Checking for associated resources..."
+    volumes=$(sudo docker volume ls -q | grep "$1" 2>/dev/null)
+    networks=$(sudo docker network ls --filter "name=$1" --format "{{.Name}}" | grep -v "bridge\|host\|none")
+    
+    if [[ -n "$volumes" ]]; then
+        echo -e "${YELLOW}📂 Associated volumes found:${NC}"
+        echo "$volumes" | sed 's/^/  - /'
+    fi
+    
+    if [[ -n "$networks" ]]; then
+        echo -e "${YELLOW}🌐 Associated networks found:${NC}"
+        echo "$networks" | sed 's/^/  - /'
+    fi
+    echo ""
+    
+    echo -e "${RED}⚠️ WARNING: This will permanently remove ALL containers, volumes, and networks for site: $1${NC}"
+    echo -e "${RED}💾 This will FREE UP DISK SPACE by removing all associated data!${NC}"
+    read -p "⚠️ Are you absolutely sure you want to remove ALL resources? (y/n): " confirm1
     if [[ $confirm1 == "y" ]]; then
-        read -p "⚠️ FINAL CONFIRMATION: Type 'DELETE' to confirm removal: " confirm2
+        read -p "⚠️ FINAL CONFIRMATION: Type 'DELETE' to confirm complete removal: " confirm2
         if [[ $confirm2 == "DELETE" ]]; then
-            echo -e "${GREEN}🗑️ Removing all containers for: $1${NC}"
-            echo "Please wait while we remove the containers..."
+            echo -e "${GREEN}🗑️ Removing all resources for: $1${NC}"
+            echo "Please wait while we clean up everything..."
             
-            # Stop containers first, then remove them
+            # Step 1: Stop containers first
+            echo "1. Stopping containers..."
             echo "$containers" | xargs -r sudo docker stop 2>/dev/null
+            
+            # Step 2: Remove containers
+            echo "2. Removing containers..."
             echo "$containers" | xargs -r sudo docker rm
             
-            if [[ $? -eq 0 ]]; then
-                echo -e "${GREEN}✅ Successfully removed all containers for: $1${NC}"
-            else
-                echo -e "${RED}⚠️ Some containers failed to remove.${NC}"
+            # Step 3: Remove volumes
+            if [[ -n "$volumes" ]]; then
+                echo "3. Removing volumes..."
+                echo "$volumes" | xargs -r sudo docker volume rm 2>/dev/null
             fi
+            
+            # Step 4: Remove networks (exclude default networks)
+            if [[ -n "$networks" ]]; then
+                echo "4. Removing custom networks..."
+                echo "$networks" | xargs -r sudo docker network rm 2>/dev/null
+            fi
+            
+            # Step 5: Clean up orphaned resources
+            echo "5. Cleaning up orphaned resources..."
+            sudo docker system prune -f >/dev/null 2>&1
+            
+            echo ""
+            echo -e "${GREEN}✅ Successfully removed all resources for: $1${NC}"
+            
+            # Show space freed up
+            echo -e "${GREEN}💾 Updated Docker Space Usage:${NC}"
+            sudo docker system df
+            echo ""
+            echo -e "${GREEN}🎉 Cleanup complete! Disk space has been freed up.${NC}"
+            
         else
             echo -e "${YELLOW}Removal cancelled - incorrect confirmation.${NC}"
         fi
     else
         echo -e "${YELLOW}Removal cancelled.${NC}"
     fi
+}
+
+# Function: Clean up Docker system and free space
+cleanup_docker_space() {
+    echo -e "${YELLOW}🧹 Docker System Cleanup${NC}"
+    echo "This will clean up unused Docker resources to free disk space."
+    echo ""
+    
+    # Show current space usage
+    echo -e "${YELLOW}📊 Current Docker Space Usage:${NC}"
+    sudo docker system df
+    echo ""
+    
+    echo "What would you like to clean up?"
+    echo "1. Clean unused containers, networks, and dangling images (safe)"
+    echo "2. Clean everything unused including volumes (removes data!)"
+    echo "3. Clean only dangling images"
+    echo "4. Clean only stopped containers"
+    echo "5. Clean only unused volumes (removes data!)"
+    echo "6. Clean only unused networks"
+    echo "7. Cancel"
+    
+    read -p "Select cleanup option (1-7): " cleanup_option
+    
+    case $cleanup_option in
+        1)
+            echo -e "${GREEN}🧹 Cleaning containers, networks, and dangling images...${NC}"
+            sudo docker system prune -f
+            ;;
+        2)
+            echo -e "${RED}⚠️ WARNING: This will remove ALL unused volumes and may delete important data!${NC}"
+            read -p "⚠️ Are you sure you want to remove volumes? (y/n): " confirm_volumes
+            if [[ $confirm_volumes == "y" ]]; then
+                echo -e "${GREEN}🧹 Cleaning everything including volumes...${NC}"
+                sudo docker system prune -a --volumes -f
+            else
+                echo -e "${YELLOW}Volume cleanup cancelled.${NC}"
+            fi
+            ;;
+        3)
+            echo -e "${GREEN}🖼️ Cleaning dangling images...${NC}"
+            sudo docker image prune -f
+            ;;
+        4)
+            echo -e "${GREEN}📦 Cleaning stopped containers...${NC}"
+            sudo docker container prune -f
+            ;;
+        5)
+            echo -e "${RED}⚠️ WARNING: This will remove unused volumes and may delete data!${NC}"
+            read -p "⚠️ Are you sure you want to remove unused volumes? (y/n): " confirm_vol
+            if [[ $confirm_vol == "y" ]]; then
+                echo -e "${GREEN}💾 Cleaning unused volumes...${NC}"
+                sudo docker volume prune -f
+            else
+                echo -e "${YELLOW}Volume cleanup cancelled.${NC}"
+            fi
+            ;;
+        6)
+            echo -e "${GREEN}🌐 Cleaning unused networks...${NC}"
+            sudo docker network prune -f
+            ;;
+        7)
+            echo -e "${YELLOW}Cleanup cancelled.${NC}"
+            return
+            ;;
+        *)
+            echo -e "${RED}❌ Invalid option.${NC}"
+            return
+            ;;
+    esac
+    
+    echo ""
+    echo -e "${GREEN}✅ Cleanup completed!${NC}"
+    echo -e "${GREEN}📊 Updated Docker Space Usage:${NC}"
+    sudo docker system df
 }
 
 # Function: File transfer
@@ -213,7 +335,7 @@ echo ""
 
 # Menu
 echo "What would you like to do?"
-PS3="Select an option (1-16): "
+PS3="Select an option (1-17): "
 options=(
     "Access: Backend"
     "Access: Frontend"
@@ -225,10 +347,11 @@ options=(
     "Stop a Container"
     "Restart All Containers"
     "Remove a Container"
-    "Remove All Containers"
+    "Remove All Containers (with space cleanup)"
     "Access: Backend as Root"
     "Access: Frontend as Root"
     "Check Running Containers"
+    "Docker System Cleanup (free space)"
     "File Transfer"
     "Exit"
 )
@@ -273,11 +396,12 @@ select opt in "${options[@]}"; do
         12)  access_container "${SAFE_SITE_NAME}-backend" "root" ;;
         13)  access_container "${SAFE_SITE_NAME}-frontend" "root" ;;
         14)  check_running_processes ;;
-        15)  transfer_files ;;
-        16)  echo -e "${GREEN}👋 Exiting. Goodbye!${NC}"
+        15)  cleanup_docker_space ;;
+        16)  transfer_files ;;
+        17)  echo -e "${GREEN}👋 Exiting. Goodbye!${NC}"
             break
             ;;
-        *) echo -e "${RED}❌ Invalid option. Please choose 1–16.${NC}" ;;
+        *) echo -e "${RED}❌ Invalid option. Please choose 1–17.${NC}" ;;
     esac
     echo ""
 done
