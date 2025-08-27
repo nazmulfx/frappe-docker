@@ -161,3 +161,31 @@ sudo docker network prune -f
 sudo docker system prune -a --volumes -f
 
 
+
+
+
+
+
+
+
+sleep 120; sudo docker logs test20_local-create-site | tail -n 100
+sleep 60; sudo docker logs test20_local-app | tail -n 100
+sudo docker logs test20_local-create-site | tail -n 200
+curl -sS -H 'Host: test20.local' http://localhost:8081/api/method/ping
+curl -sS -H 'Host: test20.local' http://localhost:8081/ | head -n 20
+curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: test20.local' http://localhost:8081/
+sudo docker logs test20_local-app | grep -i error | tail -n 20
+sudo docker exec test20_local-app bash -lc "cd /home/frappe/frappe-bench && bench --site test20.local show-config"
+sudo docker exec test20_local-app bash -lc "cd /home/frappe/frappe-bench && bench --site test20.local migrate"
+curl -sS -H 'Host: test20.local' http://localhost:8081/ | head -n 10
+curl -sS -H 'Host: test20.local' http://localhost:8081/login
+curl -sS -H 'Host: test20.local' http://localhost:8081/ | grep -i "login to frappe" | head -n 5
+
+# Restart all processes
+sudo docker exec test25_local-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all
+
+# Check status
+sudo docker exec test25_local-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status
+
+
+
