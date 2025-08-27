@@ -33,17 +33,19 @@ check_docker() {
     fi
 }
 
-# Function to find Frappe sites
+# Function to find Frappe sites by running containers (like docker-manager.sh)
 find_frappe_sites() {
     local sites=()
-    for dir in */; do
-        if [[ -d "$dir" ]]; then
-            local site_name=$(basename "$dir")
-            if [[ -f "$dir/${site_name}-docker-compose.yml" ]]; then
-                sites+=("$site_name")
-            fi
+    # Use docker ps to find containers and extract project names
+    local project_names=$(docker ps -a --format '{{.Names}}' | awk -F'-' '{print $1}' | sort | uniq)
+    
+    for project in $project_names; do
+        # Check if this project has Frappe-related containers
+        if docker ps -a --format '{{.Names}}' | grep -q "^${project}-"; then
+            sites+=("$project")
         fi
     done
+    
     echo "${sites[@]}"
 }
 
@@ -54,22 +56,19 @@ show_running_containers() {
     
     local sites=($(find_frappe_sites))
     if [[ ${#sites[@]} -eq 0 ]]; then
-        echo -e "${YELLOW}No Frappe sites found in current directory${NC}"
+        echo -e "${YELLOW}No Frappe sites found in running containers${NC}"
         return
     fi
     
     for site in "${sites[@]}"; do
         echo -e "${BLUE}🏠 Site: ${site}${NC}"
         
-        # Check if containers are running
-        local compose_file="$site/${site}-docker-compose.yml"
-        if [[ -f "$compose_file" ]]; then
-            local running_containers=$(docker compose -f "$compose_file" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}")
-            if [[ -n "$running_containers" ]]; then
-                echo "$running_containers" | grep -v "NAME"
-            else
-                echo -e "${YELLOW}  No containers running${NC}"
-            fi
+        # Show containers for this site
+        local site_containers=$(docker ps --filter "name=^${site}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}")
+        if [[ -n "$site_containers" ]]; then
+            echo "$site_containers" | grep -v "NAME"
+        else
+            echo -e "${YELLOW}  No containers running${NC}"
         fi
         echo ""
     done
@@ -80,20 +79,14 @@ access_container() {
     local site_name=$1
     local access_type=$2
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     case $access_type in
         "normal")
             echo -e "${GREEN}🔧 Accessing $site_name-app container as frappe user...${NC}"
-            docker compose -f "$compose_file" exec app bash
+            docker exec -it "$site_name-app" bash
             ;;
         "root")
             echo -e "${GREEN}🔧 Accessing $site_name-app container as root user...${NC}"
-            docker compose -f "$compose_file" exec -u root app bash
+            docker exec -it --user root "$site_name-app" bash
             ;;
         *)
             echo -e "${RED}❌ Invalid access type${NC}"
@@ -108,42 +101,36 @@ manage_frappe_processes() {
     local action=$2
     local process=$3
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     case $action in
         "status")
             echo -e "${CYAN}📊 Frappe Process Status for $site_name:${NC}"
-            docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status
+            docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status
             ;;
         "restart")
             if [[ -n "$process" ]]; then
                 echo -e "${GREEN}🔄 Restarting $process process in $site_name...${NC}"
-                docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart "$process"
+                docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart "$process"
             else
                 echo -e "${GREEN}🔄 Restarting all Frappe processes in $site_name...${NC}"
-                docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all
+                docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all
             fi
             ;;
         "stop")
             if [[ -n "$process" ]]; then
                 echo -e "${YELLOW}⏹️  Stopping $process process in $site_name...${NC}"
-                docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf stop "$process"
+                docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf stop "$process"
             else
                 echo -e "${YELLOW}⏹️  Stopping all Frappe processes in $site_name...${NC}"
-                docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf stop all
+                docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf stop all
             fi
             ;;
         "start")
             if [[ -n "$process" ]]; then
                 echo -e "${GREEN}▶️  Starting $process process in $site_name...${NC}"
-                docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf start "$process"
+                docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf start "$process"
             else
                 echo -e "${GREEN}▶️  Starting all Frappe processes in $site_name...${NC}"
-                docker compose -f "$compose_file" exec app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf start all
+                docker exec "$site_name-app" /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf start all
             fi
             ;;
         *)
@@ -158,36 +145,30 @@ view_logs() {
     local site_name=$1
     local log_type=$2
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     case $log_type in
         "web")
             echo -e "${CYAN}📋 Viewing Frappe Web logs for $site_name...${NC}"
-            docker compose -f "$compose_file" exec app tail -f /home/frappe/supervisor/logs/frappe-web.log
+            docker exec "$site_name-app" tail -f /home/frappe/supervisor/logs/frappe-web.log
             ;;
         "worker")
             echo -e "${CYAN}📋 Viewing Frappe Worker logs for $site_name...${NC}"
-            docker compose -f "$compose_file" exec app tail -f /home/frappe/supervisor/logs/frappe-worker-default.log
+            docker exec "$site_name-app" tail -f /home/frappe/supervisor/logs/frappe-worker-default.log
             ;;
         "schedule")
             echo -e "${CYAN}📋 Viewing Frappe Schedule logs for $site_name...${NC}"
-            docker compose -f "$compose_file" exec app tail -f /home/frappe/supervisor/logs/frappe-schedule.log
+            docker exec "$site_name-app" tail -f /home/frappe/supervisor/logs/frappe-schedule.log
             ;;
         "websocket")
             echo -e "${CYAN}📋 Viewing Frappe WebSocket logs for $site_name...${NC}"
-            docker compose -f "$compose_file" exec app tail -f /home/frappe/supervisor/logs/frappe-websocket.log
+            docker exec "$site_name-app" tail -f /home/frappe/supervisor/logs/frappe-websocket.log
             ;;
         "supervisor")
             echo -e "${CYAN}📋 Viewing Supervisor logs for $site_name...${NC}"
-            docker compose -f "$compose_file" exec app tail -f /home/frappe/supervisor/logs/supervisord.log
+            docker exec "$site_name-app" tail -f /home/frappe/supervisor/logs/supervisord.log
             ;;
         "container")
             echo -e "${CYAN}📋 Viewing container logs for $site_name...${NC}"
-            docker compose -f "$compose_file" logs -f app
+            docker logs -f "$site_name-app"
             ;;
         *)
             echo -e "${RED}❌ Invalid log type${NC}"
@@ -201,37 +182,38 @@ manage_containers() {
     local site_name=$1
     local action=$2
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     case $action in
         "start")
             echo -e "${GREEN}🚀 Starting containers for $site_name...${NC}"
-            docker compose -f "$compose_file" up -d
+            docker start $(docker ps -a --filter "name=^${site_name}-" --format "{{.Names}}")
             ;;
         "stop")
             echo -e "${YELLOW}⏹️  Stopping containers for $site_name...${NC}"
-            docker compose -f "$compose_file" down
+            docker stop $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}")
             ;;
         "restart")
             echo -e "${GREEN}🔄 Restarting containers for $site_name...${NC}"
-            docker compose -f "$compose_file" restart
+            docker restart $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}")
             ;;
         "rebuild")
             echo -e "${CYAN}🔨 Rebuilding containers for $site_name...${NC}"
-            docker compose -f "$compose_file" down
-            docker compose -f "$compose_file" up -d --build
+            # Find docker-compose file if it exists
+            if [[ -f "${site_name}-docker-compose.yml" ]]; then
+                docker compose -f "${site_name}-docker-compose.yml" down
+                docker compose -f "${site_name}-docker-compose.yml" up -d --build
+            else
+                echo -e "${YELLOW}⚠️  No docker-compose file found for $site_name${NC}"
+                echo "Containers will be restarted instead."
+                docker restart $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}")
+            fi
             ;;
         "logs")
             echo -e "${CYAN}📋 Showing logs for $site_name...${NC}"
-            docker compose -f "$compose_file" logs
+            docker logs $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}")
             ;;
         "status")
             echo -e "${CYAN}📊 Container status for $site_name:${NC}"
-            docker compose -f "$compose_file" ps
+            docker ps --filter "name=^${site_name}-"
             ;;
         *)
             echo -e "${RED}❌ Invalid action${NC}"
@@ -244,19 +226,13 @@ manage_containers() {
 remove_all_containers() {
     local site_name=$1
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     echo -e "${RED}⚠️  WARNING: This will remove ALL containers for site: $site_name${NC}"
     echo -e "${YELLOW}This action cannot be undone!${NC}"
     echo ""
     
     # Show what will be removed
     echo -e "${CYAN}Containers that will be removed:${NC}"
-    docker compose -f "$compose_file" ps --format "table {{.Names}}\t{{.Status}}"
+    docker ps -a --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}"
     echo ""
     
     read -p "⚠️  Are you absolutely sure you want to remove ALL containers? (y/n): " confirm1
@@ -274,7 +250,8 @@ remove_all_containers() {
     echo -e "${RED}🗑️  Removing all containers for $site_name...${NC}"
     
     # Stop and remove containers
-    docker compose -f "$compose_file" down -v
+    docker stop $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}") 2>/dev/null
+    docker rm $(docker ps -a --filter "name=^${site_name}-" --format "{{.Names}}") 2>/dev/null
     
     echo -e "${GREEN}✅ All containers removed successfully!${NC}"
     
@@ -289,14 +266,8 @@ remove_all_containers() {
 remove_specific_container() {
     local site_name=$1
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     echo -e "${CYAN}📋 Available containers for $site_name:${NC}"
-    docker compose -f "$compose_file" ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    docker ps -a --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     
     read -p "Enter container name to remove: " container_name
@@ -412,14 +383,8 @@ cleanup_docker_space() {
 access_specific_container_root() {
     local site_name=$1
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     echo -e "${CYAN}📋 Available containers for $site_name:${NC}"
-    docker compose -f "$compose_file" ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    docker ps --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     
     read -p "Enter container name to access as root: " container_name
@@ -442,12 +407,6 @@ access_specific_container_root() {
 transfer_files() {
     local site_name=$1
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
     echo -e "${YELLOW}📁 File Transfer Options:${NC}"
     echo "1. Copy file TO container"
     echo "2. Copy file FROM container"
@@ -463,7 +422,7 @@ transfer_files() {
             fi
             
             echo -e "${CYAN}📋 Available containers for $site_name:${NC}"
-            docker compose -f "$compose_file" ps --format "table {{.Names}}\t{{.Status}}"
+            docker ps --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}"
             read -p "Enter target container name: " container_name
             dest_path="/home/frappe/frappe-bench/"
             
@@ -480,7 +439,7 @@ transfer_files() {
         2)
             # Copy FROM container
             echo -e "${CYAN}📋 Available containers for $site_name:${NC}"
-            docker compose -f "$compose_file" ps --format "table {{.Names}}\t{{.Status}}"
+            docker ps --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}"
             read -p "Enter source container name: " container_name
             read -p "Enter source file path in container: " source_path
             read -p "Enter destination path on host: " dest_path
@@ -505,18 +464,12 @@ transfer_files() {
 install_packages() {
     local site_name=$1
     
-    local compose_file="$site_name/${site_name}-docker-compose.yml"
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}❌ Site $site_name not found or invalid${NC}"
-        return 1
-    fi
-    
-    echo -e "${CYAN}📦 Package Installation for $site_name${NC}"
+    echo -e "${CYAN}📦 Smart Package Installation for $site_name${NC}"
     echo ""
     
     # Show available containers
     echo -e "${YELLOW}📋 Available containers:${NC}"
-    docker compose -f "$compose_file" ps --format "table {{.Names}}\t{{.Status}}"
+    docker ps --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}"
     echo ""
     
     # Select container
@@ -629,7 +582,7 @@ show_container_menu() {
 show_site_info() {
     local sites=($(find_frappe_sites))
     if [[ ${#sites[@]} -eq 0 ]]; then
-        echo -e "${YELLOW}No Frappe sites found in current directory${NC}"
+        echo -e "${YELLOW}No Frappe sites found in running containers${NC}"
         return
     fi
     
@@ -639,31 +592,17 @@ show_site_info() {
     for site in "${sites[@]}"; do
         echo -e "${BLUE}📁 Site: ${site}${NC}"
         
-        if [[ -f "$site/.env" ]]; then
-            echo -e "   📄 Environment file: ${GREEN}✓${NC}"
-            source "$site/.env"
-            echo -e "   🌐 Site URL: ${CYAN}${SITES}${NC}"
-            echo -e "   📊 Frappe Version: ${CYAN}${ERPNEXT_VERSION}${NC}"
-        else
-            echo -e "   📄 Environment file: ${YELLOW}Not found${NC}"
-        fi
-        
-        if [[ -f "$site/${site}-docker-compose.yml" ]]; then
-            echo -e "   🐳 Docker Compose: ${GREEN}✓${NC}"
-        fi
-        
         # Check if containers are running
-        if [[ -d "$site" ]]; then
-            local compose_file="$site/${site}-docker-compose.yml"
-            if [[ -f "$compose_file" ]]; then
-                local running=$(docker compose -f "$compose_file" ps -q 2>/dev/null | wc -l)
-                if [[ $running -gt 0 ]]; then
-                    echo -e "   🟢 Status: ${GREEN}Running ($running containers)${NC}"
-                else
-                    echo -e "   🔴 Status: ${RED}Stopped${NC}"
-                fi
-            fi
+        local running=$(docker ps --filter "name=^${site}-" --format "{{.Names}}" | wc -l)
+        if [[ $running -gt 0 ]]; then
+            echo -e "   🟢 Status: ${GREEN}Running ($running containers)${NC}"
+        else
+            echo -e "   🔴 Status: ${RED}Stopped${NC}"
         fi
+        
+        # Show container details
+        echo -e "   📋 Containers:"
+        docker ps --filter "name=^${site}-" --format "   {{.Names}} - {{.Status}}"
         
         echo ""
     done
@@ -676,12 +615,12 @@ main() {
     # Check if Docker is running
     check_docker
     
-    # Check if we're in a directory with Frappe sites
+    # Check if we have any Frappe sites running
     local sites=($(find_frappe_sites))
     if [[ ${#sites[@]} -eq 0 ]]; then
-        echo -e "${YELLOW}⚠️  No Frappe sites found in current directory${NC}"
-        echo "Please run this script from the directory containing your Frappe sites."
-        echo "Or run generate_frappe_docker_local_optimized.sh first to create a site."
+        echo -e "${YELLOW}⚠️  No Frappe sites found in running containers${NC}"
+        echo "Please start your Frappe containers first."
+        echo "Or run generate_frappe_docker_local_optimized.sh to create a site."
         exit 1
     fi
     
