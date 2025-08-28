@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Docker Manager - For Frappe/ERPNext Minimal Setup
-# This script manages containers created by generate_frappe_docker.sh
+# Docker Manager Local - For Frappe/ERPNext Local Optimized Setup
+# This script manages containers created by generate_frappe_docker_local_optimized.sh
 
 # Color definitions
 GREEN='\033[0;32m'
@@ -18,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Function to print header
 print_header() {
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                Docker Manager v1.0                          ║${NC}"
-    echo -e "${BLUE}║         Frappe/ERPNext Minimal Setup                        ║${NC}"
+    echo -e "${BLUE}║                Docker Manager Local v1.0                    ║${NC}"
+    echo -e "${BLUE}║         Frappe/ERPNext Local Optimized Setup                ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -33,7 +33,7 @@ check_docker() {
     fi
 }
 
-# Function to find Frappe sites by running containers
+# Function to find Frappe sites by running containers (like docker-manager.sh)
 find_frappe_sites() {
     local sites=()
     # Use docker ps to find containers and extract project names
@@ -620,7 +620,7 @@ main() {
     if [[ ${#sites[@]} -eq 0 ]]; then
         echo -e "${YELLOW}⚠️  No Frappe sites found in running containers${NC}"
         echo "Please start your Frappe containers first."
-        echo "Or run generate_frappe_docker.sh to create a site."
+        echo "Or run generate_frappe_docker_local_optimized.sh to create a site."
         exit 1
     fi
     

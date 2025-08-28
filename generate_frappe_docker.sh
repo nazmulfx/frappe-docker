@@ -4,6 +4,7 @@
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # --- Helper Functions ---
@@ -38,41 +39,52 @@ validate_domain() {
     return 0
 }
 
-# Generate the docker-compose.yml file
+# Generate the minimal docker-compose.yml file
 generate_docker_compose() {
     local safe_site_name=$1
     local site_name=$2
     local use_ssl=$3
     local compose_file="$safe_site_name/${safe_site_name}-docker-compose.yml"
 
-    local frontend_labels=""
+    # Traefik labels for the main app container
+    local app_labels=""
     if [[ "$use_ssl" == true ]]; then
-        frontend_labels=$(cat <<EOF
+        app_labels=$(cat <<EOF
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_proxy"
-      - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.server.port=8080"
-      - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.passHostHeader=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.rule=Host(\`${site_name}\`)"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.entrypoints=web"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.middlewares=${safe_site_name}-redirect-to-https"
+      - "traefik.http.services.${safe_site_name}-app.loadbalancer.server.port=8000"
+      - "traefik.http.services.${safe_site_name}-app.loadbalancer.passHostHeader=true"
+      - "traefik.http.routers.${safe_site_name}-app-http.rule=Host(\`${site_name}\`)"
+      - "traefik.http.routers.${safe_site_name}-app-http.entrypoints=web"
+      - "traefik.http.routers.${safe_site_name}-app-http.middlewares=${safe_site_name}-redirect-to-https"
       - "traefik.http.middlewares.${safe_site_name}-redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.${safe_site_name}-redirect-to-https.redirectscheme.permanent=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.rule=Host(\`${site_name}\`)"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.entrypoints=websecure"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.tls=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.tls.certresolver=myresolver"
-      - "traefik.http.routers.${safe_site_name}-frontend-https.service=${safe_site_name}-frontend"
+      - "traefik.http.routers.${safe_site_name}-app-https.rule=Host(\`${site_name}\`)"
+      - "traefik.http.routers.${safe_site_name}-app-https.entrypoints=websecure"
+      - "traefik.http.routers.${safe_site_name}-app-https.tls=true"
+      - "traefik.http.routers.${safe_site_name}-app-https.tls.certresolver=myresolver"
+      - "traefik.http.routers.${safe_site_name}-app-https.service=${safe_site_name}-app"
+      - "traefik.http.services.${safe_site_name}-websocket.loadbalancer.server.port=9000"
+      - "traefik.http.routers.${safe_site_name}-websocket.rule=PathPrefix(\`/socket.io\`)"
+      - "traefik.http.routers.${safe_site_name}-websocket.entrypoints=websecure"
+      - "traefik.http.routers.${safe_site_name}-websocket.tls=true"
+      - "traefik.http.routers.${safe_site_name}-websocket.tls.certresolver=myresolver"
+      - "traefik.http.routers.${safe_site_name}-websocket.service=${safe_site_name}-websocket"
 EOF
 )
     else
-        frontend_labels=$(cat <<EOF
+        app_labels=$(cat <<EOF
       - "traefik.enable=true"
       - "traefik.docker.network=traefik_proxy"
-      - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.server.port=8080"
-      - "traefik.http.services.${safe_site_name}-frontend.loadbalancer.passHostHeader=true"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.rule=Host(\`${site_name}\`)"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.entrypoints=web"
-      - "traefik.http.routers.${safe_site_name}-frontend-http.service=${safe_site_name}-frontend"
+      - "traefik.http.services.${safe_site_name}-app.loadbalancer.server.port=8000"
+      - "traefik.http.services.${safe_site_name}-app.loadbalancer.passHostHeader=true"
+      - "traefik.http.routers.${safe_site_name}-app-http.rule=Host(\`${site_name}\`)"
+      - "traefik.http.routers.${safe_site_name}-app-http.entrypoints=web"
+      - "traefik.http.routers.${safe_site_name}-app-http.service=${safe_site_name}-app"
+      - "traefik.http.services.${safe_site_name}-websocket.loadbalancer.server.port=9000"
+      - "traefik.http.routers.${safe_site_name}-websocket.rule=PathPrefix(\`/socket.io\`)"
+      - "traefik.http.routers.${safe_site_name}-websocket.entrypoints=web"
+      - "traefik.http.routers.${safe_site_name}-websocket.service=${safe_site_name}-websocket"
 EOF
 )
     fi
@@ -81,11 +93,17 @@ EOF
 version: "3.8"
 
 services:
-  backend:
+  app:
     image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-backend
+    container_name: ${safe_site_name}-app
     networks:
       - frappe_network
+      - traefik_proxy
+    depends_on:
+      - db
+      - redis
+    labels:
+${app_labels}
     deploy:
       restart_policy:
         condition: on-failure
@@ -95,41 +113,129 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: "3306"
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
-
-  configurator:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-configurator
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: none
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      SOCKETIO_PORT: "9000"
     entrypoint:
       - bash
       - -c
-      - >
-        ls -1 apps > sites/apps.txt;
-        bench set-config -g db_host \$\$DB_HOST;
-        bench set-config -gp db_port \$\$DB_PORT;
-        bench set-config -g redis_cache "redis://\$\$REDIS_CACHE";
-        bench set-config -g redis_queue "redis://\$\$REDIS_QUEUE";
-        bench set-config -g redis_socketio "redis://\$\$REDIS_QUEUE";
-        bench set-config -gp socketio_port \$\$SOCKETIO_PORT;
-    environment:
-      DB_HOST: db
-      DB_PORT: "3306"
-      REDIS_CACHE: redis-cache:6379
-      REDIS_QUEUE: redis-queue:6379
-      SOCKETIO_PORT: "9000"
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
-    depends_on:
-      - db
-      - redis-cache
-      - redis-queue
+      - |
+        echo "Waiting for site to be ready...";
+        while [ ! -f sites/${site_name}/site_config.json ]; do
+          echo "Site not ready yet, waiting...";
+          sleep 5;
+        done;
+        echo "Site is ready, installing supervisor...";
+        
+        # Install supervisor using pip (works with frappe user)
+        pip3 install supervisor;
+        
+        # Create supervisor directories in user's home
+        mkdir -p /home/frappe/supervisor/conf.d /home/frappe/supervisor/logs;
+        
+        # Create supervisor config in user's home directory
+        cat > /home/frappe/supervisor/supervisord.conf << 'SUPERVISOR_EOF'
+        [unix_http_server]
+        file=/home/frappe/supervisor/supervisor.sock
+        chmod=0777
+        chown=frappe:frappe
+
+        [supervisord]
+        logfile=/home/frappe/supervisor/logs/supervisord.log
+        pidfile=/home/frappe/supervisor/supervisord.pid
+        childlogdir=/home/frappe/supervisor/logs
+        nodaemon=false
+        user=frappe
+
+        [rpcinterface:supervisor]
+        supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+        [supervisorctl]
+        serverurl=unix:///home/frappe/supervisor/supervisor.sock
+
+        [include]
+        files = /home/frappe/supervisor/conf.d/*.conf
+        SUPERVISOR_EOF
+
+        # Create Frappe process configurations
+        cat > /home/frappe/supervisor/conf.d/frappe.conf << 'FRAPPE_CONF_EOF'
+        [group:frappe]
+        programs=frappe-web,frappe-schedule,frappe-worker-short,frappe-worker-long,frappe-worker-default,frappe-websocket
+
+        [program:frappe-web]
+        command=bench serve --port 8000
+        directory=/home/frappe/frappe-bench
+        user=frappe
+        autostart=true
+        autorestart=true
+        redirect_stderr=true
+        stdout_logfile=/home/frappe/supervisor/logs/frappe-web.log
+        stderr_logfile=/home/frappe/supervisor/logs/frappe-web-error.log
+
+        [program:frappe-schedule]
+        command=bench schedule
+        directory=/home/frappe/frappe-bench
+        user=frappe
+        autostart=true
+        autorestart=true
+        redirect_stderr=true
+        stdout_logfile=/home/frappe/supervisor/logs/frappe-schedule.log
+        stderr_logfile=/home/frappe/supervisor/logs/frappe-schedule-error.log
+
+        [program:frappe-worker-short]
+        command=bench worker --queue short
+        directory=/home/frappe/frappe-bench
+        user=frappe
+        autostart=true
+        autorestart=true
+        redirect_stderr=true
+        stdout_logfile=/home/frappe/supervisor/logs/frappe-worker-short.log
+        stderr_logfile=/home/frappe/supervisor/logs/frappe-worker-short-error.log
+
+        [program:frappe-worker-long]
+        command=bench worker --queue long
+        directory=/home/frappe/frappe-bench
+        user=frappe
+        autostart=true
+        autorestart=true
+        redirect_stderr=true
+        stdout_logfile=/home/frappe/supervisor/logs/frappe-worker-long.log
+        stderr_logfile=/home/frappe/supervisor/logs/frappe-worker-long-error.log
+
+        [program:frappe-worker-default]
+        command=bench worker --queue default
+        directory=/home/frappe/frappe-bench
+        user=frappe
+        autostart=true
+        autorestart=true
+        redirect_stderr=true
+        stdout_logfile=/home/frappe/supervisor/logs/frappe-worker-default.log
+        stderr_logfile=/home/frappe/supervisor/logs/frappe-worker-default-error.log
+
+        [program:frappe-websocket]
+        command=node /home/frappe/frappe-bench/apps/frappe/socketio.js
+        directory=/home/frappe/frappe-bench
+        user=frappe
+        autostart=true
+        autorestart=true
+        redirect_stderr=true
+        stdout_logfile=/home/frappe/supervisor/logs/frappe-websocket.log
+        stderr_logfile=/home/frappe/supervisor/logs/frappe-websocket-error.log
+        FRAPPE_CONF_EOF
+
+        echo "Supervisor installed and configured. Starting Frappe processes...";
+        
+        # Start supervisor using full path
+        /home/frappe/.local/bin/supervisord -c /home/frappe/supervisor/supervisord.conf;
+        
+        # Wait a moment for processes to start
+        sleep 5;
+        
+        # Show status using full path
+        /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status;
+        
+        # Keep container running and show logs
+        tail -f /home/frappe/supervisor/logs/supervisord.log
 
   create-site:
     image: frappe/erpnext:v15.63.0
@@ -145,30 +251,23 @@ services:
     entrypoint:
       - bash
       - -c
-      - >
+      - |
         wait-for-it -t 120 db:3306;
-        wait-for-it -t 120 redis-cache:6379;
-        wait-for-it -t 120 redis-queue:6379;
-        export start=\$(date +%s);
-        until [[ -n \$(grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty") ]] && \
-          [[ -n \$(grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty") ]] && \
-          [[ -n \$(grep -hs ^ sites/common_site_config.json | jq -r ".redis_queue // empty") ]];
-        do
-          echo "Waiting for sites/common_site_config.json to be created";
-          sleep 5;
-          if (( \$(date +%s)-start > 120 )); then
-            echo "could not find sites/common_site_config.json with required keys";
-            exit 1
-          fi
-        done;
-        echo "sites/common_site_config.json found";
-        apt-get update && apt-get install -y nano;
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default ${site_name};
-        echo "${site_name}" > sites/currentsite.txt;
-    depends_on:
-      - db
-      - redis-cache
-      - redis-queue
+        wait-for-it -t 120 redis:6379;
+        ls -1 apps > sites/apps.txt || true;
+        bench set-config -g db_host db;
+        bench set-config -gp db_port 3306;
+        bench set-config -g redis_cache "redis://redis:6379";
+        bench set-config -g redis_queue "redis://redis:6379";
+        bench set-config -g redis_socketio "redis://redis:6379";
+        bench set-config -gp socketio_port 9000;
+        if [ ! -d sites/${site_name} ]; then
+          echo "Creating new site...";
+          bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default ${site_name};
+          echo "${site_name}" > sites/currentsite.txt;
+        else
+          echo "Site ${site_name} already exists, skipping creation";
+        fi
 
   db:
     image: mariadb:10.6
@@ -186,158 +285,23 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
+      - --skip-innodb-read-only-compressed
     environment:
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
     volumes:
       - db-data:/var/lib/mysql
 
-  frontend:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-frontend
-    networks:
-      - frappe_network
-      - traefik_proxy
-    depends_on:
-      - backend
-      - websocket
-    labels:
-${frontend_labels}
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - nginx-entrypoint.sh
-    environment:
-      BACKEND: backend:8000
-      FRAPPE_SITE_NAME_HEADER: ${site_name}
-      SOCKETIO: websocket:9000
-      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
-      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
-      UPSTREAM_REAL_IP_RECURSIVE: "off"
-      PROXY_READ_TIMEOUT: 120
-      CLIENT_MAX_BODY_SIZE: 50m
-      VIRTUAL_HOST: ${site_name}
-      VIRTUAL_PORT: 8080
-      NGINX_WORKER_PROCESSES: auto
-      NGINX_WORKER_CONNECTIONS: 1024
-      NGINX_KEEPALIVE_TIMEOUT: 65
-      NGINX_CLIENT_MAX_BODY_SIZE: 50m
-      NGINX_PROXY_READ_TIMEOUT: 120
-      NGINX_PROXY_CONNECT_TIMEOUT: 60
-      NGINX_PROXY_SEND_TIMEOUT: 60
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/method/ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  queue-long:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-queue-long
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - bench
-      - worker
-      - --queue
-      - long,default,short
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
-
-  queue-short:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-queue-short
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - bench
-      - worker
-      - --queue
-      - short,default
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
-
-  queue-default:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-queue-default
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - bench
-      - worker
-      - --queue
-      - default
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
-
-  redis-queue:
+  redis:
     image: redis:6.2-alpine
-    container_name: ${safe_site_name}-redis-queue
+    container_name: ${safe_site_name}-redis
     networks:
       - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
     volumes:
-      - redis-queue-data:/data
-
-  redis-cache:
-    image: redis:6.2-alpine
-    container_name: ${safe_site_name}-redis-cache
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: on-failure
-    volumes:
-      - redis-cache-data:/data
-
-  scheduler:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-scheduler
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - bench
-      - schedule
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
-
-  websocket:
-    image: frappe/erpnext:v15.63.0
-    container_name: ${safe_site_name}-websocket
-    networks:
-      - frappe_network
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - node
-      - /home/frappe/frappe-bench/apps/frappe/socketio.js
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - logs:/home/frappe/frappe-bench/logs
+      - redis-data:/data
 
 networks:
   frappe_network:
@@ -349,8 +313,7 @@ volumes:
   sites:
   logs:
   db-data:
-  redis-queue-data:
-  redis-cache-data:
+  redis-data:
 EOF
 }
 
@@ -363,8 +326,15 @@ if ! command_exists docker; then
 fi
 
 # Welcome message
-echo -e "${GREEN}Welcome to Frappe/ERPNext Docker Setup!${NC}"
-echo "========================================="
+echo -e "${GREEN}Welcome to Frappe/ERPNext Docker Setup (Minimal Edition)!${NC}"
+echo "=============================================================="
+echo ""
+echo -e "${BLUE}🚀 Optimized for VPS cloud servers with minimal containers:${NC}"
+echo "  • 1 app container (runs all Frappe processes via Supervisor)"
+echo "  • 1 Redis container (handles cache, queue, and socketio)"
+echo "  • 1 MariaDB container"
+echo "  • 1 temporary create-site container"
+echo ""
 
 # Prompt for SSL
 read -p "Do you want to enable SSL/HTTPS? (y/n): " enable_ssl
@@ -450,12 +420,12 @@ EOF
 generate_docker_compose "$safe_site_name" "$site_name" "$use_ssl"
 
 # Start containers
-echo -e "${GREEN}Starting your Frappe/ERPNext site...${NC}"
+echo -e "${GREEN}Starting your minimal Frappe/ERPNext site...${NC}"
 docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
 
 # Final messages
 echo ""
-echo -e "${GREEN}🚀 Your site is being prepared and will be live in approximately 5 minutes...${NC}"
+echo -e "${GREEN}🚀 Your minimal site is being prepared and will be live in approximately 5 minutes...${NC}"
 if [[ "$use_ssl" == true ]]; then
     echo -e "🔒 Your site will be accessible at: https://${site_name}"
 else
@@ -468,7 +438,22 @@ echo "🔑 Default Password: admin"
 echo ""
 echo "💡 You can change the password after first login."
 echo ""
+echo "🚀 Benefits of this minimal setup:"
+echo "   • Fewer containers to manage (4 vs 9)"
+echo "   • Lower resource usage"
+echo "   • Simpler networking"
+echo "   • All Frappe processes in one container via Supervisor"
+echo "   • Single Redis instance for all needs"
+echo "   • Full process management and restart capabilities"
+echo ""
 echo "To add another domain or site, simply run this script again with a different site name."
+echo ""
+echo "🔧 Process Management Commands:"
+echo "   • Check status: docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status"
+echo "   • Restart web: docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-web"
+echo "   • Restart workers: docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-worker-*"
+echo "   • Restart all: docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all"
+echo "   • View logs: docker exec ${safe_site_name}-app tail -f /home/frappe/supervisor/logs/frappe-web.log"
 echo ""
 
 # Site availability check

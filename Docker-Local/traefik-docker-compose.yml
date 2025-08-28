@@ -1,0 +1,33 @@
+version: "3"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:8081"
+      - "--serversTransport.insecureSkipVerify=true"
+      - "--accesslog=true"
+      - "--log.level=INFO"
+      - "--api.dashboard=true"
+      - "--providers.docker.network=traefik_proxy"
+    ports:
+      - "8081:8081"  # HTTP on alternative port
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - traefik_proxy
+    container_name: traefik
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=web"
+
+networks:
+  traefik_proxy:
+    external: true
