@@ -477,12 +477,37 @@ generate_docker_compose "$safe_site_name" "$site_name"
 echo -e "${GREEN}Starting your optimized Frappe/ERPNext site...${NC}"
 docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
 
+# Show port information immediately after starting
+echo ""
+if [[ -f ".traefik-local-config" ]]; then
+    source .traefik-local-config
+    if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
+        echo -e "${BLUE}📍 Using custom HTTP port: ${TRAEFIK_HTTP_PORT}${NC}"
+        echo -e "${BLUE}   Your site will be accessible at: http://${site_name}:${TRAEFIK_HTTP_PORT}${NC}"
+    else
+        echo -e "${BLUE}📍 Using default HTTP port: 80${NC}"
+        echo -e "${BLUE}   Your site will be accessible at: http://${site_name}${NC}"
+    fi
+else
+    echo -e "${BLUE}📍 Using default HTTP port: 80${NC}"
+    echo -e "${BLUE}   Your site will be accessible at: http://${site_name}${NC}"
+fi
+echo ""
+
 # Auto-add domain to hosts file for local access
 echo ""
 echo -e "${BLUE}🔧 Managing hosts file for local access...${NC}"
 if manage_hosts_entry "$site_name" "add"; then
     if [[ ! $site_name =~ \.localhost$ ]]; then
-        echo -e "${BLUE}   You can now access your site at: http://$site_name${NC}"
+        # Get the correct port from local config
+        local display_port=""
+        if [[ -f ".traefik-local-config" ]]; then
+            source .traefik-local-config
+            if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
+                display_port=":${TRAEFIK_HTTP_PORT}"
+            fi
+        fi
+        echo -e "${BLUE}   You can now access your site at: http://$site_name${display_port}${NC}"
         echo -e "${YELLOW}   💡 To remove this domain later, run: ./manage-hosts.sh${NC}"
     fi
 fi
@@ -492,24 +517,27 @@ echo ""
 echo -e "${GREEN}🚀 Your optimized site is being prepared and will be live in approximately 5 minutes...${NC}"
 
 # Determine the access URL based on configuration
+local access_url=""
 if [[ -f ".traefik-local-config" ]]; then
     source .traefik-local-config
     if [[ "$USE_LOCALHOST" == "true" ]]; then
         # For localhost domains, show the correct port
         if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
-            echo -e "🌐 Your site will be accessible at: http://${site_name}:${TRAEFIK_HTTP_PORT}"
+            access_url="http://${site_name}:${TRAEFIK_HTTP_PORT}"
         else
-            echo -e "🌐 Your site will be accessible at: http://${site_name}"
+            access_url="http://${site_name}"
         fi
     elif [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
-        echo -e "🌐 Your site will be accessible at: http://${site_name}:${TRAEFIK_HTTP_PORT}"
+        access_url="http://${site_name}:${TRAEFIK_HTTP_PORT}"
     else
-        echo -e "🌐 Your site will be accessible at: http://${site_name}"
+        access_url="http://${site_name}"
     fi
 else
     # Default to port 80 if no config
-    echo -e "🌐 Your site will be accessible at: http://${site_name}"
+    access_url="http://${site_name}"
 fi
+
+echo -e "🌐 Your site will be accessible at: ${access_url}"
 
 echo ""
 echo "📋 Frappe Version: v15.63.0"
@@ -527,6 +555,20 @@ echo "   • Single Redis instance for all needs"
 echo "   • Full process management and restart capabilities"
 echo ""
 echo "To add another domain or site, simply run this script again with a different site name."
+echo ""
+echo -e "${GREEN}🎯 FINAL ACCESS INFORMATION:${NC}"
+if [[ -f ".traefik-local-config" ]]; then
+    source .traefik-local-config
+    if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
+        echo -e "${GREEN}   🌐 Site URL: http://${site_name}:${TRAEFIK_HTTP_PORT}${NC}"
+    else
+        echo -e "${GREEN}   🌐 Site URL: http://${site_name}${NC}"
+    fi
+else
+    echo -e "${GREEN}   🌐 Site URL: http://${site_name}${NC}"
+fi
+echo -e "${GREEN}   👤 Username: Administrator${NC}"
+echo -e "${GREEN}   🔑 Password: admin${NC}"
 echo ""
 echo "🔧 Process Management Commands:"
 echo "   • Check status: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status"
