@@ -4,21 +4,41 @@ This folder contains optimized Docker tools for running Frappe/ERPNext locally w
 
 ## 🚀 Quick Start
 
-1. **Setup Traefik Local** (if not already done):
-   ```bash
-   cd ../
-   sudo ./setup-traefik-local.sh
-   ```
+### 🍎 **Mac Users (Recommended)**
+```bash
+# Option 1: No sudo required (RECOMMENDED for Mac)
+# 1. Setup Traefik Local (Mac optimized, no sudo)
+./setup-traefik-local-mac-no-sudo.sh
 
-2. **Generate a new Frappe site**:
-   ```bash
-   sudo ./generate_frappe_docker_local.sh
-   ```
+# 2. Generate a new Frappe site
+./generate_frappe_docker_local.sh
 
-3. **Manage your containers**:
-   ```bash
-   sudo ./docker-manager-local.sh
-   ```
+# 3. Manage your containers
+./docker-manager-local.sh
+
+# Option 2: With sudo (if you prefer)
+# 1. Setup Traefik Local (Mac optimized, with sudo)
+sudo ./setup-traefik-local-mac.sh
+
+# 2. Generate a new Frappe site
+sudo ./generate_frappe_docker_local.sh
+
+# 3. Manage your containers
+sudo ./docker-manager-local.sh
+```
+
+### 🐧 **Linux Users**
+```bash
+# 1. Setup Traefik Local
+cd ../
+sudo ./setup-traefik-local.sh
+
+# 2. Generate a new Frappe site
+sudo ./generate_frappe_docker_local.sh
+
+# 3. Manage your containers
+sudo ./docker-manager-local.sh
+```
 
 ## 📁 Folder Structure
 
@@ -26,9 +46,13 @@ This folder contains optimized Docker tools for running Frappe/ERPNext locally w
 Docker-Local/
 ├── generate_frappe_docker_local.sh    # Main site generation script
 ├── docker-manager-local.sh            # Container management tool
+├── setup-traefik-local-mac-no-sudo.sh # Mac-optimized Traefik setup (no sudo)
+├── setup-traefik-local-mac.sh        # Mac-optimized Traefik setup (with sudo)
+├── setup-traefik-local.sh             # Linux Traefik setup
 ├── traefik-docker-compose.yml        # Local Traefik configuration
 ├── .traefik-local-config             # Local port configuration
 ├── helper-screenshot/                 # Documentation screenshots
+├── MAC_COMPATIBILITY.md              # Mac-specific setup guide
 ```
 
 ## 🛠️ Main Tools
@@ -234,6 +258,35 @@ cat /etc/hosts
 sudo sed -i '/yourdomain.local/d' /etc/hosts
 ```
 
+## 🍎 **Mac Compatibility**
+
+### **Mac-Specific Benefits**
+- ✅ **Native .localhost Support**: .localhost domains work without /etc/hosts modification
+- ✅ **Port 8081 Default**: Automatically uses port 8081 to avoid macOS system port conflicts
+- ✅ **Docker Desktop Optimized**: Better performance on macOS
+- ✅ **Smart Port Detection**: Handles common Mac port usage patterns
+- ✅ **System Service Awareness**: Recognizes macOS system services using port 80
+
+### **Mac Setup Commands**
+```bash
+# Option 1: No sudo required (RECOMMENDED)
+./setup-traefik-local-mac-no-sudo.sh
+./generate_frappe_docker_local.sh
+./docker-manager-local.sh
+
+# Option 2: With sudo (if you prefer)
+sudo ./setup-traefik-local-mac.sh
+sudo ./generate_frappe_docker_local.sh
+sudo ./docker-manager-local.sh
+```
+
+### **Mac Access URLs**
+- **Site Access**: `http://yoursite.localhost:8081`
+- **Traefik Dashboard**: `http://localhost:8080`
+- **No hosts file editing required** on macOS
+
+📚 **[Complete Mac Guide](MAC_COMPATIBILITY.md)**
+
 ## 🔒 Security Notes
 
 - **Local Development Only**: These tools are designed for local development
@@ -245,6 +298,7 @@ sudo sed -i '/yourdomain.local/d' /etc/hosts
 
 - **Main Documentation**: `../README.md`
 - **Traefik Setup**: `../setup-traefik-local.sh`
+- **Mac Users**: `MAC_COMPATIBILITY.md` - Mac-specific setup and troubleshooting
 - **Docker Manager**: `../docker-manager.sh`
 - **Security Tools**: `../docker-security-tools.sh`
 
