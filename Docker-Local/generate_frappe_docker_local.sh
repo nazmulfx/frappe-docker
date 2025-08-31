@@ -156,6 +156,7 @@ ${app_labels}
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+      - apps:/home/frappe/frappe-bench/apps
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -294,6 +295,7 @@ ${app_labels}
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+      - apps:/home/frappe/frappe-bench/apps
     entrypoint:
       - bash
       - -c
@@ -356,6 +358,7 @@ networks:
 volumes:
   sites:
   logs:
+  apps:
   db-data:
 EOF
 }
@@ -576,6 +579,13 @@ echo "   • Restart web: sudo docker exec ${safe_site_name}-app /home/frappe/.l
 echo "   • Restart workers: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-worker-*"
 echo "   • Restart all: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all"
 echo "   • View logs: sudo docker exec ${safe_site_name}-app tail -f /home/frappe/supervisor/logs/frappe-web.log"
+
+echo ""
+echo "📦 Custom App Management:"
+echo "   • Install custom app: docker exec -it ${safe_site_name}-app bench get-app your_app_name"
+echo "   • Install app on site: docker exec -it ${safe_site_name}-app bench --site ${site_name} install-app your_app_name"
+echo "   • Check installed apps: docker exec -it ${safe_site_name}-app cat sites/apps.txt"
+echo "   • Custom apps are now preserved on container restart!"
 echo ""
 
 # Docker Manager prompt (if needed)
