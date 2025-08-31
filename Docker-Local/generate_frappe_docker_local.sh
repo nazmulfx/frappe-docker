@@ -157,7 +157,7 @@ ${app_labels}
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
       - apps:/home/frappe/frappe-bench/apps
-      - /var/www/frappe-docker/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
+      - ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -467,14 +467,28 @@ safe_site_name=$(echo "$site_name" | sed 's/[^a-zA-Z0-9]/_/g')
 # Create site directory
 mkdir -p "$safe_site_name"
 
-# Create frappe-bench directory in /var/www/frappe-docker for VS Code development
-mkdir -p "/var/www/frappe-docker/${safe_site_name}-frappe-bench"
-echo -e "${GREEN}📁 Created frappe-bench directory: /var/www/frappe-docker/${safe_site_name}-frappe-bench${NC}"
+# Determine the VS Code development directory
+# Use the actual user's home directory, not root's home when running with sudo
+ACTUAL_USER_HOME=$(eval echo ~$SUDO_USER)
+if [ -z "$ACTUAL_USER_HOME" ] || [ "$ACTUAL_USER_HOME" = "~$SUDO_USER" ]; then
+    # Fallback to current user's home if SUDO_USER is not set
+    ACTUAL_USER_HOME="$HOME"
+fi
+
+VSCODE_DIR="${ACTUAL_USER_HOME}/frappe-docker"
+if [ ! -d "$VSCODE_DIR" ]; then
+    mkdir -p "$VSCODE_DIR"
+    echo -e "${GREEN}📁 Created VS Code development directory: ${VSCODE_DIR}${NC}"
+fi
+
+# Create frappe-bench directory for VS Code development
+mkdir -p "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
+echo -e "${GREEN}📁 Created frappe-bench directory: ${VSCODE_DIR}/${safe_site_name}-frappe-bench${NC}"
 
 # Copy Frappe apps to the mounted directory for VS Code development
 echo -e "${BLUE}📦 Copying Frappe apps to mounted directory...${NC}"
-sudo chown -R $USER:$USER "/var/www/frappe-docker/${safe_site_name}-frappe-bench"
-docker run --rm --user root -v "/var/www/frappe-docker/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
+docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
 echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
 echo -e "${BLUE}   💡 You can now open this folder in VS Code for development${NC}"
 
@@ -495,10 +509,10 @@ docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
 
 # Ensure Frappe apps are available in the mounted directory
 echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"
-if [ ! -d "/var/www/frappe-docker/${safe_site_name}-frappe-bench/apps/frappe" ]; then
+if [ ! -d "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps/frappe" ]; then
     echo -e "${YELLOW}📦 Apps not found, copying from container...${NC}"
-    sudo chown -R $USER:$USER "/var/www/frappe-docker/${safe_site_name}-frappe-bench"
-    docker run --rm --user root -v "/var/www/frappe-docker/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+    sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
+    docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
     echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
 else
     echo -e "${GREEN}✅ Frappe apps already available${NC}"
@@ -610,6 +624,11 @@ echo "   • Install custom app: docker exec -it ${safe_site_name}-app bench get
 echo "   • Install app on site: docker exec -it ${safe_site_name}-app bench --site ${site_name} install-app your_app_name"
 echo "   • Check installed apps: docker exec -it ${safe_site_name}-app cat sites/apps.txt"
 echo "   • Custom apps are now preserved on container restart!"
+echo ""
+echo "💻 VS Code Development:"
+echo "   • Open in VS Code: code ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps"
+echo "   • Edit Frappe/ERPNext code directly in VS Code"
+echo "   • Changes are immediately reflected in the running container"
 echo ""
 
 # Docker Manager prompt (if needed)
