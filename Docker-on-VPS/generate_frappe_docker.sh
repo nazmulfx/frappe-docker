@@ -111,6 +111,7 @@ ${app_labels}
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
       - apps:/home/frappe/frappe-bench/apps
+      - /var/www/frappe-docker/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -256,6 +257,7 @@ ${app_labels}
       - |
         wait-for-it -t 120 db:3306;
         wait-for-it -t 120 redis:6379;
+        cd /home/frappe/frappe-bench;
         ls -1 apps > sites/apps.txt || true;
         bench set-config -g db_host db;
         bench set-config -gp db_port 3306;
@@ -410,6 +412,17 @@ safe_site_name=$(echo "$site_name" | sed 's/[^a-zA-Z0-9]/_/g')
 # Create site directory
 mkdir -p "$safe_site_name"
 
+# Create frappe-bench directory in /var/www/frappe-docker for VS Code development
+mkdir -p "/var/www/frappe-docker/${safe_site_name}-frappe-bench"
+echo -e "${GREEN}📁 Created frappe-bench directory: /var/www/frappe-docker/${safe_site_name}-frappe-bench${NC}"
+
+# Copy Frappe apps to the mounted directory for VS Code development
+echo -e "${BLUE}📦 Copying Frappe apps to mounted directory...${NC}"
+sudo chown -R $USER:$USER "/var/www/frappe-docker/${safe_site_name}-frappe-bench"
+docker run --rm --user root -v "/var/www/frappe-docker/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
+echo -e "${BLUE}   💡 You can now open this folder in VS Code for development${NC}"
+
 # Create .env file
 cat > "$safe_site_name/.env" << EOF
 ERPNEXT_VERSION=v15.63.0
@@ -425,6 +438,17 @@ generate_docker_compose "$safe_site_name" "$site_name" "$use_ssl"
 # Start containers
 echo -e "${GREEN}Starting your minimal Frappe/ERPNext site...${NC}"
 docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+
+# Ensure Frappe apps are available in the mounted directory
+echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"
+if [ ! -d "/var/www/frappe-docker/${safe_site_name}-frappe-bench/apps/frappe" ]; then
+    echo -e "${YELLOW}📦 Apps not found, copying from container...${NC}"
+    sudo chown -R $USER:$USER "/var/www/frappe-docker/${safe_site_name}-frappe-bench"
+    docker run --rm --user root -v "/var/www/frappe-docker/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+    echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
+else
+    echo -e "${GREEN}✅ Frappe apps already available${NC}"
+fi
 
 # Final messages
 echo ""
