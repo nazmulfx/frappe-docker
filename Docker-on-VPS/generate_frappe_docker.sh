@@ -258,7 +258,12 @@ ${app_labels}
         wait-for-it -t 120 db:3306;
         wait-for-it -t 120 redis:6379;
         cd /home/frappe/frappe-bench;
-        ls -1 apps > sites/apps.txt || true;
+        # Preserve existing apps.txt if it exists, otherwise create new one
+        if [ -f sites/apps.txt ]; then
+          echo "Preserving existing apps.txt with custom apps...";
+        else
+          ls -1 apps > sites/apps.txt || true;
+        fi;
         bench set-config -g db_host db;
         bench set-config -gp db_port 3306;
         bench set-config -g redis_cache "redis://redis:6379";
@@ -463,6 +468,12 @@ if [ ! -d "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps/frappe" ]; then
 else
     echo -e "${GREEN}✅ Frappe apps already available${NC}"
 fi
+
+# Ensure apps.txt includes all installed apps
+echo -e "${BLUE}🔧 Ensuring apps.txt includes all installed apps...${NC}"
+sleep 10  # Wait for containers to be ready
+docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && ls -1 apps > sites/apps.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, apps.txt will be updated automatically${NC}"
+echo -e "${GREEN}✅ apps.txt updated with all installed apps${NC}"
 
 # Final messages
 echo ""

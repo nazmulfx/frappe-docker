@@ -207,6 +207,10 @@ manage_containers() {
                 docker restart $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}")
             fi
             ;;
+        "rebuild-with-apps")
+            echo -e "${CYAN}🔨 Rebuilding containers with custom apps preservation for $site_name...${NC}"
+            rebuild_with_custom_apps "$site_name"
+            ;;
         "logs")
             echo -e "${CYAN}📋 Showing logs for $site_name...${NC}"
             docker logs $(docker ps --filter "name=^${site_name}-" --format "{{.Names}}")
@@ -569,12 +573,13 @@ show_container_menu() {
     echo -e "${GREEN}2.${NC} Stop containers"
     echo -e "${GREEN}3.${NC} Restart containers"
     echo -e "${GREEN}4.${NC} Rebuild containers"
-    echo -e "${GREEN}5.${NC} Show container logs"
-    echo -e "${GREEN}6.${NC} Show container status"
-    echo -e "${GREEN}7.${NC} Remove all containers (with space cleanup)"
-    echo -e "${GREEN}8.${NC} Remove specific container"
-    echo -e "${GREEN}9.${NC} Docker system cleanup (free space)"
-    echo -e "${GREEN}10.${NC} Back to main menu"
+    echo -e "${GREEN}5.${NC} Rebuild with custom apps preservation"
+    echo -e "${GREEN}6.${NC} Show container logs"
+    echo -e "${GREEN}7.${NC} Show container status"
+    echo -e "${GREEN}8.${NC} Remove all containers (with space cleanup)"
+    echo -e "${GREEN}9.${NC} Remove specific container"
+    echo -e "${GREEN}10.${NC} Docker system cleanup (free space)"
+    echo -e "${GREEN}11.${NC} Back to main menu"
     echo ""
 }
 
@@ -805,6 +810,98 @@ manage_frappe_processes_menu() {
     done
 }
 
+# Function to rebuild with custom apps preservation
+rebuild_with_custom_apps() {
+    local site_name=$1
+    local container_name="${site_name}-app"
+    
+    echo -e "${BLUE}📦 Backing up custom apps for ${site_name}...${NC}"
+    
+    # Check if container exists and is running
+    if ! docker ps | grep -q "${container_name}"; then
+        echo -e "${YELLOW}⚠️  Container ${container_name} is not running. Cannot backup custom apps.${NC}"
+        return 1
+    fi
+    
+    # Create backup directory
+    local backup_dir="/tmp/frappe_custom_apps_backup_${site_name}"
+    mkdir -p "$backup_dir"
+    
+    # Extract custom apps (excluding frappe and erpnext)
+    local custom_apps=$(docker exec "${container_name}" bash -c "cd /home/frappe/frappe-bench && cat sites/apps.json | jq -r 'keys[]' | grep -v '^frappe$' | grep -v '^erpnext$'" 2>/dev/null)
+    
+    if [ -n "$custom_apps" ]; then
+        echo "$custom_apps" > "${backup_dir}/custom_apps.txt"
+        echo -e "${GREEN}✅ Custom apps backed up: $(echo "$custom_apps" | tr '\n' ' ')${NC}"
+    else
+        echo -e "${YELLOW}ℹ️  No custom apps found to backup${NC}"
+        rm -rf "$backup_dir"
+        return 0
+    fi
+    
+    # Stop containers
+    echo -e "${BLUE}🛑 Stopping containers...${NC}"
+    docker compose -f "${site_name}/${site_name}-docker-compose.yml" down
+    
+    # Start containers (without regenerating docker-compose)
+    echo -e "${BLUE}🔄 Starting containers...${NC}"
+    docker compose -f "${site_name}/${site_name}-docker-compose.yml" up -d
+    
+    # Wait for containers to be ready
+    echo -e "${BLUE}⏳ Waiting for containers to be ready...${NC}"
+    local max_attempts=30
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if docker exec "${container_name}" bash -c "cd /home/frappe/frappe-bench && bench --version" >/dev/null 2>&1; then
+            break
+        fi
+        echo -e "${YELLOW}   Attempt $((attempt + 1))/$max_attempts - Container not ready yet...${NC}"
+        sleep 10
+        ((attempt++))
+    done
+    
+    if [ $attempt -eq $max_attempts ]; then
+        echo -e "${RED}❌ Container ${container_name} did not become ready in time${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}✅ Container is ready!${NC}"
+    
+    # Reinstall custom apps
+    local custom_apps=$(cat "${backup_dir}/custom_apps.txt")
+    for app in $custom_apps; do
+        echo -e "${BLUE}📦 Reinstalling ${app}...${NC}"
+        
+        # Get app from git repository
+        docker exec "${container_name}" bash -c "cd /home/frappe/frappe-bench && bench get-app ${app}" 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ ${app} downloaded successfully${NC}"
+            
+            # Install app on the site
+            docker exec "${container_name}" bash -c "cd /home/frappe/frappe-bench && bench --site ${site_name}.local install-app ${app}" 2>/dev/null
+            
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}✅ ${app} installed on site successfully${NC}"
+            else
+                echo -e "${YELLOW}⚠️  ${app} installation on site failed (may already be installed)${NC}"
+            fi
+        else
+            echo -e "${YELLOW}⚠️  ${app} download failed (may already exist)${NC}"
+        fi
+    done
+    
+    # Update apps.txt
+    docker exec "${container_name}" bash -c "cd /home/frappe/frappe-bench && ls -1 apps > sites/apps.txt"
+    echo -e "${GREEN}✅ apps.txt updated with all installed apps${NC}"
+    
+    # Clean up backup
+    rm -rf "$backup_dir"
+    echo -e "${GREEN}✅ Backup cleaned up${NC}"
+    echo -e "${GREEN}🎉 Rebuild with custom apps preservation completed!${NC}"
+}
+
 # Function to handle log viewing menu
 view_logs_menu() {
     local site_name=$1
@@ -854,7 +951,7 @@ manage_containers_menu() {
     while true; do
         show_container_menu
         
-        read -p "Select an option (1-10): " choice
+        read -p "Select an option (1-11): " choice
         
         case $choice in
             1)
@@ -870,21 +967,24 @@ manage_containers_menu() {
                 manage_containers "$site_name" "rebuild"
                 ;;
             5)
-                manage_containers "$site_name" "logs"
+                manage_containers "$site_name" "rebuild-with-apps"
                 ;;
             6)
-                manage_containers "$site_name" "status"
+                manage_containers "$site_name" "logs"
                 ;;
             7)
-                remove_all_containers "$site_name"
+                manage_containers "$site_name" "status"
                 ;;
             8)
-                remove_specific_container "$site_name"
+                remove_all_containers "$site_name"
                 ;;
             9)
-                cleanup_docker_space
+                remove_specific_container "$site_name"
                 ;;
             10)
+                cleanup_docker_space
+                ;;
+            11)
                 break
                 ;;
             *)
