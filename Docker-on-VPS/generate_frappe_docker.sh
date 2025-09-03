@@ -9,6 +9,16 @@ NC='\033[0m' # No Color
 
 # --- Helper Functions ---
 
+# Generate secure password
+generate_password() {
+    # Try pwgen first, fallback to openssl
+    if command -v pwgen >/dev/null 2>&1; then
+        pwgen -s 32 1
+    else
+        openssl rand -base64 24 | tr -d "=+/" | cut -c1-32
+    fi
+}
+
 # Detect preferred docker compose command
 detect_docker_compose() {
     # Try docker compose (v2) first - preferred method
@@ -116,13 +126,34 @@ services:
       - frappe_network
       - traefik_proxy
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     labels:
 ${app_labels}
     deploy:
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/method/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
@@ -134,6 +165,10 @@ ${app_labels}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SOCKETIO_PORT: "9000"
+      DB_PASSWORD: \${DB_PASSWORD}
+      REDIS_PASSWORD: \${REDIS_PASSWORD}
+      FRAPPE_SITE_NAME_HEADER: \${FRAPPE_SITE_NAME_HEADER}
+      SITES: \${SITES}
     entrypoint:
       - bash
       - -c
@@ -260,13 +295,40 @@ ${app_labels}
     container_name: ${safe_site_name}-create-site
     networks:
       - frappe_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     deploy:
       restart_policy:
         condition: none
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
       - apps:/home/frappe/frappe-bench/apps
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DB_PASSWORD: \${DB_PASSWORD}
+      REDIS_PASSWORD: \${REDIS_PASSWORD}
+      FRAPPE_SITE_NAME_HEADER: \${FRAPPE_SITE_NAME_HEADER}
+      SITES: \${SITES}
     entrypoint:
       - bash
       - -c
@@ -300,20 +362,35 @@ ${app_labels}
     networks:
       - frappe_network
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
-      interval: 1s
-      retries: 20
+      test: mysqladmin ping -h localhost --password=\${DB_PASSWORD}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     deploy:
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed
     environment:
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: \${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: \${DB_PASSWORD}
     volumes:
       - db-data:/var/lib/mysql
 
@@ -322,9 +399,29 @@ ${app_labels}
     container_name: ${safe_site_name}-redis
     networks:
       - frappe_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "\${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     deploy:
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    command: redis-server --appendonly yes --requirepass \${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
 
@@ -464,12 +561,17 @@ echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
 echo -e "${BLUE}   💡 You can now open this folder in VS Code for development${NC}"
 
 # Create .env file
-cat > "$safe_site_name/.env" << EOF
-ERPNEXT_VERSION=v15.63.0
-DB_PASSWORD=admin
-LETSENCRYPT_EMAIL=${email}
+DB_PASSWORD=$(generate_password)
+REDIS_PASSWORD=$(generate_password)
 FRAPPE_SITE_NAME_HEADER=${site_name}
 SITES=${site_name}
+cat > "$safe_site_name/.env" << EOF
+ERPNEXT_VERSION=v15.63.0
+DB_PASSWORD=${DB_PASSWORD}
+REDIS_PASSWORD=${REDIS_PASSWORD}
+LETSENCRYPT_EMAIL=${email}
+FRAPPE_SITE_NAME_HEADER=${FRAPPE_SITE_NAME_HEADER}
+SITES=${SITES}
 EOF
 
 # Generate docker-compose
