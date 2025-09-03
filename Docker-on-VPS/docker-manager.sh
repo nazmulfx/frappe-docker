@@ -15,6 +15,22 @@ NC='\033[0m' # No Color
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Detect preferred docker compose command
+detect_docker_compose() {
+    # Try docker compose (v2) first - preferred method
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return 0
+    # Fallback to docker-compose (v1) if v2 is not available
+    elif command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return 0
+    else
+        echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is available${NC}" >&2
+        return 1
+    fi
+}
+
 # Function to print header
 print_header() {
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -199,8 +215,13 @@ manage_containers() {
             echo -e "${CYAN}🔨 Rebuilding containers for $site_name...${NC}"
             # Find docker-compose file if it exists
             if [[ -f "${site_name}-docker-compose.yml" ]]; then
-                docker compose -f "${site_name}-docker-compose.yml" down
-                docker compose -f "${site_name}-docker-compose.yml" up -d --build
+                DOCKER_COMPOSE_CMD=$(detect_docker_compose)
+                if [ $? -ne 0 ]; then
+                    echo -e "${RED}❌ Failed to detect docker compose command${NC}"
+                    return 1
+                fi
+                $DOCKER_COMPOSE_CMD -f "${site_name}-docker-compose.yml" down
+                $DOCKER_COMPOSE_CMD -f "${site_name}-docker-compose.yml" up -d --build
             else
                 echo -e "${YELLOW}⚠️  No docker-compose file found for $site_name${NC}"
                 echo "Containers will be restarted instead."
@@ -841,11 +862,16 @@ rebuild_with_custom_apps() {
     
     # Stop containers
     echo -e "${BLUE}🛑 Stopping containers...${NC}"
-    docker compose -f "${site_name}/${site_name}-docker-compose.yml" down
+    DOCKER_COMPOSE_CMD=$(detect_docker_compose)
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Failed to detect docker compose command${NC}"
+        return 1
+    fi
+    $DOCKER_COMPOSE_CMD -f "${site_name}/${site_name}-docker-compose.yml" down
     
     # Start containers (without regenerating docker-compose)
     echo -e "${BLUE}🔄 Starting containers...${NC}"
-    docker compose -f "${site_name}/${site_name}-docker-compose.yml" up -d
+    $DOCKER_COMPOSE_CMD -f "${site_name}/${site_name}-docker-compose.yml" up -d
     
     # Wait for containers to be ready
     echo -e "${BLUE}⏳ Waiting for containers to be ready...${NC}"

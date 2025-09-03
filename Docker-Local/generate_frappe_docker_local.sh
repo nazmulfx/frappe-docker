@@ -9,6 +9,22 @@ NC='\033[0m' # No Color
 
 # --- Helper Functions ---
 
+# Detect preferred docker compose command
+detect_docker_compose() {
+    # Try docker compose (v2) first - preferred method
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return 0
+    # Fallback to docker-compose (v1) if v2 is not available
+    elif command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return 0
+    else
+        echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is available${NC}" >&2
+        return 1
+    fi
+}
+
 # Check if a command exists
 command_exists() {
     command -v "$1" &> /dev/null
@@ -510,7 +526,11 @@ generate_docker_compose "$safe_site_name" "$site_name"
 
 # Start containers
 echo -e "${GREEN}Starting your optimized Frappe/ERPNext site...${NC}"
-docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+DOCKER_COMPOSE_CMD=$(detect_docker_compose)
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
 
 # Ensure Frappe apps are available in the mounted directory
 echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"
