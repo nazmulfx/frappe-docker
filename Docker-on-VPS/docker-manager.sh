@@ -264,6 +264,26 @@ remove_all_containers() {
     docker ps -a --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}"
     echo ""
     
+    # Show folders that will be removed
+    echo -e "${CYAN}Folders that will be removed:${NC}"
+    local site_folder="${site_name}"
+    local vscode_folder=""
+    
+    # Determine VS Code folder path
+    ACTUAL_USER_HOME=$(eval echo ~$SUDO_USER)
+    if [ -z "$ACTUAL_USER_HOME" ] || [ "$ACTUAL_USER_HOME" = "~$SUDO_USER" ]; then
+        ACTUAL_USER_HOME="$HOME"
+    fi
+    vscode_folder="${ACTUAL_USER_HOME}/frappe-docker/${site_name}-frappe-bench"
+    
+    if [[ -d "$site_folder" ]]; then
+        echo -e "   📁 Site folder: ${site_folder}"
+    fi
+    if [[ -d "$vscode_folder" ]]; then
+        echo -e "   💻 VS Code folder: ${vscode_folder}"
+    fi
+    echo ""
+    
     read -p "⚠️  Are you absolutely sure you want to remove ALL containers? (y/n): " confirm1
     if [[ ! "$confirm1" =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}Operation cancelled.${NC}"
@@ -283,6 +303,30 @@ remove_all_containers() {
     docker rm $(docker ps -a --filter "name=^${site_name}-" --format "{{.Names}}") 2>/dev/null
     
     echo -e "${GREEN}✅ All containers removed successfully!${NC}"
+    
+    # Remove site folder
+    if [[ -d "$site_folder" ]]; then
+        echo -e "${BLUE}🗑️  Removing site folder: $site_folder${NC}"
+        rm -rf "$site_folder"
+        echo -e "${GREEN}✅ Site folder removed successfully!${NC}"
+    fi
+    
+    # Remove VS Code development folder
+    if [[ -d "$vscode_folder" ]]; then
+        echo -e "${BLUE}🗑️  Removing VS Code folder: $vscode_folder${NC}"
+        rm -rf "$vscode_folder"
+        echo -e "${GREEN}✅ VS Code folder removed successfully!${NC}"
+    fi
+    
+    # Remove from hosts file if it exists
+    local site_domain="${site_name//_/.}"
+    if grep -q "$site_domain" /etc/hosts 2>/dev/null; then
+        echo -e "${BLUE}🗑️  Removing $site_domain from hosts file${NC}"
+        sudo sed -i "/$site_domain/d" /etc/hosts
+        echo -e "${GREEN}✅ Hosts file entry removed successfully!${NC}"
+    fi
+    
+    echo -e "${GREEN}🎉 Complete cleanup completed for $site_name!${NC}"
     
     # Offer cleanup
     read -p "🧹 Do you want to clean up unused Docker resources? (y/n): " cleanup_choice
@@ -606,7 +650,8 @@ show_container_menu() {
     echo -e "${GREEN}8.${NC} Remove all containers (with space cleanup)"
     echo -e "${GREEN}9.${NC} Remove specific container"
     echo -e "${GREEN}10.${NC} Docker system cleanup (free space)"
-    echo -e "${GREEN}11.${NC} Back to main menu"
+    echo -e "${GREEN}11.${NC} Complete site removal (containers + folders + hosts)"
+    echo -e "${GREEN}12.${NC} Back to main menu"
     echo ""
 }
 
@@ -999,7 +1044,7 @@ manage_containers_menu() {
     while true; do
         show_container_menu
         
-        read -p "Select an option (1-11): " choice
+        read -p "Select an option (1-12): " choice
         
         case $choice in
             1)
@@ -1033,6 +1078,9 @@ manage_containers_menu() {
                 cleanup_docker_space
                 ;;
             11)
+                remove_all_containers "$site_name"
+                ;;
+            12)
                 break
                 ;;
             *)
