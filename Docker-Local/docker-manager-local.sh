@@ -186,6 +186,10 @@ view_logs() {
             echo -e "${CYAN}📋 Viewing container logs for $site_name...${NC}"
             docker logs -f "$site_name-app"
             ;;
+        "create-site")
+            echo -e "${CYAN}📋 Viewing Create-Site logs for $site_name...${NC}"
+            docker logs -f "$site_name-create-site"
+            ;;
         *)
             echo -e "${RED}❌ Invalid log type${NC}"
             return 1
@@ -555,7 +559,8 @@ show_main_menu() {
     echo -e "${GREEN}8.${NC} Access specific container as root"
     echo -e "${GREEN}9.${NC} File Transfer"
     echo -e "${GREEN}10.${NC} Install Packages"
-    echo -e "${GREEN}11.${NC} Exit"
+    echo -e "${GREEN}11.${NC} View Create-Site logs"
+    echo -e "${GREEN}12.${NC} Exit"
     echo ""
 }
 
@@ -582,7 +587,8 @@ show_log_menu() {
     echo -e "${GREEN}4.${NC} Frappe WebSocket logs"
     echo -e "${GREEN}5.${NC} Supervisor logs"
     echo -e "${GREEN}6.${NC} Container logs"
-    echo -e "${GREEN}7.${NC} Back to main menu"
+    echo -e "${GREEN}7.${NC} Create-Site logs"
+    echo -e "${GREEN}8.${NC} Back to main menu"
     echo ""
 }
 
@@ -659,7 +665,7 @@ main() {
     while true; do
         show_main_menu
         
-        read -p "Select an option (1-11): " choice
+        read -p "Select an option (1-12): " choice
         
         case $choice in
             1)
@@ -773,6 +779,19 @@ main() {
                 fi
                 ;;
             11)
+                if [[ ${#sites[@]} -eq 1 ]]; then
+                    view_logs "${sites[0]}" "create-site"
+                else
+                    echo -e "${CYAN}Select a site:${NC}"
+                    select site in "${sites[@]}"; do
+                        if [[ -n "$site" ]]; then
+                            view_logs "$site" "create-site"
+                            break
+                        fi
+                    done
+                fi
+                ;;
+            12)
                 echo -e "${GREEN}👋 Goodbye!${NC}"
                 exit 0
                 ;;
@@ -935,7 +954,7 @@ view_logs_menu() {
     while true; do
         show_log_menu
         
-        read -p "Select an option (1-7): " choice
+        read -p "Select an option (1-8): " choice
         
         case $choice in
             1)
@@ -957,6 +976,9 @@ view_logs_menu() {
                 view_logs "$site_name" "container"
                 ;;
             7)
+                view_logs "$site_name" "create-site"
+                ;;
+            8)
                 break
                 ;;
             *)

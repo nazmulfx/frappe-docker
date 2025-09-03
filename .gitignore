@@ -1,3 +1,5 @@
 web-docker-manager-env/*
 test*
 demo*
+*.yml
+.env

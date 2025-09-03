@@ -390,16 +390,17 @@ ${app_labels}
         fi;
         bench set-config -g db_host db;
         bench set-config -gp db_port 3306;
-        bench set-config -g redis_cache "redis://redis:6379";
-        bench set-config -g redis_queue "redis://redis:6379";
-        bench set-config -g redis_socketio "redis://redis:6379";
+        bench set-config -g redis_cache "redis://:\${REDIS_PASSWORD}@redis:6379";
+        bench set-config -g redis_queue "redis://:\${REDIS_PASSWORD}@redis:6379";
+        bench set-config -g redis_socketio "redis://:\${REDIS_PASSWORD}@redis:6379";
         bench set-config -gp socketio_port 9000;
         if [ ! -d sites/${site_name} ]; then
           echo "Creating new site...";
-          bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default ${site_name};
+          bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=\${DB_PASSWORD} --install-app erpnext --set-default ${site_name};
           echo "${site_name}" > sites/currentsite.txt;
         else
           echo "Site ${site_name} already exists, skipping creation";
+          echo "${site_name}" > sites/currentsite.txt;
         fi
 
   db:
@@ -653,6 +654,11 @@ echo -e "${BLUE}🔧 Ensuring apps.txt includes all installed apps...${NC}"
 sleep 10  # Wait for containers to be ready
 docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && ls -1 apps > sites/apps.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, apps.txt will be updated automatically${NC}"
 echo -e "${GREEN}✅ apps.txt updated with all installed apps${NC}"
+
+# Ensure currentsite.txt is set correctly
+echo -e "${BLUE}🔧 Ensuring currentsite.txt is set correctly...${NC}"
+docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && echo '${site_name}' > sites/currentsite.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, currentsite.txt will be set automatically${NC}"
+echo -e "${GREEN}✅ currentsite.txt set to ${site_name}${NC}"
 
 # Show port information immediately after starting
 echo ""
