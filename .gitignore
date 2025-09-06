@@ -3,3 +3,5 @@ test*
 demo*
 *.yml
 .env
+bin
+web-manager/web-docker-manager-env/lib/*
