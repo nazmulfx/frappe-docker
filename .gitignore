@@ -1,4 +1,5 @@
-log/*
-*.swp*
-.vagrant/
 web-docker-manager-env/*
+test*
+demo*
+*.yml
+.env
