@@ -225,6 +225,11 @@ manage_containers() {
                     return 1
                 fi
                 $DOCKER_COMPOSE_CMD -f "${site_name}-docker-compose.yml" down
+                
+                # Update docker-compose file to add restart policy
+                echo -e "${BLUE}📝 Adding auto-restart policy to containers...${NC}"
+                sed -i 's/\(^\s*\)\(container_name:\)/\1restart: always\n\1\2/g' "${site_name}-docker-compose.yml"
+                
                 $DOCKER_COMPOSE_CMD -f "${site_name}-docker-compose.yml" up -d --build
             else
                 echo -e "${YELLOW}⚠️  No docker-compose file found for $site_name${NC}"
@@ -932,6 +937,10 @@ rebuild_with_custom_apps() {
         return 1
     fi
     $DOCKER_COMPOSE_CMD -f "${site_name}/${site_name}-docker-compose.yml" down
+    
+    # Update docker-compose file to add restart policy
+    echo -e "${BLUE}📝 Adding auto-restart policy to containers...${NC}"
+    sed -i 's/\(^\s*\)\(container_name:\)/\1restart: always\n\1\2/g' "${site_name}/${site_name}-docker-compose.yml"
     
     # Start containers (without regenerating docker-compose)
     echo -e "${BLUE}🔄 Starting containers...${NC}"
