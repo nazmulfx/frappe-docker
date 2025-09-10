@@ -797,7 +797,7 @@ def container_logs_api(container_name):
 if __name__ == '__main__':
     # Create database tables
     with app.app_context():
-        db.create_all()
+        # db.create_all()  # Handled by setup_database.py
         create_default_admin()
     
     print("🔒 SECURITY FEATURES ENABLED:")

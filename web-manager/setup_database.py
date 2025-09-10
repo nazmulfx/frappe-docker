@@ -6,37 +6,23 @@ Initializes the database and creates a default admin user with optional 2FA.
 import sys
 import os
 from flask import Flask
-from flask_migrate import Migrate, upgrade, init, stamp
 from config import Config
 from models import db, User
 from datetime import datetime
 
-# Create a minimal Flask app context for SQLAlchemy and Migrate
+# Create a minimal Flask app context for SQLAlchemy
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
-migrate = Migrate(app, db)
 
 def setup_db():
     with app.app_context():
         print("🚀 Initializing database...")
         try:
-            # Check if migrations directory exists, if not, initialize it
-            if not os.path.exists('migrations'):
-                print("Initializing Flask-Migrate...")
-                init()
-                print("Flask-Migrate initialized.")
-            
-            # Stamp the database with the current head revision if it's not already
-            # This is useful for a fresh database where no migrations have been run
-            try:
-                stamp()
-            except Exception as e:
-                print(f"Warning: Could not stamp database (might be already stamped or no migrations yet): {e}")
-
-            print("Running database migrations...")
-            upgrade()
-            print("✅ Database migrations completed.")
+            # Create all tables directly (simpler approach)
+            print("Creating database tables...")
+            db.create_all()
+            print("✅ Database tables created successfully.")
 
             # Create default admin user if not exists
             default_username = "admin"
