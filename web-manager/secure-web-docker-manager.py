@@ -18,24 +18,32 @@ import hmac
 from datetime import datetime, timedelta
 import logging
 from logging.handlers import RotatingFileHandler
+import pyotp
+import base64
+import qrcode
+import io
+import base64
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)  # Secure random secret key
 
 # Security Configuration
 SECURITY_CONFIG = {
-    'MAX_LOGIN_ATTEMPTS': 5,
+    'MAX_LOGIN_ATTEMPTS': 3,  # Changed from 5 to 3
     'LOCKOUT_DURATION': 300,  # 5 minutes
     'SESSION_TIMEOUT': 3600,  # 1 hour
     'ALLOWED_IPS': ['127.0.0.1', '::1'],  # Only localhost by default
-    'REQUIRE_HTTPS': False,  # Set to True in production
+    'REQUIRE_HTTPS': True,  # Set to True to enforce HTTPS connections
     'ADMIN_USERNAME': 'admin',
     'ADMIN_PASSWORD_HASH': None,  # Will be set on first run
+    'ADMIN_TOTP_SECRET': None,  # Will be set on first run
+    'ENABLE_AUDIT_LOG': True,  # Enable detailed audit logging
 }
 
 # Rate limiting storage
 login_attempts = {}
 blocked_ips = {}
+failed_login_users = {}  # Track failed login attempts per username
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -46,28 +54,72 @@ handler.setFormatter(logging.Formatter(
 ))
 app.logger.addHandler(handler)
 
+# Add audit logging
+audit_logger = logging.getLogger('audit')
+audit_handler = RotatingFileHandler('security-audit.log', maxBytes=10000000, backupCount=10)
+audit_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [AUDIT] %(message)s'
+))
+audit_logger.setLevel(logging.INFO)
+audit_logger.addHandler(audit_handler)
+
+def log_audit(event_type, username, ip, message, status="success"):
+    """Log security event to audit log"""
+    if SECURITY_CONFIG['ENABLE_AUDIT_LOG']:
+        event_data = {
+            "event": event_type,
+            "user": username,
+            "ip": ip,
+            "status": status,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        }
+        audit_logger.info(json.dumps(event_data))
+
 class SecurityManager:
     """Handle security operations"""
     
     @staticmethod
     def init_admin_password():
-        """Initialize admin password on first run"""
+        """Initialize admin password and TOTP on first run"""
+        credentials_updated = False
+        
+        # Create TOTP secret if not exists
+        if not SECURITY_CONFIG['ADMIN_TOTP_SECRET']:
+            SECURITY_CONFIG['ADMIN_TOTP_SECRET'] = pyotp.random_base32()
+            credentials_updated = True
+        
+        # Create password if not exists
         if not SECURITY_CONFIG['ADMIN_PASSWORD_HASH']:
             # Generate secure random password
             password = secrets.token_urlsafe(16)
             SECURITY_CONFIG['ADMIN_PASSWORD_HASH'] = generate_password_hash(password)
+            credentials_updated = True
+            
+            # Create QR code for TOTP
+            totp_uri = pyotp.totp.TOTP(SECURITY_CONFIG['ADMIN_TOTP_SECRET']).provisioning_uri(
+                name=SECURITY_CONFIG['ADMIN_USERNAME'], 
+                issuer_name="Secure Docker Manager"
+            )
             
             # Save to secure file
             with open('.admin_credentials', 'w') as f:
                 f.write(f"Username: {SECURITY_CONFIG['ADMIN_USERNAME']}\n")
                 f.write(f"Password: {password}\n")
                 f.write(f"Generated: {datetime.now()}\n")
+                f.write(f"TOTP Secret: {SECURITY_CONFIG['ADMIN_TOTP_SECRET']}\n")
+                f.write(f"TOTP URI: {totp_uri}\n")
             
             # Set secure permissions
             os.chmod('.admin_credentials', 0o600)
             
             logger.info("Admin credentials generated and saved to .admin_credentials")
-            return password
+            return {
+                'password': password,
+                'totp_secret': SECURITY_CONFIG['ADMIN_TOTP_SECRET'],
+                'totp_uri': totp_uri
+            }
+        
         return None
     
     @staticmethod
@@ -88,8 +140,31 @@ class SecurityManager:
         return False
     
     @staticmethod
+    def is_user_locked(username):
+        """Check if a user account is locked due to too many failed attempts"""
+        if username in failed_login_users:
+            attempts = failed_login_users[username]
+            # Clean old attempts (older than 5 minutes)
+            cutoff = time.time() - 300
+            attempts = [t for t in attempts if t > cutoff]
+            failed_login_users[username] = attempts
+            
+            # Check if there are too many recent attempts
+            if len(attempts) >= SECURITY_CONFIG['MAX_LOGIN_ATTEMPTS']:
+                # Check if the oldest attempt is still within the lockout window
+                if time.time() - min(attempts) < SECURITY_CONFIG['LOCKOUT_DURATION']:
+                    # Calculate remaining lockout time
+                    lockout_end = min(attempts) + SECURITY_CONFIG['LOCKOUT_DURATION']
+                    remaining = int(lockout_end - time.time())
+                    return True, remaining
+                else:
+                    # Reset if lockout period has passed
+                    failed_login_users[username] = []
+        return False, 0
+    
+    @staticmethod
     def record_failed_login(ip):
-        """Record failed login attempt"""
+        """Record failed login attempt for IP"""
         if ip not in login_attempts:
             login_attempts[ip] = []
         
@@ -103,6 +178,45 @@ class SecurityManager:
         if len(login_attempts[ip]) >= SECURITY_CONFIG['MAX_LOGIN_ATTEMPTS']:
             blocked_ips[ip] = time.time() + SECURITY_CONFIG['LOCKOUT_DURATION']
             logger.warning(f"IP {ip} blocked due to too many failed login attempts")
+    
+    @staticmethod
+    def record_failed_user_login(username):
+        """Record failed login attempt for username"""
+        if username not in failed_login_users:
+            failed_login_users[username] = []
+        
+        failed_login_users[username].append(time.time())
+        logger.warning(f"Failed login for user: {username}. Total attempts: {len(failed_login_users[username])}")
+    
+    @staticmethod
+    def generate_totp_qr_code(secret, username):
+        """Generate QR code for TOTP setup"""
+        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=username,
+            issuer_name="Secure Docker Manager"
+        )
+        
+        # Generate QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(totp_uri)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        return f"data:image/png;base64,{img_str}"
+    
+    @staticmethod
+    def verify_totp(token, secret):
+        """Verify TOTP token"""
+        totp = pyotp.TOTP(secret)
+        return totp.verify(token)
     
     @staticmethod
     def sanitize_input(input_str):
@@ -314,37 +428,110 @@ def after_request(response):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:"
     return response
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Secure login page"""
+    """Secure login page with 2FA"""
     client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    
+    # IP whitelist check
+    if not SecurityManager.validate_ip(client_ip):
+        log_audit("access_denied", "unknown", client_ip, "IP not in whitelist", "blocked")
+        return render_template('login.html', error='Access denied. Your IP is not authorized.')
     
     # Check if IP is blocked
     if SecurityManager.is_blocked(client_ip):
+        log_audit("login_attempt", "unknown", client_ip, "IP temporarily blocked", "blocked")
         return render_template('login.html', error='IP temporarily blocked due to too many failed attempts')
     
-    if request.method == 'POST':
+    # Check if in 2FA verification mode
+    if session.get('awaiting_2fa') and request.method == 'POST':
+        totp_code = request.form.get('totp_code', '').strip()
+        username = session.get('pending_username', 'unknown')
+        
+        # Verify TOTP code
+        if SecurityManager.verify_totp(totp_code, SECURITY_CONFIG['ADMIN_TOTP_SECRET']):
+            # Complete login
+            session['logged_in'] = True
+            session['username'] = username
+            session['last_activity'] = time.time()
+            session['csrf_token'] = SecurityManager.generate_csrf_token()
+            
+            # Clear 2FA flags
+            session.pop('awaiting_2fa', None)
+            session.pop('pending_username', None)
+            
+            # Log successful 2FA login
+            log_audit("login_2fa", username, client_ip, "Successful 2FA authentication")
+            logger.info(f"Successful 2FA login from IP: {client_ip}")
+            return redirect(url_for('index'))
+        else:
+            # Failed 2FA
+            SecurityManager.record_failed_login(client_ip)
+            if username:
+                SecurityManager.record_failed_user_login(username)
+            
+            # Log failed 2FA attempt
+            log_audit("login_2fa", username, client_ip, "Failed 2FA authentication", "failed")
+            logger.warning(f"Failed 2FA attempt from IP: {client_ip}")
+            flash('Invalid authentication code', 'error')
+            
+            # Check if user should be locked
+            is_locked, remaining = SecurityManager.is_user_locked(username)
+            if is_locked:
+                # Log the lockout
+                log_audit("account_lockout", username, client_ip, f"Account locked for {remaining} seconds", "security")
+                logger.warning(f"User {username} locked out due to too many failed attempts")
+                minutes = remaining // 60
+                seconds = remaining % 60
+                flash(f'Account locked for {minutes} minutes and {seconds} seconds due to too many failed attempts', 'error')
+                session.clear()  # Clear session data
+                return render_template('login.html', error=f'Account locked for {minutes}m {seconds}s')
+    
+    elif request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
+        
+        # Check if user is locked
+        is_locked, remaining = SecurityManager.is_user_locked(username)
+        if is_locked:
+            minutes = remaining // 60
+            seconds = remaining % 60
+            logger.warning(f"Attempt to login to locked account {username}")
+            log_audit("login_attempt", username, client_ip, "Attempt on locked account", "blocked")
+            return render_template('login.html', error=f'Account locked for {minutes}m {seconds}s due to too many failed attempts')
         
         # Validate credentials
         if (username == SECURITY_CONFIG['ADMIN_USERNAME'] and 
             SECURITY_CONFIG['ADMIN_PASSWORD_HASH'] and
             check_password_hash(SECURITY_CONFIG['ADMIN_PASSWORD_HASH'], password)):
             
-            session['logged_in'] = True
-            session['username'] = username
-            session['last_activity'] = time.time()
-            session['csrf_token'] = SecurityManager.generate_csrf_token()
+            # Set up 2FA verification
+            session['awaiting_2fa'] = True
+            session['pending_username'] = username
             
-            logger.info(f"Successful login from IP: {client_ip}")
-            return redirect(url_for('index'))
+            # Log successful password auth
+            log_audit("login_password", username, client_ip, "Password authentication successful")
+            
+            # Generate QR code only for first-time setup
+            qr_code = None
+            if not os.path.exists(f'.{username}_2fa_setup_complete'):
+                qr_code = SecurityManager.generate_totp_qr_code(
+                    SECURITY_CONFIG['ADMIN_TOTP_SECRET'],
+                    SECURITY_CONFIG['ADMIN_USERNAME']
+                )
+                # Create a marker file to track that setup is complete
+                with open(f'.{username}_2fa_setup_complete', 'w') as f:
+                    f.write(f"2FA setup completed on: {datetime.now()}\n")
+                
+            return render_template('login.html', awaiting_2fa=True, qr_code=qr_code)
         else:
             SecurityManager.record_failed_login(client_ip)
-            logger.warning(f"Failed login attempt from IP: {client_ip}")
+            SecurityManager.record_failed_user_login(username)
+            logger.warning(f"Failed login attempt from IP: {client_ip} for user: {username}")
+            log_audit("login_attempt", username, client_ip, "Invalid credentials", "failed")
             flash('Invalid credentials', 'error')
     
     return render_template('login.html')
@@ -352,6 +539,12 @@ def login():
 @app.route('/logout')
 def logout():
     """Logout and clear session"""
+    username = session.get('username', 'unknown')
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    
+    # Log logout event
+    log_audit("logout", username, client_ip, "User logged out")
+    
     session.clear()
     flash('Logged out successfully', 'success')
     return redirect(url_for('login'))
@@ -387,7 +580,16 @@ def index():
 def container_action_api(container_name):
     """Secure container action API"""
     action = request.json.get('action')
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    username = session.get('username', 'unknown')
+    
     result = SecureDockerManager.container_action(container_name, action)
+    
+    # Log container action
+    status = "success" if result['success'] else "failed"
+    log_audit("container_action", username, client_ip, 
+              f"Container {action} on {container_name}", status)
+    
     return jsonify(result)
 
 @app.route('/api/container/<container_name>/logs')
@@ -446,26 +648,74 @@ def secure_frappe_bench_command_api(container_name):
     """Secure API endpoint for executing bench commands"""
     command = request.json.get('command')
     timeout = min(int(request.json.get('timeout', 60)), 300)  # Max 5 minutes
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    username = session.get('username', 'unknown')
+    
+    # Log command execution attempt
+    log_audit("bench_command", username, client_ip, 
+              f"Executing '{command}' on {container_name}", "attempt")
     
     result = SecureFrappeManager.execute_bench_command(container_name, command, timeout)
+    
+    # Log command execution result
+    status = "success" if result.get('success') else "failed"
+    log_audit("bench_command", username, client_ip, 
+              f"Executed '{command}' on {container_name}", status)
+    
     return jsonify(result)
 
 if __name__ == '__main__':
     # Initialize security
-    new_password = SecurityManager.init_admin_password()
+    new_credentials = SecurityManager.init_admin_password()
     
-    if new_password:
+    if new_credentials:
         print("🔐 SECURITY SETUP COMPLETE!")
         print("=" * 50)
         print(f"Admin Username: {SECURITY_CONFIG['ADMIN_USERNAME']}")
-        print(f"Admin Password: {new_password}")
+        print(f"Admin Password: {new_credentials['password']}")
         print("=" * 50)
         print("⚠️  SAVE THESE CREDENTIALS SECURELY!")
         print("📁 Also saved to: .admin_credentials")
         print("")
     
+    # Generate self-signed SSL certificate if not exists
+    cert_file = "server.crt"
+    key_file = "server.key"
+    
+    use_https = SECURITY_CONFIG['REQUIRE_HTTPS']
+    ssl_available = False
+    
+    if use_https:
+        try:
+            if not os.path.exists(cert_file) or not os.path.exists(key_file):
+                print("🔒 Generating self-signed SSL certificate...")
+                # Check if openssl is available
+                import subprocess
+                try:
+                    result = subprocess.run(["which", "openssl"], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        # Generate certificate using openssl
+                        cmd = f"openssl req -x509 -newkey rsa:4096 -nodes -out {cert_file} -keyout {key_file} -days 365 -subj '/CN=localhost'"
+                        subprocess.run(cmd, shell=True, check=True)
+                        print("✅ SSL certificate generated")
+                        ssl_available = True
+                    else:
+                        print("⚠️ OpenSSL not found. HTTPS not available.")
+                        use_https = False
+                except Exception as e:
+                    print(f"⚠️ Error generating SSL certificate: {str(e)}")
+                    use_https = False
+            else:
+                print("✅ Using existing SSL certificates")
+                ssl_available = True
+        except Exception as e:
+            print(f"⚠️ Error setting up HTTPS: {str(e)}")
+            use_https = False
+    
     print("🔒 SECURITY FEATURES ENABLED:")
     print("✅ Authentication required")
+    print("✅ Two-factor authentication (Google Authenticator)")
+    print("✅ Account lockout after 3 failed attempts (5 min)")
     print("✅ IP whitelist protection")
     print("✅ Rate limiting")
     print("✅ Input sanitization")
@@ -473,10 +723,21 @@ if __name__ == '__main__':
     print("✅ Security headers")
     print("✅ Command validation")
     print("✅ Session management")
+    print("✅ Audit logging enabled")
+    if ssl_available:
+        print("✅ HTTPS with SSL/TLS")
+    else:
+        print("❌ HTTPS with SSL/TLS (not available)")
     print("")
     print("🌐 Starting SECURE Web Docker Manager...")
-    print("📍 Access: http://localhost:5000")
+    if ssl_available:
+        print("📍 Access: https://localhost:5000")
+    else:
+        print("📍 Access: http://localhost:5000")
     print("🔐 Login required for access")
     
-    # Run in development mode (use gunicorn for production)
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    # Run with or without SSL based on availability
+    if ssl_available:
+        app.run(host='0.0.0.0', port=5000, debug=False, ssl_context=(cert_file, key_file))
+    else:
+        app.run(host='0.0.0.0', port=5000, debug=False)
