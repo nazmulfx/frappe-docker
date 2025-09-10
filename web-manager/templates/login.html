@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Docker Manager - Login</title>
+    <title>Login - Secure Docker Manager</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons - Single, reliable icon system -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         body {
@@ -13,67 +12,23 @@
             min-height: 100vh;
             display: flex;
             align-items: center;
-            justify-content: center;
         }
         .login-container {
             background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
             backdrop-filter: blur(10px);
-            padding: 2rem;
-            width: 100%;
-            max-width: 400px;
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        .login-header i {
-            font-size: 3rem;
-            color: #667eea;
-            margin-bottom: 1rem;
-        }
-        .form-control {
-            border-radius: 10px;
-            border: 2px solid #e9ecef;
-            padding: 12px 15px;
-            transition: all 0.3s ease;
-        }
-        .form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-        .btn-login {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 10px;
-            padding: 12px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        .security-notice {
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid rgba(255, 193, 7, 0.3);
-            border-radius: 10px;
-            padding: 1rem;
-            margin-top: 1rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
         }
         .security-features {
-            font-size: 0.85rem;
-            color: #6c757d;
+            background: rgba(0, 123, 255, 0.1);
+            border-left: 4px solid #007bff;
+            padding: 1rem;
             margin-top: 1rem;
-        }
-        .security-features i {
-            color: #28a745;
-            margin-right: 0.5rem;
+            border-radius: 0 8px 8px 0;
         }
         .qr-code-container {
             text-align: center;
-            margin-bottom: 1rem;
+            margin: 1rem 0;
         }
         .qr-code-container img {
             max-width: 200px;
@@ -82,108 +37,130 @@
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
-            <i class="bi bi-shield-lock-fill"></i>
-            <h2 class="mb-0">Secure Docker Manager</h2>
-            <p class="text-muted">Enterprise-grade security for your containers</p>
-        </div>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                        <i class="bi bi-{{ 'exclamation-triangle' if category == 'error' else 'info-circle' }}"></i>
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-5">
+                <div class="login-container p-4">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-shield-lock-fill text-primary" style="font-size: 3rem;"></i>
+                        <h2 class="mt-3">Secure Docker Manager</h2>
+                        <p class="text-muted">Enterprise-grade container management</p>
                     </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
 
-        {% if error %}
-            <div class="alert alert-danger" role="alert">
-                <i class="bi bi-exclamation-triangle"></i>
-                {{ error }}
-            </div>
-        {% endif %}
-
-        <form method="POST" id="loginForm">
-            {% if awaiting_2fa %}
-                <div class="text-center mb-4">
-                    <h5>Two-Factor Authentication</h5>
-                    {% if qr_code %}
-                    <p class="text-muted">First time setup - Please scan this QR code with your Google Authenticator app</p>
-                        <div class="qr-code-container mb-4">
-                            <img src="{{ qr_code }}" alt="Google Authenticator QR Code">
+                    {% if error %}
+                        <div class="alert alert-danger" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i> {{ error }}
                         </div>
-                    {% else %}
-                    <p class="text-muted">Please enter the 6-digit code from your Google Authenticator app</p>
                     {% endif %}
-                </div>
 
-                <div class="mb-4">
-                    <label for="totp_code" class="form-label">
-                        <i class="bi bi-key-fill"></i> Authentication Code
-                    </label>
-                    <input type="text" class="form-control" id="totp_code" name="totp_code" required 
-                           autocomplete="off" maxlength="6" placeholder="123456" inputmode="numeric" 
-                           pattern="[0-9]*">
-                </div>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
 
-                <button type="submit" class="btn btn-login btn-primary w-100">
-                    <i class="bi bi-shield-check"></i> Verify
-                </button>
-            {% else %}
-                <div class="mb-3">
-                    <label for="username" class="form-label">
-                        <i class="bi bi-person-fill"></i> Username
-                    </label>
-                    <input type="text" class="form-control" id="username" name="username" required 
-                           autocomplete="username" maxlength="50">
-                </div>
+                    {% if awaiting_2fa %}
+                        <!-- 2FA Verification -->
+                        <div class="alert alert-info">
+                            <i class="bi bi-shield-check"></i>
+                            <strong>Two-Factor Authentication Required</strong>
+                            <p class="mb-0 mt-2">Please enter the 6-digit code from your authenticator app.</p>
+                        </div>
+                        
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="totp_code" class="form-label">
+                                    <i class="bi bi-key"></i> Authentication Code
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="totp_code" 
+                                       name="totp_code" 
+                                       maxlength="6" 
+                                       pattern="[0-9]{6}"
+                                       placeholder="123456"
+                                       autocomplete="off"
+                                       required
+                                       autofocus>
+                                <div class="form-text">Enter the 6-digit code from your authenticator app</div>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-check2-circle"></i> Verify & Login
+                                </button>
+                            </div>
+                        </form>
+                    {% else %}
+                        <!-- Regular Login -->
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">
+                                    <i class="bi bi-person-fill"></i> Username
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="username" 
+                                       name="username" 
+                                       placeholder="Enter your username"
+                                       autocomplete="username"
+                                       required
+                                       autofocus>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="password" class="form-label">
+                                    <i class="bi bi-lock-fill"></i> Password
+                                </label>
+                                <div class="input-group">
+                                    <input type="password" 
+                                           class="form-control" 
+                                           id="password" 
+                                           name="password" 
+                                           placeholder="Enter your password"
+                                           autocomplete="current-password"
+                                           required>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()">
+                                        <i class="bi bi-eye" id="passwordToggleIcon"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-box-arrow-in-right"></i> Login
+                                </button>
+                            </div>
+                        </form>
+                    {% endif %}
 
-                <div class="mb-3">
-                    <label for="password" class="form-label">
-                        <i class="bi bi-lock-fill"></i> Password
-                    </label>
-                    <div class="input-group">
-                        <input type="password" class="form-control" id="password" name="password" required 
-                               autocomplete="current-password" maxlength="100">
-                        <button class="btn btn-outline-secondary" type="button" id="togglePassword">
-                            <i class="bi bi-eye"></i>
-                        </button>
+                    <div class="security-features">
+                        <h6><i class="bi bi-shield-check"></i> Security Features</h6>
+                        <ul class="list-unstyled mb-0 small">
+                            <li><i class="bi bi-check-circle text-success"></i> Secure authentication</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Optional two-factor authentication</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Account lockout protection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> IP whitelist protection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Rate limiting</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Input sanitization</li>
+                            <li><i class="bi bi-check-circle text-success"></i> CSRF protection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Security headers</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Session management</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Audit logging</li>
+                        </ul>
                     </div>
-                </div>
 
-                <button type="submit" class="btn btn-login btn-primary w-100">
-                    <i class="bi bi-box-arrow-in-right"></i> Secure Login
-                </button>
-            {% endif %}
-        </form>
-
-        <div class="security-notice mt-4">
-            <div class="d-flex align-items-center mb-2">
-                <i class="bi bi-shield-exclamation text-warning"></i>
-                <strong class="ms-2">Security Notice</strong>
-            </div>
-            <small>
-                This system is protected by enterprise-grade security measures. 
-                All access attempts are logged and monitored.
-            </small>
-        </div>
-
-        <div class="security-features">
-            <div class="row">
-                <div class="col-6">
-                    <div><i class="bi bi-check2-circle"></i> Authentication</div>
-                    <div><i class="bi bi-check2-circle"></i> Two-Factor Auth</div>
-                    <div><i class="bi bi-check2-circle"></i> Rate Limiting</div>
-                </div>
-                <div class="col-6">
-                    <div><i class="bi bi-check2-circle"></i> IP Whitelisting</div>
-                    <div><i class="bi bi-check2-circle"></i> CSRF Protection</div>
-                    <div><i class="bi bi-check2-circle"></i> Account Lockout</div>
+                    <div class="text-center mt-4">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i>
+                            2FA is optional - users can enable it in their profile settings
+                        </small>
+                    </div>
                 </div>
             </div>
         </div>
@@ -191,82 +168,34 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Toggle password visibility
-        const toggleBtn = document.getElementById('togglePassword');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', function() {
-                const password = document.getElementById('password');
-                const icon = this.querySelector('i');
-                
-                if (password.type === 'password') {
-                    password.type = 'text';
-                    icon.classList.remove('bi-eye');
-                    icon.classList.add('bi-eye-slash');
-                } else {
-                    password.type = 'password';
-                    icon.classList.remove('bi-eye-slash');
-                    icon.classList.add('bi-eye');
-                }
-            });
+        function togglePassword() {
+            const passwordField = document.getElementById('password');
+            const toggleIcon = document.getElementById('passwordToggleIcon');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleIcon.className = 'bi bi-eye-slash';
+            } else {
+                passwordField.type = 'password';
+                toggleIcon.className = 'bi bi-eye';
+            }
         }
 
-        // Form validation
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            const totpCode = document.getElementById('totp_code');
+        // Auto-focus on appropriate field
+        document.addEventListener('DOMContentLoaded', function() {
+            const totpField = document.getElementById('totp_code');
+            const usernameField = document.getElementById('username');
             
-            if (totpCode) {
-                // 2FA validation
-                if (!totpCode.value || totpCode.value.length !== 6 || !/^\d+$/.test(totpCode.value)) {
-                    e.preventDefault();
-                    alert('Please enter a valid 6-digit authentication code');
-                    return;
-                }
-            } else {
-                // Password validation
-                const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value;
-
-                if (!username || !password) {
-                    e.preventDefault();
-                    alert('Please enter both username and password');
-                    return;
-                }
-
-                if (username.length < 3 || password.length < 6) {
-                    e.preventDefault();
-                    alert('Invalid credentials format');
-                    return;
-                }
+            if (totpField) {
+                totpField.focus();
+            } else if (usernameField) {
+                usernameField.focus();
             }
         });
 
-        // Auto-focus appropriate field
-        const totpCode = document.getElementById('totp_code');
-        const username = document.getElementById('username');
-        
-        if (totpCode) {
-            totpCode.focus();
-        } else if (username) {
-            username.focus();
-        }
-
-        // Prevent multiple form submissions
-        let submitted = false;
-        document.getElementById('loginForm').addEventListener('submit', function() {
-            if (submitted) {
-                event.preventDefault();
-                return;
-            }
-            submitted = true;
-            
-            // Show loading state
-            const btn = this.querySelector('button[type="submit"]');
-            if (btn.innerHTML.includes('Verify')) {
-                btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Verifying...';
-            } else {
-                btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Authenticating...';
-            }
-            btn.disabled = true;
+        // Format TOTP input
+        document.getElementById('totp_code')?.addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
         });
     </script>
 </body>
