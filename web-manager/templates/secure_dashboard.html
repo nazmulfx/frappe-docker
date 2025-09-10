@@ -254,6 +254,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Get CSRF token from Flask session
+        const csrfToken = '{{ csrf_token }}';
+        
         function containerAction(containerName, action) {
             if (action === 'remove' && !confirm(`Are you sure you want to remove container "${containerName}"?`)) {
                 return;
@@ -263,7 +266,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
+                    'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({ action: action })
             })

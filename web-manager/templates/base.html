@@ -3,168 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Web Docker Manager{% endblock %}</title>
+    <title>{% block title %}Secure Docker Manager{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
     <style>
-        .container-status-up { color: #28a745; }
-        .container-status-down { color: #dc3545; }
-        .container-status-restarting { color: #ffc107; }
-        .sidebar { min-height: 100vh; background-color: #f8f9fa; }
-        .main-content { min-height: 100vh; }
-        .card-stat { border-left: 4px solid #007bff; }
-        .card-stat-success { border-left-color: #28a745; }
-        .card-stat-warning { border-left-color: #ffc107; }
-        .card-stat-danger { border-left-color: #dc3545; }
-        .log-output { 
-            background-color: #1e1e1e; 
-            color: #ffffff; 
-            font-family: 'Courier New', monospace; 
-            font-size: 12px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
+        {% block custom_css %}{% endblock %}
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
-                <div class="position-sticky pt-3">
-                    <h5 class="text-center mb-4">
-                        <i class="fab fa-docker text-primary"></i> Docker Manager
-                    </h5>
-                    
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
-                                <i class="fas fa-tachometer-alt"></i> Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'cleanup_page' %}active{% endif %}" href="{{ url_for('cleanup_page') }}">
-                                <i class="fas fa-broom"></i> Cleanup
-                            </a>
-                        </li>
-                    </ul>
-                    
-                    {% if projects %}
-                    <hr>
-                    <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted">
-                        <span>Projects</span>
-                    </h6>
-                    <ul class="nav flex-column">
-                        {% for project in projects %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('project_detail', project_name=project) }}">
-                                <i class="fas fa-folder"></i> {{ project }}
-                            </a>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% endif %}
-                </div>
-            </nav>
-
-            <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
-                <div class="pt-3">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                                    {{ message }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-
-                    {% block content %}{% endblock %}
-                </div>
-            </main>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="bi bi-shield-lock-fill"></i> Secure Docker Manager
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
+                    <i class="bi bi-house"></i> Dashboard
+                </a>
+                <a class="nav-link {% if request.endpoint == 'user_profile' %}active{% endif %}" href="{{ url_for('user_profile') }}">
+                    <i class="bi bi-person-circle"></i> Profile
+                </a>
+                {% if session.is_admin %}
+                <a class="nav-link {% if request.endpoint == 'user_management' %}active{% endif %}" href="{{ url_for('user_management') }}">
+                    <i class="bi bi-people"></i> Users
+                </a>
+                <a class="nav-link {% if request.endpoint == 'audit_logs' %}active{% endif %}" href="{{ url_for('audit_logs') }}">
+                    <i class="bi bi-clipboard-data"></i> Audit Logs
+                </a>
+                {% endif %}
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
         </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        {% block content %}{% endblock %}
     </div>
 
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050;">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
-    <script>
-        // Container action handler
-        function containerAction(containerName, action) {
-            if (action === 'remove' && !confirm('Are you sure you want to remove this container?')) {
-                return;
-            }
-            
-            $.ajax({
-                url: `/api/container/${containerName}/action`,
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({action: action}),
-                success: function(response) {
-                    if (response.success) {
-                        location.reload();
-                    } else {
-                        alert('Error: ' + response.message);
-                    }
-                },
-                error: function() {
-                    alert('Failed to perform action');
-                }
-            });
-        }
-
-        // Check if container is Frappe and show Frappe Manager button
-        function isFrappeContainer(imageName) {
-            return imageName && imageName.toLowerCase().includes('frappe');
-        }
-
-        // Load container logs
-        function loadLogs(containerName) {
-            $.ajax({
-                url: `/api/container/${containerName}/logs`,
-                method: 'GET',
-                success: function(response) {
-                    if (response.success) {
-                        $('#logsModal .modal-body pre').text(response.logs);
-                        $('#logsModal').modal('show');
-                    } else {
-                        alert('Error loading logs: ' + response.logs);
-                    }
-                },
-                error: function() {
-                    alert('Failed to load logs');
-                }
-            });
-        }
-
-        // Cleanup system
-        function cleanupSystem(type) {
-            if (!confirm(`Are you sure you want to cleanup ${type}? This action cannot be undone.`)) {
-                return;
-            }
-            
-            $.ajax({
-                url: '/api/cleanup',
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({type: type}),
-                success: function(response) {
-                    if (response.success) {
-                        alert('Cleanup completed successfully');
-                        location.reload();
-                    } else {
-                        alert('Cleanup failed: ' + response.message);
-                    }
-                },
-                error: function() {
-                    alert('Failed to perform cleanup');
-                }
-            });
-        }
-    </script>
-    
-    {% block scripts %}{% endblock %}
+    <!-- Custom JavaScript -->
+    {% block custom_js %}{% endblock %}
 </body>
 </html>

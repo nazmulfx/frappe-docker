@@ -193,9 +193,15 @@
             }
         });
 
-        // Format TOTP input
-        document.getElementById('totp_code')?.addEventListener('input', function(e) {
-            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        // Format TOTP input - FIXED REGEX
+        document.addEventListener('DOMContentLoaded', function() {
+            const totpField = document.getElementById('totp_code');
+            if (totpField) {
+                totpField.addEventListener('input', function(e) {
+                    // Only allow digits 0-9
+                    e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                });
+            }
         });
     </script>
 </body>
