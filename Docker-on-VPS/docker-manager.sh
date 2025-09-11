@@ -690,6 +690,9 @@ show_site_info() {
     done
 }
 
+# Global variable to store the selected site name
+SELECTED_SITE=""
+
 # Main function
 main() {
     print_header
@@ -712,6 +715,22 @@ main() {
     done
     echo ""
     
+    # Select site once at the beginning if multiple sites are available
+    if [[ ${#sites[@]} -gt 1 ]]; then
+        echo -e "${CYAN}Select a site to work with:${NC}"
+        select SELECTED_SITE in "${sites[@]}"; do
+            if [[ -n "$SELECTED_SITE" ]]; then
+                echo -e "${GREEN}✅ Selected site: $SELECTED_SITE${NC}"
+                break
+            fi
+        done
+        echo ""
+    else
+        SELECTED_SITE="${sites[0]}"
+        echo -e "${GREEN}✅ Working with site: $SELECTED_SITE${NC}"
+        echo ""
+    fi
+    
     while true; do
         show_main_menu
         
@@ -722,124 +741,34 @@ main() {
                 show_running_containers
                 ;;
             2)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    access_container "${sites[0]}" "normal"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            access_container "$site" "normal"
-                            break
-                        fi
-                    done
-                fi
+                access_container "$SELECTED_SITE" "normal"
                 ;;
             3)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    access_container "${sites[0]}" "root"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            access_container "$site" "root"
-                            break
-                        fi
-                    done
-                fi
+                access_container "$SELECTED_SITE" "root"
                 ;;
             4)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    manage_frappe_processes_menu "${sites[0]}"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            manage_frappe_processes_menu "$site"
-                            break
-                        fi
-                    done
-                fi
+                manage_frappe_processes_menu "$SELECTED_SITE"
                 ;;
             5)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    view_logs_menu "${sites[0]}"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            view_logs_menu "$site"
-                            break
-                        fi
-                    done
-                fi
+                view_logs_menu "$SELECTED_SITE"
                 ;;
             6)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    manage_containers_menu "${sites[0]}"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            manage_containers_menu "$site"
-                            break
-                        fi
-                    done
-                fi
+                manage_containers_menu "$SELECTED_SITE"
                 ;;
             7)
                 show_site_info
                 ;;
             8)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    access_specific_container_root "${sites[0]}"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            access_specific_container_root "$site"
-                            break
-                        fi
-                    done
-                fi
+                access_specific_container_root "$SELECTED_SITE"
                 ;;
             9)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    transfer_files "${sites[0]}"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            transfer_files "$site"
-                            break
-                        fi
-                    done
-                fi
+                transfer_files "$SELECTED_SITE"
                 ;;
             10)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    install_packages "${sites[0]}"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            install_packages "$site"
-                            break
-                        fi
-                    done
-                fi
+                install_packages "$SELECTED_SITE"
                 ;;
             11)
-                if [[ ${#sites[@]} -eq 1 ]]; then
-                    view_logs "${sites[0]}" "create-site"
-                else
-                    echo -e "${CYAN}Select a site:${NC}"
-                    select site in "${sites[@]}"; do
-                        if [[ -n "$site" ]]; then
-                            view_logs "$site" "create-site"
-                            break
-                        fi
-                    done
-                fi
+                view_logs "$SELECTED_SITE" "create-site"
                 ;;
             12)
                 echo -e "${GREEN}👋 Goodbye!${NC}"
