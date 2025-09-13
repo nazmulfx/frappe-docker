@@ -45,6 +45,9 @@ def inject_csrf_token():
 
 # Rate limiting storage
 login_attempts = {}
+
+# Global variable to store current working directories for each container
+container_working_dirs = {}
 blocked_ips = {}
 
 # Setup logging
@@ -876,6 +879,303 @@ def audit_logs():
     return render_template('audit_logs.html', logs=logs)
 
 # Container Management Routes
+
+# Frappe App Installation Routes
+@app.route('/app-installation')
+@require_auth
+def app_installation():
+    """Frappe App Installation UI"""
+    containers = SecureDockerManager.get_containers()
+    
+    # Group containers by project name
+    container_groups = {}
+    
+    for container in containers:
+        container_name = container.get('Names', '').lstrip('/')
+        
+        # Determine service type and project name
+        service_type = 'unknown'
+        project_name = 'standalone'
+        
+        # Extract project name (everything before the last dash)
+        if '-' in container_name:
+            parts = container_name.split('-')
+            if len(parts) >= 2:
+                # Group containers like test20_local-app, test20_local-db into "Test20 Local"
+                if '_' in parts[0]:
+                    # Handle test20_local-app style naming
+                    project_parts = parts[0].split('_')
+                    project_name = parts[0]  # Keep original for grouping
+                else:
+                    # Regular dash-separated names
+                    project_name = '-'.join(parts[:-1])
+                
+                service_type = parts[-1]  # last part is service type
+        
+        # Determine service type based on image or name
+        image_name = container.get('Image', '').lower()
+        if 'frappe' in image_name or 'erpnext' in image_name:
+            if 'app' in service_type:
+                service_type = 'App Server'
+            elif 'worker' in service_type:
+                service_type = 'Worker'
+            elif 'scheduler' in service_type:
+                service_type = 'Scheduler'
+        elif 'mariadb' in image_name or 'mysql' in image_name:
+            service_type = 'Database'
+        elif 'redis' in image_name:
+            service_type = 'Cache/Queue'
+        elif 'traefik' in image_name:
+            service_type = 'Reverse Proxy'
+        elif 'create-site' in service_type:
+            service_type = 'Site Creator'
+        
+        # Create container object for template
+        container_obj = {
+            'name': container_name,
+            'image': container.get('Image', ''),
+            'status': container.get('Status', ''),
+            'ports': container.get('Ports', ''),
+            'service_type': service_type,
+            'created': container.get('Created', ''),
+            'command': container.get('Command', '')
+        }
+        
+        # Group by project
+        if project_name not in container_groups:
+            container_groups[project_name] = []
+        container_groups[project_name].append(container_obj)
+    
+    # Create a formatted version of container_groups with nicely formatted keys
+    formatted_container_groups = {}
+    for project_name, containers in container_groups.items():
+        formatted_name = SecureDockerManager.format_project_name(project_name)
+        formatted_container_groups[formatted_name] = containers
+    
+    return render_template('app_installation.html', container_groups=formatted_container_groups)
+
+@app.route('/api/frappe/get-app', methods=['POST'])
+@require_auth
+def frappe_get_app():
+    """API endpoint for 'bench get-app' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        repo_url = data.get('repo_url')
+        branch = data.get('branch')
+        
+        if not container or not repo_url:
+            return jsonify({'success': False, 'error': 'Container and repository URL are required'}), 400
+        
+        # Validate container name
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        # Handle cd command specially
+        if command_prefix == "cd":
+            if len(command.split()) > 1:
+                target_dir = command.split()[1]
+                # Basic validation for security
+                if target_dir.startswith("/") or ".." in target_dir:
+                    return jsonify({"success": False, "error": "Directory navigation restricted for security"}), 403
+                
+                # Store the new working directory (absolute path)
+                container_working_dirs[container] = f"/home/frappe/{target_dir}"
+                return jsonify({
+                    "success": True,
+                    "output": f"Changed directory to {target_dir}",
+                    "current_dir": f"/home/frappe/{target_dir}"
+                })
+            else:
+                # cd without arguments goes to home
+                container_working_dirs[container] = "/home/frappe"
+                return jsonify({
+                    "success": True,
+                    "output": "Changed directory to /home/frappe",
+                    "current_dir": "/home/frappe"
+                })
+        
+        # Get current working directory for this container
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Build command
+        cmd = f"sudo docker exec -u frappe {container} bench get-app {repo_url}"
+        if branch:
+            cmd += f" --branch {branch}"
+        
+        # Execute command
+        result = SecureDockerManager.run_command(cmd, timeout=300)  # Longer timeout for app installation
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_get_app", username, client_ip, 
+                  f"Get app {repo_url} on container {container}", status, user_id)
+        
+        return jsonify({
+            'success': result['success'],
+            'output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_get_app: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/install-app', methods=['POST'])
+@require_auth
+def frappe_install_app():
+    """API endpoint for 'bench install-app' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        app_name = data.get('app_name')
+        site_name = data.get('site_name')
+        
+        if not container or not app_name or not site_name:
+            return jsonify({'success': False, 'error': 'Container, app name, and site name are required'}), 400
+        
+        # Validate container name and other inputs
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        # Handle cd command specially
+        if command_prefix == "cd":
+            if len(command.split()) > 1:
+                target_dir = command.split()[1]
+                # Basic validation for security
+                if target_dir.startswith("/") or ".." in target_dir:
+                    return jsonify({"success": False, "error": "Directory navigation restricted for security"}), 403
+                
+                # Store the new working directory (absolute path)
+                container_working_dirs[container] = f"/home/frappe/{target_dir}"
+                return jsonify({
+                    "success": True,
+                    "output": f"Changed directory to {target_dir}",
+                    "current_dir": f"/home/frappe/{target_dir}"
+                })
+            else:
+                # cd without arguments goes to home
+                container_working_dirs[container] = "/home/frappe"
+                return jsonify({
+                    "success": True,
+                    "output": "Changed directory to /home/frappe",
+                    "current_dir": "/home/frappe"
+                })
+        
+        # Get current working directory for this container
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Build command
+        cmd = f"sudo docker exec -u frappe {container} bench --site {site_name} install-app {app_name}"
+        
+        # Execute command
+        result = SecureDockerManager.run_command(cmd, timeout=300)  # Longer timeout for app installation
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_install_app", username, client_ip, 
+                  f"Install app {app_name} on site {site_name} in container {container}", status, user_id)
+        
+        return jsonify({
+            'success': result['success'],
+            'output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_install_app: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/execute-command', methods=['POST'])
+@require_auth
+def frappe_execute_command():
+    """API endpoint for executing arbitrary commands in a container"""
+    try:
+        data = request.json
+        container = data.get('container')
+        command = data.get('command')
+        
+        if not container or not command:
+            return jsonify({'success': False, 'error': 'Container and command are required'}), 400
+        
+        # Validate container name
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        # Security check - only allow certain commands
+        allowed_prefixes = ['bench', 'cd', 'ls', 'll', 'cat', 'head', 'tail', 'grep', 'find', 'pwd']
+        disallowed_patterns = [';', '&&', '||', '`', '$', '|', '>', '<', '*', '?', '[', ']']
+        
+        command_prefix = command.split()[0]
+        if command_prefix not in allowed_prefixes:
+            return jsonify({'success': False, 'error': f'Command not allowed. Allowed prefixes: {", ".join(allowed_prefixes)}'}), 403
+        
+        for pattern in disallowed_patterns:
+            if pattern in command:
+                return jsonify({'success': False, 'error': f'Command contains disallowed character: {pattern}'}), 403
+        
+        # Handle cd command specially
+        if command_prefix == "cd":
+            if len(command.split()) > 1:
+                target_dir = command.split()[1]
+                # Basic validation for security
+                if target_dir.startswith("/") or ".." in target_dir:
+                    return jsonify({"success": False, "error": "Directory navigation restricted for security"}), 403
+                
+                # Store the new working directory (absolute path)
+                container_working_dirs[container] = f"/home/frappe/{target_dir}"
+                return jsonify({
+                    "success": True,
+                    "output": f"Changed directory to {target_dir}",
+                    "current_dir": f"/home/frappe/{target_dir}"
+                })
+            else:
+                # cd without arguments goes to home
+                container_working_dirs[container] = "/home/frappe"
+                return jsonify({
+                    "success": True,
+                    "output": "Changed directory to /home/frappe",
+                    "current_dir": "/home/frappe"
+                })
+        
+        # Get current working directory for this container
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Build command
+        cmd = f"sudo docker exec -u frappe -w {current_dir} {container} bash -c '{command}'"
+        
+        # Execute command
+        result = SecureDockerManager.run_command(cmd, timeout=120)
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_execute_command", username, client_ip, 
+                  f"Execute command '{command}' on container {container}", status, user_id)
+        
+        return jsonify({
+            'success': result['success'],
+            'output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_execute_command: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # API Routes for AJAX functionality
 @app.route('/api/container/<container_name>/<action>', methods=['POST'])

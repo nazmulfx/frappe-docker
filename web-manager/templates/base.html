@@ -26,6 +26,9 @@
                 <a class="nav-link {% if request and request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
                     <i class="bi bi-house"></i> Dashboard
                 </a>
+                <a class="nav-link {% if request and request.endpoint == 'app_installation' %}active{% endif %}" href="{{ url_for('app_installation') }}">
+                    <i class="bi bi-box-seam"></i> App Installation
+                </a>
                 <a class="nav-link {% if request and request.endpoint == 'user_profile' %}active{% endif %}" href="{{ url_for('user_profile') }}">
                     <i class="bi bi-person-circle"></i> Profile
                 </a>
