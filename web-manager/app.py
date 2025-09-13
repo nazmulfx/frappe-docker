@@ -23,6 +23,11 @@ from config import Config
 from models import db, User, AuditLog, create_default_admin
 
 app = Flask(__name__)
+
+# Configure Flask for URL generation
+app.config['SERVER_NAME'] = 'localhost:5000'
+app.config['APPLICATION_ROOT'] = '/'
+app.config['PREFERRED_URL_SCHEME'] = 'http'
 app.config.from_object(Config)
 
 # Initialize database
@@ -30,8 +35,13 @@ db.init_app(app)
 
 # Context processor to make CSRF token available in all templates
 @app.context_processor
+@app.context_processor
 def inject_csrf_token():
-    return dict(csrf_token=session.get('csrf_token'))
+    try:
+        return dict(csrf_token=session.get('csrf_token'))
+    except RuntimeError:
+        # No request context, return empty token
+        return dict(csrf_token=None)
 
 # Rate limiting storage
 login_attempts = {}
@@ -281,6 +291,15 @@ class SecureDockerManager:
         return containers
     
     @staticmethod
+    def format_project_name(name):
+        """Format project name for display"""
+        # Replace underscores and hyphens with spaces
+        formatted = name.replace('_', ' ').replace('-', ' ')
+        # Capitalize each word
+        formatted = ' '.join(word.capitalize() for word in formatted.split())
+        return formatted
+    
+    @staticmethod
     def container_action(container_name, action):
         """Perform container action securely"""
         # Validate inputs
@@ -301,6 +320,23 @@ class SecureDockerManager:
             'success': result['success'],
             'message': result['stdout'] if result['success'] else result['stderr']
         }
+
+    
+    @staticmethod
+    def get_container_logs(container_name, tail=100):
+        """Get container logs securely"""
+        # Validate input
+        if not SecurityManager.validate_container_name(container_name):
+            return 'Invalid container name'
+        
+        # Build secure command
+        cmd = f"sudo docker logs --tail {tail} {container_name}"
+        result = SecureDockerManager.run_command(cmd)
+        
+        if result['success']:
+            return result['stdout']
+        else:
+            return f"Error getting logs: {result['stderr']}"
 
 # Routes
 @app.before_request
@@ -450,29 +486,110 @@ def logout():
     flash('Logged out successfully', 'success')
     return redirect(url_for('login'))
 
+
 @app.route('/')
 @require_auth
 def index():
-    """Secure main dashboard"""
+    """Secure main dashboard with container grouping"""
     containers = SecureDockerManager.get_containers()
     
-    # Group containers by project
-    projects = {}
-    for container in containers:
-        # Extract project name safely
-        name_parts = container['Names'].split('-')
-        if len(name_parts) > 1:
-            project = '-'.join(name_parts[:-1])
-        else:
-            project = 'standalone'
-        
-        if project not in projects:
-            projects[project] = []
-        projects[project].append(container)
+    # Group containers by project name
+    container_groups = {}
+    running_count = 0
+    stopped_count = 0
     
-    return render_template('secure_dashboard.html', 
-                         projects=projects, 
-                         containers=containers)
+    for container in containers:
+        container_name = container.get('Names', '').lstrip('/')
+        
+        # Determine service type and project name
+        service_type = 'unknown'
+        project_name = 'standalone'
+        
+        # Extract project name (everything before the last dash)
+        if '-' in container_name:
+            parts = container_name.split('-')
+            if len(parts) >= 2:
+                # Group containers like test20_local-app, test20_local-db into "Test20 Local"
+                if '_' in parts[0]:
+                    # Handle test20_local-app style naming
+                    project_parts = parts[0].split('_')
+                    project_name = parts[0]  # Keep original for grouping
+                else:
+                    # Regular dash-separated names
+                    project_name = '-'.join(parts[:-1])
+                
+                service_type = parts[-1]  # last part is service type
+        
+        # Determine service type based on image or name
+        image_name = container.get('Image', '').lower()
+        if 'frappe' in image_name or 'erpnext' in image_name:
+            if 'app' in service_type:
+                service_type = 'App Server'
+            elif 'worker' in service_type:
+                service_type = 'Worker'
+            elif 'scheduler' in service_type:
+                service_type = 'Scheduler'
+        elif 'mariadb' in image_name or 'mysql' in image_name:
+            service_type = 'Database'
+        elif 'redis' in image_name:
+            service_type = 'Cache/Queue'
+        elif 'traefik' in image_name:
+            service_type = 'Reverse Proxy'
+        elif 'create-site' in service_type:
+            service_type = 'Site Creator'
+        
+        # Count running/stopped containers
+        status = container.get('Status', '')
+        if 'Up' in status:
+            running_count += 1
+        else:
+            stopped_count += 1
+        
+        # Create container object for template
+        container_obj = {
+            'name': container_name,
+            'image': container.get('Image', ''),
+            'status': status,
+            'ports': container.get('Ports', ''),
+            'service_type': service_type,
+            'created': container.get('Created', ''),
+            'command': container.get('Command', '')
+        }
+        
+        # Group by project
+        if project_name not in container_groups:
+            container_groups[project_name] = []
+        container_groups[project_name].append(container_obj)
+    
+    # Sort containers within each group by service type priority
+    service_priority = {
+        'App Server': 1,
+        'Database': 2,
+        'Cache/Queue': 3,
+        'Reverse Proxy': 4,
+        'Worker': 5,
+        'Scheduler': 6,
+        'Site Creator': 7,
+        'unknown': 8
+    }
+    
+    # Create a formatted version of container_groups with nicely formatted keys
+    formatted_container_groups = {}
+    for project_name, containers in container_groups.items():
+        formatted_name = SecureDockerManager.format_project_name(project_name)
+        formatted_container_groups[formatted_name] = containers
+        containers.sort(key=lambda x: service_priority.get(x['service_type'], 8))
+    
+    total_containers = len(containers)
+    projects = list(formatted_container_groups.keys())
+    
+    return render_template('dashboard.html',
+                         container_groups=formatted_container_groups,
+                         containers=containers,
+                         running_count=running_count,
+                         stopped_count=stopped_count,
+                         total_containers=total_containers,
+                         projects=projects)
 
 # Profile Management Routes
 @app.route('/profile')
@@ -759,79 +876,45 @@ def audit_logs():
     return render_template('audit_logs.html', logs=logs)
 
 # Container Management Routes
-@app.route('/api/container/<container_name>/action', methods=['POST'])
+
+# API Routes for AJAX functionality
+@app.route('/api/container/<container_name>/<action>', methods=['POST'])
 @require_auth
-@require_csrf
-def container_action_api(container_name):
-    """Secure container action API"""
-    action = request.json.get('action')
-    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-    username = session.get('username', 'unknown')
-    user_id = session.get('user_id')
+def container_action_api(container_name, action):
+    """API endpoint for container actions (start, stop, restart, remove)"""
+    try:
+        result = SecureDockerManager.container_action(container_name, action)
+        
+        # Log the action using the proper log_audit function
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("container_action", username, client_ip, 
+                  f"Container {action} on {container_name}", status, user_id)
+        
+        return jsonify({
+            'success': result['success'], 
+            'message': result.get('message', ''),
+            'result': result
+        })
     
-    result = SecureDockerManager.container_action(container_name, action)
-    
-    # Log container action
-    status = "success" if result['success'] else "failed"
-    log_audit("container_action", username, client_ip, 
-              f"Container {action} on {container_name}", status, user_id)
-    
-    return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/container/<container_name>/logs')
 @require_auth
 def container_logs_api(container_name):
-    """Get container logs API"""
-    if not SecurityManager.validate_container_name(container_name):
-        return jsonify({'success': False, 'error': 'Invalid container name'})
+    """API endpoint for getting container logs"""
+    try:
+        logs = SecureDockerManager.get_container_logs(container_name, tail=100)
+        return jsonify({'success': True, 'logs': logs})
     
-    # Get container logs with limit
-    cmd = f"sudo docker logs --tail 100 {container_name}"
-    result = SecureDockerManager.run_command(cmd, timeout=30)
-    
-    if result['success']:
-        return jsonify({
-            'success': True,
-            'logs': result['stdout'],
-            'container': container_name
-        })
-    else:
-        return jsonify({
-            'success': False,
-            'error': result['stderr'],
-            'container': container_name
-        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Create database tables
     with app.app_context():
-        # db.create_all()  # Handled by setup_database.py
         create_default_admin()
-    
-    print("🔒 SECURITY FEATURES ENABLED:")
-    print("✅ Authentication required")
-    print("✅ Optional two-factor authentication (Google Authenticator)")
-    print("✅ Account lockout after 3 failed attempts (5 min)")
-    print("✅ IP whitelist protection")
-    print("✅ Rate limiting")
-    print("✅ Input sanitization")
-    print("✅ CSRF protection")
-    print("✅ Security headers")
-    print("✅ Command validation")
-    print("✅ Session management")
-    print("✅ Audit logging enabled")
-    print("✅ User management system")
-    print("✅ MySQL/MariaDB database")
-    print("✅ Profile management")
-    print("✅ Complete CRUD operations")
-    print("")
-    print("🌐 Starting SECURE Web Docker Manager...")
-    print("📍 Access: http://localhost:5000")
-    print("🔐 Login required for access")
-    print("🔧 2FA is OPTIONAL - users can enable it in their profile")
-    print("👤 Profile: /profile - Edit personal information")
-    print("👥 Users: /users - User management (admin only)")
-    print("📋 Audit: /audit-logs - Security logs (admin only)")
-    
-    # Run the application
     app.run(host='0.0.0.0', port=5000, debug=False)
