@@ -28,6 +28,11 @@ app.config.from_object(Config)
 # Initialize database
 db.init_app(app)
 
+# Context processor to make CSRF token available in all templates
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=session.get('csrf_token'))
+
 # Rate limiting storage
 login_attempts = {}
 blocked_ips = {}
@@ -108,8 +113,7 @@ class SecurityManager:
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
             box_size=10,
-            border=4,
-        )
+            border=4)
         qr.add_data(totp_uri)
         qr.make(fit=True)
         
@@ -184,6 +188,10 @@ def require_auth(f):
                 flash('Session expired. Please log in again.', 'warning')
                 return redirect(url_for('login'))
         
+        # Ensure CSRF token is available
+        if 'csrf_token' not in session:
+            session['csrf_token'] = SecurityManager.generate_csrf_token()
+        
         session['last_activity'] = time.time()
         return f(*args, **kwargs)
     return decorated_function
@@ -209,7 +217,8 @@ def require_csrf(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if request.method == 'POST':
-            token = request.form.get('csrf_token') or request.json.get('csrf_token')
+            # Check for CSRF token in headers (X-CSRFToken) or form data
+            token = request.headers.get('X-CSRFToken') or request.form.get('csrf_token') or request.json.get('csrf_token')
             if not SecurityManager.validate_csrf_token(token):
                 logger.warning(f"CSRF token validation failed for {request.endpoint}")
                 return jsonify({'error': 'Invalid CSRF token'}), 403
@@ -463,8 +472,7 @@ def index():
     
     return render_template('secure_dashboard.html', 
                          projects=projects, 
-                         containers=containers,
-                         csrf_token=session.get('csrf_token'))
+                         containers=containers)
 
 # Profile Management Routes
 @app.route('/profile')
@@ -478,7 +486,7 @@ def user_profile():
         flash('User not found', 'error')
         return redirect(url_for('index'))
     
-    return render_template('user_profile.html', user=user, csrf_token=session.get('csrf_token'))
+    return render_template('user_profile.html', user=user)
 
 @app.route('/profile/edit', methods=['GET', 'POST'])
 @require_auth
@@ -537,7 +545,7 @@ def edit_profile():
         flash('Profile updated successfully', 'success')
         return redirect(url_for('user_profile'))
     
-    return render_template('edit_profile.html', user=user, csrf_token=session.get('csrf_token'))
+    return render_template('edit_profile.html', user=user)
 
 @app.route('/api/users/<int:user_id>/toggle-2fa', methods=['POST'])
 @require_auth
@@ -590,7 +598,7 @@ def toggle_2fa(user_id):
 def user_management():
     """User management panel"""
     users = User.query.all()
-    return render_template('user_management.html', users=users, csrf_token=session.get('csrf_token'))
+    return render_template('user_management.html', users=users)
 
 @app.route('/api/users', methods=['POST'])
 @require_auth
@@ -748,7 +756,7 @@ def audit_logs():
         page=page, per_page=per_page, error_out=False
     )
     
-    return render_template('audit_logs.html', logs=logs, csrf_token=session.get('csrf_token'))
+    return render_template('audit_logs.html', logs=logs)
 
 # Container Management Routes
 @app.route('/api/container/<container_name>/action', methods=['POST'])

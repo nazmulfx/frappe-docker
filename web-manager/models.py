@@ -51,6 +51,28 @@ class User(db.Model):
         self.locked_until = None
         db.session.commit()
     
+    def generate_totp_secret(self):
+        """Generate TOTP secret for user"""
+        if not self.totp_secret:
+            self.totp_secret = pyotp.random_base32()
+        return self.totp_secret
+    
+    def get_totp_uri(self):
+        """Get TOTP URI for QR code generation"""
+        if self.totp_secret:
+            return pyotp.totp.TOTP(self.totp_secret).provisioning_uri(
+                name=self.username,
+                issuer_name="Secure Docker Manager"
+            )
+        return None
+    
+    def verify_totp(self, token):
+        """Verify TOTP token"""
+        if self.totp_secret:
+            totp = pyotp.TOTP(self.totp_secret)
+            return totp.verify(token)
+        return False
+    
     def enable_2fa(self):
         """Enable 2FA for user"""
         if not self.totp_secret:

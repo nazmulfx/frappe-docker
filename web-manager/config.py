@@ -12,7 +12,7 @@ class Config:
     }
     
     # Security Configuration
-    MAX_LOGIN_ATTEMPTS = 3
+    MAX_LOGIN_ATTEMPTS = 300
     LOCKOUT_DURATION = 300  # 5 minutes
     SESSION_TIMEOUT = 3600  # 1 hour
     ALLOWED_IPS = ['127.0.0.1', '::1']
