@@ -19,405 +19,1514 @@
     background-color: #1a1a1a;
     color: #00ff41;
     font-family: 'Courier New', monospace;
-    padding: 15px;
-    border-radius: 8px;
-    height: 400px;
-    overflow-y: auto;
-    margin-bottom: 20px;
-    border: 1px solid #333;
-    font-size: 14px;
-    line-height: 1.4;
-}
-
-.terminal-input {
-    background-color: #1a1a1a;
-    color: #00ff41;
-    font-family: 'Courier New', monospace;
-    border: none;
-    width: 100%;
-    padding: 8px;
-    outline: none;
-    font-size: 14px;
-}
-
-.terminal-input-container {
-    display: flex;
-    background-color: #1a1a1a;
-    padding: 8px;
-    border-radius: 0 0 8px 8px;
-    border: 1px solid #333;
-    border-top: none;
-}
-
-.terminal-prompt {
-    color: #00ff41;
-    font-family: 'Courier New', monospace;
-    margin-right: 8px;
-    font-weight: bold;
-}
-
-.command-history {
-    margin-top: 10px;
-    font-size: 0.9em;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.command-history-item {
-    padding: 8px 12px;
-    border-bottom: 1px solid #eee;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.command-history-item:hover {
-    background-color: #f8f9fa;
-}
-
-.nav-tabs .nav-link {
-    font-weight: 500;
-    padding: 12px 20px;
-}
-
-.container-selector {
-    margin-bottom: 25px;
-}
-
-.form-floating {
-    margin-bottom: 15px;
-}
-
-.btn-loading {
-    position: relative;
-    pointer-events: none;
-}
-
-.btn-loading::after {
-    content: "";
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    margin: auto;
-    border: 2px solid transparent;
-    border-top-color: #ffffff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.output-container {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 15px;
-    min-height: 200px;
-}
-
-.output-container pre {
-    background-color: #f8f9fa;
-    border: none;
     padding: 0;
-    margin: 0;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-.status-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 8px;
-}
-
-.status-success {
-    background-color: #28a745;
-}
-
-.status-error {
-    background-color: #dc3545;
-}
-
-.status-running {
-    background-color: #ffc107;
-    animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-.quick-actions {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
-}
-
-.quick-action-btn {
-    background: rgba(255,255,255,0.2);
-    border: 1px solid rgba(255,255,255,0.3);
-    color: white;
-    margin: 5px;
-    transition: all 0.3s ease;
-}
-
-.quick-action-btn:hover {
-    background: rgba(255,255,255,0.3);
-    border-color: rgba(255,255,255,0.5);
-    color: white;
-    transform: translateY(-2px);
-}
-
-.progress-container {
-    margin-top: 15px;
-    display: none;
-}
-
-.step-indicator {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.step {
-    flex: 1;
-    text-align: center;
-    padding: 10px;
     border-radius: 8px;
-    margin: 0 5px;
-    background-color: #f8f9fa;
-    border: 2px solid #dee2e6;
-    transition: all 0.3s ease;
+    height: 600px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    border: 1px solid #333;
 }
 
-.step.active {
-    background-color: #007bff;
-    color: white;
-    border-color: #007bff;
+/* XTerm.js styles */
+.xterm {
+    font-feature-settings: "liga" 0;
+    position: relative;
+    user-select: none;
+    -ms-user-select: none;
+    -webkit-user-select: none;
 }
 
-.step.completed {
-    background-color: #28a745;
-    color: white;
-    border-color: #28a745;
+/* Include xterm.js CSS */
+@import url('https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css');
+{% endblock %}
+
+{% block custom_head %}
+<!-- XTerm.js dependencies -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js">
+// Temporary SSH Access Management
+let currentSSHSession = null;
+
+// Initialize SSH event listeners
+function initializeSSHEventListeners() {
+    const tempSSHForm = document.getElementById('temp-ssh-form');
+    const checkStatusBtn = document.getElementById('check-ssh-status');
+    const downloadKeyBtn = document.getElementById('download-private-key');
+    const copyCommandBtn = document.getElementById('copy-ssh-command');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (tempSSHForm) {
+        tempSSHForm.addEventListener('submit', handleTempSSHSetup);
+    }
+    
+    if (checkStatusBtn) {
+        checkStatusBtn.addEventListener('click', checkSSHStatus);
+    }
+    
+    if (downloadKeyBtn) {
+        downloadKeyBtn.addEventListener('click', downloadPrivateKey);
+    }
+    
+    if (copyCommandBtn) {
+        copyCommandBtn.addEventListener('click', copySSHCommand);
+    }
+    
+    if (revokeBtn) {
+        revokeBtn.addEventListener('click', revokeSSHAccess);
+    }
+    
+    if (extendBtn) {
+        extendBtn.addEventListener('click', extendSSHAccess);
+    }
+    
+    // Load existing sessions on page load
+    loadSSHSessions();
 }
+
+// Handle temporary  SSH setup
+async function handleTempSSHSetup(e) {
+    e.preventDefault();
+    
+    const container = document.getElementById('temp-container-select').value;
+    const username = document.getElementById('temp-username').value;
+    const duration = document.getElementById('temp-duration').value;
+    const port = document.getElementById('temp-port').value;
+    const description = document.getElementById('temp-description').value;
+    
+    if (!container || !username) {
+        showToast('Please select a container and enter username', 'error');
+        return;
+    }
+    
+    updateAccessInfo('Setting up SSH access...', 'warning');
+    
+    try {
+        const response = await fetch('/api/temp-ssh/setup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                container: container,
+                username: username,
+                duration: duration,
+                port: port,
+                description: description
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            showSSHConnectionDetails(result);
+            updateAccessInfo('SSH access configured successfully!', 'success');
+            showToast('Temporary SSH access created', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            updateAccessInfo(`SSH setup failed: ${result.error}`, 'danger');
+            showToast(`SSH setup failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`SSH setup error: ${error.message}`, 'danger');
+        showToast(`SSH setup error: ${error.message}`, 'error');
+    }
+}
+
+// Show SSH connection details
+function showSSHConnectionDetails(session, connectionDetails) {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const hostInfo = document.getElementById('ssh-host-info');
+    const portInfo = document.getElementById('ssh-port-info');
+    const usernameInfo = document.getElementById('ssh-username-info');
+    const keyInfo = document.getElementById('ssh-key-info');
+    
+    // Use connectionDetails if available, otherwise fall back to session
+    const host = connectionDetails?.host || session?.host || '192.168.68.101';
+    const port = connectionDetails?.port || session?.port || '2210';
+    const username = connectionDetails?.username || session?.username || 'frappe';
+    const keyName = connectionDetails?.key_name || session?.key_name || 'temp_ssh_key';
+    
+    if (detailsDiv) detailsDiv.style.display = 'block';
+    if (hostInfo) hostInfo.textContent = `Host: ${host}`;
+    if (portInfo) portInfo.textContent = `Port: ${port}`;
+    if (usernameInfo) usernameInfo.textContent = `Username: ${username}`;
+    if (keyInfo) keyInfo.textContent = `Key: ${keyName}`;
+    
+    // Store current session for download
+    window.currentSSHSession = session;
+    
+    // Show action buttons
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    if (revokeBtn) revokeBtn.style.display = 'inline-block';
+    if (extendBtn) extendBtn.style.display = 'inline-block';
+}
+
+// Download private key
+async function downloadPrivateKey() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/download-key/${currentSSHSession.session_id}`);
+        const blob = await response.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSSHSession.key_name}.pem`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Private key downloaded', 'success');
+    } catch (error) {
+        showToast(`Download failed: ${error.message}`, 'error');
+    }
+}
+
+// Copy SSH command to clipboard
+async function copySSHCommand() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const sshCommand = `ssh -i ${currentSSHSession.key_name}.pem -p ${currentSSHSession.port} ${currentSSHSession.username}@${currentSSHSession.host}`;
+    
+    try {
+        await navigator.clipboard.writeText(sshCommand);
+        showToast('SSH command copied to clipboard', 'success');
+    } catch (error) {
+        showToast(`Copy failed: ${error.message}`, 'error');
+    }
+}
+
+// Check SSH status
+async function checkSSHStatus() {
+    const container = document.getElementById('temp-container-select').value;
+    
+    if (!container) {
+        showToast('Please select a container', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/status/${container}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            updateAccessInfo(`SSH Status: ${result.status}`, 'info');
+            showToast(`SSH Status: ${result.status}`, 'info');
+        } else {
+            updateAccessInfo(`SSH Status Check Failed: ${result.error}`, 'danger');
+            showToast(`Status check failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`Status check error: ${error.message}`, 'danger');
+        showToast(`Status check error: ${error.message}`, 'error');
+    }
+}
+
+// Revoke SSH access
+async function revokeSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to revoke SSH access?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = null;
+            hideSSHConnectionDetails();
+            updateAccessInfo('SSH access revoked', 'info');
+            showToast('SSH access revoked', 'info');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Extend SSH access
+async function extendSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const newDuration = prompt('Enter new duration in hours:', '24');
+    if (!newDuration || isNaN(newDuration)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/extend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id,
+                duration: newDuration
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            updateAccessInfo('SSH access extended', 'success');
+            showToast('SSH access extended', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Extend failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Extend error: ${error.message}`, 'error');
+    }
+}
+
+// Load SSH sessions
+async function loadSSHSessions() {
+    try {
+        const response = await fetch('/api/temp-ssh/sessions');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateSSHSessionsTable(result.sessions);
+        }
+    } catch (error) {
+        console.error('Error loading SSH sessions:', error);
+    }
+}
+
+// Update SSH sessions table
+function updateSSHSessionsTable(sessions) {
+    const tbody = document.getElementById('ssh-sessions-tbody');
+    if (!tbody) return;
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active SSH sessions</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = sessions.map(session => `
+        <tr>
+            <td>${session.container}</td>
+            <td>${session.username}</td>
+            <td>${session.port}</td>
+            <td>${new Date(session.created_at).toLocaleString()}</td>
+            <td>${new Date(session.expires_at).toLocaleString()}</td>
+            <td><span class="badge bg-${session.status === 'active' ? 'success' : 'danger'}">${session.status}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('${session.session_id}')">
+                    <i class="bi bi-x-circle"></i> Revoke
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Revoke specific session
+async function revokeSession(sessionId) {
+    if (!confirm('Are you sure you want to revoke this SSH session?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('SSH session revoked', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Update access info
+function updateAccessInfo(message, type) {
+    const infoDiv = document.getElementById('access-info');
+    if (infoDiv) {
+        infoDiv.className = `alert alert-${type}`;
+        infoDiv.innerHTML = `<i class="bi bi-info-circle"></i> ${message}`;
+    }
+}
+
+// Hide SSH connection details
+function hideSSHConnectionDetails() {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (detailsDiv) detailsDiv.style.display = 'none';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    if (extendBtn) extendBtn.style.display = 'none';
+}
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.min.js">
+// Temporary SSH Access Management
+let currentSSHSession = null;
+
+// Initialize SSH event listeners
+function initializeSSHEventListeners() {
+    const tempSSHForm = document.getElementById('temp-ssh-form');
+    const checkStatusBtn = document.getElementById('check-ssh-status');
+    const downloadKeyBtn = document.getElementById('download-private-key');
+    const copyCommandBtn = document.getElementById('copy-ssh-command');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (tempSSHForm) {
+        tempSSHForm.addEventListener('submit', handleTempSSHSetup);
+    }
+    
+    if (checkStatusBtn) {
+        checkStatusBtn.addEventListener('click', checkSSHStatus);
+    }
+    
+    if (downloadKeyBtn) {
+        downloadKeyBtn.addEventListener('click', downloadPrivateKey);
+    }
+    
+    if (copyCommandBtn) {
+        copyCommandBtn.addEventListener('click', copySSHCommand);
+    }
+    
+    if (revokeBtn) {
+        revokeBtn.addEventListener('click', revokeSSHAccess);
+    }
+    
+    if (extendBtn) {
+        extendBtn.addEventListener('click', extendSSHAccess);
+    }
+    
+    // Load existing sessions on page load
+    loadSSHSessions();
+}
+
+// Handle temporary SSH setup
+async function handleTempSSHSetup(e) {
+    e.preventDefault();
+    
+    const container = document.getElementById('temp-container-select').value;
+    const username = document.getElementById('temp-username').value;
+    const duration = document.getElementById('temp-duration').value;
+    const port = document.getElementById('temp-port').value;
+    const description = document.getElementById('temp-description').value;
+    
+    if (!container || !username) {
+        showToast('Please select a container and enter username', 'error');
+        return;
+    }
+    
+    updateAccessInfo('Setting up SSH access...', 'warning');
+    
+    try {
+        const response = await fetch('/api/temp-ssh/setup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                container: container,
+                username: username,
+                duration: duration,
+                port: port,
+                description: description
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            showSSHConnectionDetails(result);
+            updateAccessInfo('SSH access configured successfully!', 'success');
+            showToast('Temporary SSH access created', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            updateAccessInfo(`SSH setup failed: ${result.error}`, 'danger');
+            showToast(`SSH setup failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`SSH setup error: ${error.message}`, 'danger');
+        showToast(`SSH setup error: ${error.message}`, 'error');
+    }
+}
+
+// Show SSH connection details
+function showSSHConnectionDetails(session, connectionDetails) {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const hostInfo = document.getElementById('ssh-host-info');
+    const portInfo = document.getElementById('ssh-port-info');
+    const usernameInfo = document.getElementById('ssh-username-info');
+    const keyInfo = document.getElementById('ssh-key-info');
+    
+    // Use connectionDetails if available, otherwise fall back to session
+    const host = connectionDetails?.host || session?.host || '192.168.68.101';
+    const port = connectionDetails?.port || session?.port || '2210';
+    const username = connectionDetails?.username || session?.username || 'frappe';
+    const keyName = connectionDetails?.key_name || session?.key_name || 'temp_ssh_key';
+    
+    if (detailsDiv) detailsDiv.style.display = 'block';
+    if (hostInfo) hostInfo.textContent = `Host: ${host}`;
+    if (portInfo) portInfo.textContent = `Port: ${port}`;
+    if (usernameInfo) usernameInfo.textContent = `Username: ${username}`;
+    if (keyInfo) keyInfo.textContent = `Key: ${keyName}`;
+    
+    // Store current session for download
+    window.currentSSHSession = session;
+    
+    // Show action buttons
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    if (revokeBtn) revokeBtn.style.display = 'inline-block';
+    if (extendBtn) extendBtn.style.display = 'inline-block';
+}
+
+// Download private key
+async function downloadPrivateKey() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/download-key/${currentSSHSession.session_id}`);
+        const blob = await response.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSSHSession.key_name}.pem`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Private key downloaded', 'success');
+    } catch (error) {
+        showToast(`Download failed: ${error.message}`, 'error');
+    }
+}
+
+// Copy SSH command to clipboard
+async function copySSHCommand() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const sshCommand = `ssh -i ${currentSSHSession.key_name}.pem -p ${currentSSHSession.port} ${currentSSHSession.username}@${currentSSHSession.host}`;
+    
+    try {
+        await navigator.clipboard.writeText(sshCommand);
+        showToast('SSH command copied to clipboard', 'success');
+    } catch (error) {
+        showToast(`Copy failed: ${error.message}`, 'error');
+    }
+}
+
+// Check SSH status
+async function checkSSHStatus() {
+    const container = document.getElementById('temp-container-select').value;
+    
+    if (!container) {
+        showToast('Please select a container', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/status/${container}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            updateAccessInfo(`SSH Status: ${result.status}`, 'info');
+            showToast(`SSH Status: ${result.status}`, 'info');
+        } else {
+            updateAccessInfo(`SSH Status Check Failed: ${result.error}`, 'danger');
+            showToast(`Status check failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`Status check error: ${error.message}`, 'danger');
+        showToast(`Status check error: ${error.message}`, 'error');
+    }
+}
+
+// Revoke SSH access
+async function revokeSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to revoke SSH access?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = null;
+            hideSSHConnectionDetails();
+            updateAccessInfo('SSH access revoked', 'info');
+            showToast('SSH access revoked', 'info');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Extend SSH access
+async function extendSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const newDuration = prompt('Enter new duration in hours:', '24');
+    if (!newDuration || isNaN(newDuration)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/extend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id,
+                duration: newDuration
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            updateAccessInfo('SSH access extended', 'success');
+            showToast('SSH access extended', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Extend failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Extend error: ${error.message}`, 'error');
+    }
+}
+
+// Load SSH sessions
+async function loadSSHSessions() {
+    try {
+        const response = await fetch('/api/temp-ssh/sessions');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateSSHSessionsTable(result.sessions);
+        }
+    } catch (error) {
+        console.error('Error loading SSH sessions:', error);
+    }
+}
+
+// Update SSH sessions table
+function updateSSHSessionsTable(sessions) {
+    const tbody = document.getElementById('ssh-sessions-tbody');
+    if (!tbody) return;
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active SSH sessions</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = sessions.map(session => `
+        <tr>
+            <td>${session.container}</td>
+            <td>${session.username}</td>
+            <td>${session.port}</td>
+            <td>${new Date(session.created_at).toLocaleString()}</td>
+            <td>${new Date(session.expires_at).toLocaleString()}</td>
+            <td><span class="badge bg-${session.status === 'active' ? 'success' : 'danger'}">${session.status}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('${session.session_id}')">
+                    <i class="bi bi-x-circle"></i> Revoke
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Revoke specific session
+async function revokeSession(sessionId) {
+    if (!confirm('Are you sure you want to revoke this SSH session?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('SSH session revoked', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Update access info
+function updateAccessInfo(message, type) {
+    const infoDiv = document.getElementById('access-info');
+    if (infoDiv) {
+        infoDiv.className = `alert alert-${type}`;
+        infoDiv.innerHTML = `<i class="bi bi-info-circle"></i> ${message}`;
+    }
+}
+
+// Hide SSH connection details
+function hideSSHConnectionDetails() {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (detailsDiv) detailsDiv.style.display = 'none';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    if (extendBtn) extendBtn.style.display = 'none';
+}
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.8.0/lib/xterm-addon-web-links.min.js">
+// Temporary SSH Access Management
+let currentSSHSession = null;
+
+// Initialize SSH event listeners
+function initializeSSHEventListeners() {
+    const tempSSHForm = document.getElementById('temp-ssh-form');
+    const checkStatusBtn = document.getElementById('check-ssh-status');
+    const downloadKeyBtn = document.getElementById('download-private-key');
+    const copyCommandBtn = document.getElementById('copy-ssh-command');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (tempSSHForm) {
+        tempSSHForm.addEventListener('submit', handleTempSSHSetup);
+    }
+    
+    if (checkStatusBtn) {
+        checkStatusBtn.addEventListener('click', checkSSHStatus);
+    }
+    
+    if (downloadKeyBtn) {
+        downloadKeyBtn.addEventListener('click', downloadPrivateKey);
+    }
+    
+    if (copyCommandBtn) {
+        copyCommandBtn.addEventListener('click', copySSHCommand);
+    }
+    
+    if (revokeBtn) {
+        revokeBtn.addEventListener('click', revokeSSHAccess);
+    }
+    
+    if (extendBtn) {
+        extendBtn.addEventListener('click', extendSSHAccess);
+    }
+    
+    // Load existing sessions on page load
+    loadSSHSessions();
+}
+
+// Handle temporary SSH setup
+async function handleTempSSHSetup(e) {
+    e.preventDefault();
+    
+    const container = document.getElementById('temp-container-select').value;
+    const username = document.getElementById('temp-username').value;
+    const duration = document.getElementById('temp-duration').value;
+    const port = document.getElementById('temp-port').value;
+    const description = document.getElementById('temp-description').value;
+    
+    if (!container || !username) {
+        showToast('Please select a container and enter username', 'error');
+        return;
+    }
+    
+    updateAccessInfo('Setting up SSH access...', 'warning');
+    
+    try {
+        const response = await fetch('/api/temp-ssh/setup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                container: container,
+                username: username,
+                duration: duration,
+                port: port,
+                description: description
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            showSSHConnectionDetails(result);
+            updateAccessInfo('SSH access configured successfully!', 'success');
+            showToast('Temporary SSH access created', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            updateAccessInfo(`SSH setup failed: ${result.error}`, 'danger');
+            showToast(`SSH setup failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`SSH setup error: ${error.message}`, 'danger');
+        showToast(`SSH setup error: ${error.message}`, 'error');
+    }
+}
+
+// Show SSH connection details
+function showSSHConnectionDetails(session, connectionDetails) {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const hostInfo = document.getElementById('ssh-host-info');
+    const portInfo = document.getElementById('ssh-port-info');
+    const usernameInfo = document.getElementById('ssh-username-info');
+    const keyInfo = document.getElementById('ssh-key-info');
+    
+    // Use connectionDetails if available, otherwise fall back to session
+    const host = connectionDetails?.host || session?.host || '192.168.68.101';
+    const port = connectionDetails?.port || session?.port || '2210';
+    const username = connectionDetails?.username || session?.username || 'frappe';
+    const keyName = connectionDetails?.key_name || session?.key_name || 'temp_ssh_key';
+    
+    if (detailsDiv) detailsDiv.style.display = 'block';
+    if (hostInfo) hostInfo.textContent = `Host: ${host}`;
+    if (portInfo) portInfo.textContent = `Port: ${port}`;
+    if (usernameInfo) usernameInfo.textContent = `Username: ${username}`;
+    if (keyInfo) keyInfo.textContent = `Key: ${keyName}`;
+    
+    // Store current session for download
+    window.currentSSHSession = session;
+    
+    // Show action buttons
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    if (revokeBtn) revokeBtn.style.display = 'inline-block';
+    if (extendBtn) extendBtn.style.display = 'inline-block';
+}
+
+// Download private key
+async function downloadPrivateKey() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/download-key/${currentSSHSession.session_id}`);
+        const blob = await response.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSSHSession.key_name}.pem`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Private key downloaded', 'success');
+    } catch (error) {
+        showToast(`Download failed: ${error.message}`, 'error');
+    }
+}
+
+// Copy SSH command to clipboard
+async function copySSHCommand() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const sshCommand = `ssh -i ${currentSSHSession.key_name}.pem -p ${currentSSHSession.port} ${currentSSHSession.username}@${currentSSHSession.host}`;
+    
+    try {
+        await navigator.clipboard.writeText(sshCommand);
+        showToast('SSH command copied to clipboard', 'success');
+    } catch (error) {
+        showToast(`Copy failed: ${error.message}`, 'error');
+    }
+}
+
+// Check SSH status
+async function checkSSHStatus() {
+    const container = document.getElementById('temp-container-select').value;
+    
+    if (!container) {
+        showToast('Please select a container', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/status/${container}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            updateAccessInfo(`SSH Status: ${result.status}`, 'info');
+            showToast(`SSH Status: ${result.status}`, 'info');
+        } else {
+            updateAccessInfo(`SSH Status Check Failed: ${result.error}`, 'danger');
+            showToast(`Status check failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`Status check error: ${error.message}`, 'danger');
+        showToast(`Status check error: ${error.message}`, 'error');
+    }
+}
+
+// Revoke SSH access
+async function revokeSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to revoke SSH access?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = null;
+            hideSSHConnectionDetails();
+            updateAccessInfo('SSH access revoked', 'info');
+            showToast('SSH access revoked', 'info');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Extend SSH access
+async function extendSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const newDuration = prompt('Enter new duration in hours:', '24');
+    if (!newDuration || isNaN(newDuration)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/extend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id,
+                duration: newDuration
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            updateAccessInfo('SSH access extended', 'success');
+            showToast('SSH access extended', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Extend failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Extend error: ${error.message}`, 'error');
+    }
+}
+
+// Load SSH sessions
+async function loadSSHSessions() {
+    try {
+        const response = await fetch('/api/temp-ssh/sessions');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateSSHSessionsTable(result.sessions);
+        }
+    } catch (error) {
+        console.error('Error loading SSH sessions:', error);
+    }
+}
+
+// Update SSH sessions table
+function updateSSHSessionsTable(sessions) {
+    const tbody = document.getElementById('ssh-sessions-tbody');
+    if (!tbody) return;
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active SSH sessions</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = sessions.map(session => `
+        <tr>
+            <td>${session.container}</td>
+            <td>${session.username}</td>
+            <td>${session.port}</td>
+            <td>${new Date(session.created_at).toLocaleString()}</td>
+            <td>${new Date(session.expires_at).toLocaleString()}</td>
+            <td><span class="badge bg-${session.status === 'active' ? 'success' : 'danger'}">${session.status}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('${session.session_id}')">
+                    <i class="bi bi-x-circle"></i> Revoke
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Revoke specific session
+async function revokeSession(sessionId) {
+    if (!confirm('Are you sure you want to revoke this SSH session?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('SSH session revoked', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Update access info
+function updateAccessInfo(message, type) {
+    const infoDiv = document.getElementById('access-info');
+    if (infoDiv) {
+        infoDiv.className = `alert alert-${type}`;
+        infoDiv.innerHTML = `<i class="bi bi-info-circle"></i> ${message}`;
+    }
+}
+
+// Hide SSH connection details
+function hideSSHConnectionDetails() {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (detailsDiv) detailsDiv.style.display = 'none';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    if (extendBtn) extendBtn.style.display = 'none';
+}
+
+</script>
+<!-- Include XTermWS script -->
+<script src="{{ url_for('static', filename='js/xterm-ws.js') }}">
+// Temporary SSH Access Management
+let currentSSHSession = null;
+
+// Initialize SSH event listeners
+function initializeSSHEventListeners() {
+    const tempSSHForm = document.getElementById('temp-ssh-form');
+    const checkStatusBtn = document.getElementById('check-ssh-status');
+    const downloadKeyBtn = document.getElementById('download-private-key');
+    const copyCommandBtn = document.getElementById('copy-ssh-command');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (tempSSHForm) {
+        tempSSHForm.addEventListener('submit', handleTempSSHSetup);
+    }
+    
+    if (checkStatusBtn) {
+        checkStatusBtn.addEventListener('click', checkSSHStatus);
+    }
+    
+    if (downloadKeyBtn) {
+        downloadKeyBtn.addEventListener('click', downloadPrivateKey);
+    }
+    
+    if (copyCommandBtn) {
+        copyCommandBtn.addEventListener('click', copySSHCommand);
+    }
+    
+    if (revokeBtn) {
+        revokeBtn.addEventListener('click', revokeSSHAccess);
+    }
+    
+    if (extendBtn) {
+        extendBtn.addEventListener('click', extendSSHAccess);
+    }
+    
+    // Load existing sessions on page load
+    loadSSHSessions();
+}
+
+// Handle temporary SSH setup
+async function handleTempSSHSetup(e) {
+    e.preventDefault();
+    
+    const container = document.getElementById('temp-container-select').value;
+    const username = document.getElementById('temp-username').value;
+    const duration = document.getElementById('temp-duration').value;
+    const port = document.getElementById('temp-port').value;
+    const description = document.getElementById('temp-description').value;
+    
+    if (!container || !username) {
+        showToast('Please select a container and enter username', 'error');
+        return;
+    }
+    
+    updateAccessInfo('Setting up SSH access...', 'warning');
+    
+    try {
+        const response = await fetch('/api/temp-ssh/setup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                container: container,
+                username: username,
+                duration: duration,
+                port: port,
+                description: description
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            showSSHConnectionDetails(result);
+            updateAccessInfo('SSH access configured successfully!', 'success');
+            showToast('Temporary SSH access created', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            updateAccessInfo(`SSH setup failed: ${result.error}`, 'danger');
+            showToast(`SSH setup failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`SSH setup error: ${error.message}`, 'danger');
+        showToast(`SSH setup error: ${error.message}`, 'error');
+    }
+}
+
+// Show SSH connection details
+function showSSHConnectionDetails(session, connectionDetails) {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const hostInfo = document.getElementById('ssh-host-info');
+    const portInfo = document.getElementById('ssh-port-info');
+    const usernameInfo = document.getElementById('ssh-username-info');
+    const keyInfo = document.getElementById('ssh-key-info');
+    
+    // Use connectionDetails if available, otherwise fall back to session
+    const host = connectionDetails?.host || session?.host || '192.168.68.101';
+    const port = connectionDetails?.port || session?.port || '2210';
+    const username = connectionDetails?.username || session?.username || 'frappe';
+    const keyName = connectionDetails?.key_name || session?.key_name || 'temp_ssh_key';
+    
+    if (detailsDiv) detailsDiv.style.display = 'block';
+    if (hostInfo) hostInfo.textContent = `Host: ${host}`;
+    if (portInfo) portInfo.textContent = `Port: ${port}`;
+    if (usernameInfo) usernameInfo.textContent = `Username: ${username}`;
+    if (keyInfo) keyInfo.textContent = `Key: ${keyName}`;
+    
+    // Store current session for download
+    window.currentSSHSession = session;
+    
+    // Show action buttons
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    if (revokeBtn) revokeBtn.style.display = 'inline-block';
+    if (extendBtn) extendBtn.style.display = 'inline-block';
+}
+
+// Download private key
+async function downloadPrivateKey() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/download-key/${currentSSHSession.session_id}`);
+        const blob = await response.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSSHSession.key_name}.pem`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Private key downloaded', 'success');
+    } catch (error) {
+        showToast(`Download failed: ${error.message}`, 'error');
+    }
+}
+
+// Copy SSH command to clipboard
+async function copySSHCommand() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const sshCommand = `ssh -i ${currentSSHSession.key_name}.pem -p ${currentSSHSession.port} ${currentSSHSession.username}@${currentSSHSession.host}`;
+    
+    try {
+        await navigator.clipboard.writeText(sshCommand);
+        showToast('SSH command copied to clipboard', 'success');
+    } catch (error) {
+        showToast(`Copy failed: ${error.message}`, 'error');
+    }
+}
+
+// Check SSH status
+async function checkSSHStatus() {
+    const container = document.getElementById('temp-container-select').value;
+    
+    if (!container) {
+        showToast('Please select a container', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/status/${container}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            updateAccessInfo(`SSH Status: ${result.status}`, 'info');
+            showToast(`SSH Status: ${result.status}`, 'info');
+        } else {
+            updateAccessInfo(`SSH Status Check Failed: ${result.error}`, 'danger');
+            showToast(`Status check failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`Status check error: ${error.message}`, 'danger');
+        showToast(`Status check error: ${error.message}`, 'error');
+    }
+}
+
+// Revoke SSH access
+async function revokeSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to revoke SSH access?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = null;
+            hideSSHConnectionDetails();
+            updateAccessInfo('SSH access revoked', 'info');
+            showToast('SSH access revoked', 'info');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Extend SSH access
+async function extendSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const newDuration = prompt('Enter new duration in hours:', '24');
+    if (!newDuration || isNaN(newDuration)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/extend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id,
+                duration: newDuration
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            updateAccessInfo('SSH access extended', 'success');
+            showToast('SSH access extended', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Extend failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Extend error: ${error.message}`, 'error');
+    }
+}
+
+// Load SSH sessions
+async function loadSSHSessions() {
+    try {
+        const response = await fetch('/api/temp-ssh/sessions');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateSSHSessionsTable(result.sessions);
+        }
+    } catch (error) {
+        console.error('Error loading SSH sessions:', error);
+    }
+}
+
+// Update SSH sessions table
+function updateSSHSessionsTable(sessions) {
+    const tbody = document.getElementById('ssh-sessions-tbody');
+    if (!tbody) return;
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active SSH sessions</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = sessions.map(session => `
+        <tr>
+            <td>${session.container}</td>
+            <td>${session.username}</td>
+            <td>${session.port}</td>
+            <td>${new Date(session.created_at).toLocaleString()}</td>
+            <td>${new Date(session.expires_at).toLocaleString()}</td>
+            <td><span class="badge bg-${session.status === 'active' ? 'success' : 'danger'}">${session.status}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('${session.session_id}')">
+                    <i class="bi bi-x-circle"></i> Revoke
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Revoke specific session
+async function revokeSession(sessionId) {
+    if (!confirm('Are you sure you want to revoke this SSH session?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('SSH session revoked', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Update access info
+function updateAccessInfo(message, type) {
+    const infoDiv = document.getElementById('access-info');
+    if (infoDiv) {
+        infoDiv.className = `alert alert-${type}`;
+        infoDiv.innerHTML = `<i class="bi bi-info-circle"></i> ${message}`;
+    }
+}
+
+// Hide SSH connection details
+function hideSSHConnectionDetails() {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (detailsDiv) detailsDiv.style.display = 'none';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    if (extendBtn) extendBtn.style.display = 'none';
+}
+
+</script>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2><i class="bi bi-box-seam"></i> Frappe App Installation</h2>
-                    <p class="text-muted mb-0">Install and manage custom apps for your Frappe/ERPNext instances</p>
-                </div>
-                <div class="text-end">
-                    <span class="badge bg-success fs-6">Ready</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Quick Actions Section -->
-    <div class="quick-actions">
-        <h5 class="mb-3"><i class="bi bi-lightning"></i> Quick Actions</h5>
-        <div class="row">
-            <div class="col-md-3">
-                <button class="btn quick-action-btn w-100" onclick="quickInstall('erpnext')">
-                    <i class="bi bi-building"></i> Install ERPNext
-                </button>
-            </div>
-            <div class="col-md-3">
-                <button class="btn quick-action-btn w-100" onclick="quickInstall('frappe')">
-                    <i class="bi bi-gear"></i> Install Frappe
-                </button>
-            </div>
-            <div class="col-md-3">
-                <button class="btn quick-action-btn w-100" onclick="quickInstall('hrms')">
-                    <i class="bi bi-people"></i> Install HRMS
-                </button>
-            </div>
-            <div class="col-md-3">
-                <button class="btn quick-action-btn w-100" onclick="quickInstall('education')">
-                    <i class="bi bi-mortarboard"></i> Install Education
-                </button>
-            </div>
-        </div>
-    </div>
+<div class="container-fluid mt-4">
+    <h1 class="h3 mb-4">Frappe App Installation</h1>
 
     <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                    <ul class="nav nav-tabs card-header-tabs" id="appInstallTabs" role="tablist">
+        <div class="col-md-12">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-tools me-2"></i> Installation Tools
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs" id="installTabs" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="ui-tab" data-bs-toggle="tab" data-bs-target="#ui-panel" type="button" role="tab">
+                            <button class="nav-link active" id="ui-panel-tab" data-bs-toggle="tab" data-bs-target="#ui-panel" type="button" role="tab" aria-controls="ui-panel" aria-selected="true">
                                 <i class="bi bi-window"></i> Guided Installation
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="console-tab" data-bs-toggle="tab" data-bs-target="#console-panel" type="button" role="tab">
+                            <button class="nav-link" id="console-panel-tab" data-bs-toggle="tab" data-bs-target="#console-panel" type="button" role="tab" aria-controls="console-panel" aria-selected="false">
                                 <i class="bi bi-terminal"></i> Terminal Access
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="ssh-panel-tab" data-bs-toggle="tab" data-bs-target="#ssh-panel" type="button" role="tab" aria-controls="ssh-panel" aria-selected="false">
+                                <i class="bi bi-shield-lock"></i> SSH Access
+                            </button>
+                        </li>
                     </ul>
-                </div>
-                <div class="card-body">
-                    <div class="tab-content" id="appInstallTabContent">
-                        <!-- Guided Installation -->
+                    
+                    <div class="tab-content mt-3" id="installTabsContent">
+                        <!-- UI Panel Tab -->
                         <div class="tab-pane fade show active" id="ui-panel" role="tabpanel">
-                            <!-- Step Indicator -->
-                            <div class="step-indicator">
-                                <div class="step active" id="step-1">
-                                    <i class="bi bi-server"></i><br>
-                                    <small>Select Container</small>
-                                </div>
-                                <div class="step" id="step-2">
-                                    <i class="bi bi-cloud-download"></i><br>
-                                    <small>Get App</small>
-                                </div>
-                                <div class="step" id="step-3">
-                                    <i class="bi bi-box-seam"></i><br>
-                                    <small>Install App</small>
-                                </div>
-                                <div class="step" id="step-4">
-                                    <i class="bi bi-check-circle"></i><br>
-                                    <small>Complete</small>
-                                </div>
+                            <!-- UI Panel Content -->
+                            <!-- ... existing UI Panel content ... -->
                             </div>
 
-                            <!-- Container Selection -->
-                            <div class="container-selector">
-                                <label for="app-container-select" class="form-label fw-bold">
-                                    <i class="bi bi-server"></i> Select App Container
-                                </label>
-                                <select class="form-select form-select-lg" id="app-container-select">
-                                    <option value="">-- Choose a container --</option>
-                                    {% for project_name, project_containers in container_groups.items() %}
-                                        <optgroup label="{{ project_name }}">
-                                            {% for container in project_containers %}
-                                                {% if container.service_type == 'App Server' %}
-                                                    <option value="{{ container.name }}" 
-                                                            data-status="{{ container.status }}"
-                                                            data-image="{{ container.image }}">
-                                                        {{ container.name }} 
-                                                        <span class="text-muted">({{ container.status }})</span>
-                                                    </option>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </optgroup>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text">
-                                    <i class="bi bi-info-circle"></i> Select the Frappe app container where you want to install the app
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <!-- Get App Form -->
-                                <div class="col-md-6">
-                                    <div class="card app-installation-card h-100">
-                                        <div class="card-header bg-primary text-white">
-                                            <h5 class="card-title mb-0">
-                                                <i class="bi bi-cloud-download"></i> Step 1: Get App
-                                            </h5>
-                                        </div>
-                                        <div class="card-body">
-                                            <form id="get-app-form">
-                                                <div class="form-floating mb-3">
-                                                    <input type="url" class="form-control" id="app-repo-url" 
-                                                           placeholder="https://github.com/frappe/erpnext" required>
-                                                    <label for="app-repo-url">Git Repository URL</label>
-                                                </div>
-                                                <div class="form-floating mb-3">
-                                                    <input type="text" class="form-control" id="app-branch" 
-                                                           placeholder="version-14">
-                                                    <label for="app-branch">Branch (Optional)</label>
-                                                </div>
-                                                <button type="submit" class="btn btn-primary w-100" id="get-app-btn">
-                                                    <i class="bi bi-download"></i> Download App
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Install App Form -->
-                                <div class="col-md-6">
-                                    <div class="card app-installation-card h-100">
-                                        <div class="card-header bg-success text-white">
-                                            <h5 class="card-title mb-0">
-                                                <i class="bi bi-box-seam"></i> Step 2: Install App
-                                            </h5>
-                                        </div>
-                                        <div class="card-body">
-                                            <form id="install-app-form">
-                                                <div class="form-floating mb-3">
-                                                    <input type="text" class="form-control" id="app-name" 
-                                                           placeholder="erpnext" required>
-                                                    <label for="app-name">App Name</label>
-                                                </div>
-                                                <div class="form-floating mb-3">
-                                                    <input type="text" class="form-control" id="site-name" 
-                                                           placeholder="site1.local" required>
-                                                    <label for="site-name">Site Name</label>
-                                                </div>
-                                                <button type="submit" class="btn btn-success w-100" id="install-app-btn">
-                                                    <i class="bi bi-box-seam"></i> Install App
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Progress Indicator -->
-                            <div class="progress-container" id="progress-container">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="fw-bold">Operation Progress</span>
-                                    <span id="progress-status">Preparing...</span>
-                                </div>
-                                <div class="progress">
-                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                         role="progressbar" style="width: 0%" id="progress-bar"></div>
-                                </div>
-                            </div>
-                            
-                            <!-- Results Panel -->
-                            <div class="card mt-4">
-                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                                    <h5 class="card-title mb-0">
-                                        <i class="bi bi-terminal"></i> Command Output
-                                    </h5>
-                                    <div>
-                                        <span class="status-indicator" id="status-indicator"></span>
-                                        <span id="status-text">Ready</span>
-                                    </div>
-                                </div>
-                                <div class="card-body p-0">
-                                    <div class="output-container">
-                                        <pre id="command-output">Select a container and run a command to see output here...</pre>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Terminal Access -->
+                        <!-- Console Panel Tab -->
                         <div class="tab-pane fade" id="console-panel" role="tabpanel">
-                            <div class="container-selector">
-                                <label for="console-container-select" class="form-label fw-bold">
+                            <div class="container-selector mb-3">
+                                <label for="container-select" class="form-label fw-bold">
                                     <i class="bi bi-terminal"></i> Select Container for Terminal Access
                                 </label>
-                                <select class="form-select form-select-lg" id="console-container-select">
+                                <select class="form-select form-select-lg" id="container-select">
                                     <option value="">-- Choose a container --</option>
                                     {% for project_name, project_containers in container_groups.items() %}
                                         <optgroup label="{{ project_name }}">
@@ -434,58 +1543,175 @@
                                 </div>
                             </div>
                             
-                            <div class="terminal-container" id="terminal-output">
-                                <div class="text-center text-muted">
-                                    <i class="bi bi-terminal fs-1"></i><br>
-                                    <h5>Frappe Docker Terminal</h5>
-                                    <p>Select a container to start terminal session...</p>
+                            <div class="card">
+                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="bi bi-terminal-fill me-2"></i>
+                                        <span id="terminal-title">AWS Console-like Terminal</span>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-light" id="terminal-clear-btn">
+                                            <i class="bi bi-eraser"></i> Clear
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div id="terminal-container" class="terminal-container"></div>
                                 </div>
                             </div>
-                            
-                            <div class="terminal-input-container">
-                                <span class="terminal-prompt" id="terminal-prompt">frappe@container:~$</span>
-                                <input type="text" class="terminal-input" id="terminal-input" 
-                                       placeholder="Select a container first..." disabled>
-                            </div>
-                            
-                            <div class="row mt-3">
+                        </div>
+
+                        <!-- SSH Panel Tab -->
+                        <div class="tab-pane fade" id="ssh-panel" role="tabpanel">
+                            <div class="row">
                                 <div class="col-md-6">
                                     <div class="card">
                                         <div class="card-header">
-                                            <h6 class="mb-0"><i class="bi bi-lightning"></i> Common Commands</h6>
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-shield-lock me-2"></i> Temporary SSH Access Setup
+                                            </h6>
                                         </div>
                                         <div class="card-body">
+                                            <form id="temp-ssh-form">
+                                                <div class="mb-3">
+                                                    <label for="temp-container-select" class="form-label">
+                                                        <i class="bi bi-terminal"></i> Select Container
+                                </label>
+                                                    <select class="form-select" id="temp-container-select">
+                                    <option value="">-- Choose a container --</option>
+                                    {% for project_name, project_containers in container_groups.items() %}
+                                        <optgroup label="{{ project_name }}">
+                                            {% for container in project_containers %}
+                                                {% if container.service_type == 'App Server' %}
+                                                    <option value="{{ container.name }}">{{ container.name }}</option>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </optgroup>
+                                    {% endfor %}
+                                </select>
+                                </div>
+                                                
+                                                <div class="mb-3">
+                                                    <label for="temp-username" class="form-label">
+                                                        <i class="bi bi-person"></i> SSH Username
+                                                    </label>
+                                                    <input type="text" class="form-control" id="temp-username" value="frappe" placeholder="e.g., frappe, root, ubuntu">
+                            </div>
+                            
+                                                <div class="mb-3">
+                                                    <label for="temp-duration" class="form-label">
+                                                        <i class="bi bi-clock"></i> Access Duration
+                                                    </label>
+                                                    <select class="form-select" id="temp-duration">
+                                                        <option value="1">1 Hour</option>
+                                                        <option value="6">6 Hours</option>
+                                                        <option value="24" selected>24 Hours</option>
+                                                        <option value="72">3 Days</option>
+                                                        <option value="168">1 Week</option>
+                                                    </select>
+                                </div>
+                                                
+                                                <div class="mb-3">
+                                                    <label for="temp-port" class="form-label">
+                                                        <i class="bi bi-ethernet"></i> SSH Port (Auto-assigned if empty)
+                                                    </label>
+                                                    <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
+                                                    <div class="form-text">Leave empty for auto-assignment</div>
+                            </div>
+                                                
+                                                <div class="mb-3">
+                                                    <label for="temp-description" class="form-label">
+                                                        <i class="bi bi-chat-text"></i> Description (Optional)
+                                                    </label>
+                                                    <input type="text" class="form-control" id="temp-description" placeholder="e.g., Development access, Debug session">
+                                                </div>
+                                                
+                                                <div class="d-grid gap-2">
+                                                    <button type="submit" class="btn btn-success">
+                                                        <i class="bi bi-key"></i> Generate Temporary Access
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-info" id="check-ssh-status">
+                                                        <i class="bi bi-check-circle"></i> Check SSH Status
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                            </div>
+                        </div>
+                            
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-info-circle"></i> Access Information
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div id="access-info" class="alert alert-info">
+                                                <i class="bi bi-info-circle"></i> No active SSH access configured
+                                            </div>
+                                            
+                                            <div id="ssh-connection-details" style="display: none;">
+                                                <h6><i class="bi bi-terminal"></i> SSH Connection Details:</h6>
+                                                <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace;">
+                                                    <div id="ssh-host-info"></div>
+                                                    <div id="ssh-port-info"></div>
+                                                    <div id="ssh-username-info"></div>
+                                                    <div id="ssh-key-info"></div>
+                                                </div>
+                                                
+                                                <h6><i class="bi bi-download"></i> Download SSH Key:</h6>
                                             <div class="d-grid gap-2">
-                                                <button class="btn btn-outline-primary btn-sm" 
-                                                        onclick="insertCommand('bench get-app https://github.com/frappe/erpnext')">
-                                                    <i class="bi bi-download"></i> Get ERPNext
+                                                    <button class="btn btn-outline-primary" id="download-private-key">
+                                                        <i class="bi bi-download"></i> Download Private Key (.pem)
                                                 </button>
-                                                <button class="btn btn-outline-success btn-sm" 
-                                                        onclick="insertCommand('bench --site site1.local install-app erpnext')">
-                                                    <i class="bi bi-box-seam"></i> Install ERPNext
+                                                    <button class="btn btn-outline-secondary" id="copy-ssh-command">
+                                                        <i class="bi bi-clipboard"></i> Copy SSH Command
                                                 </button>
-                                                <button class="btn btn-outline-info btn-sm" 
-                                                        onclick="insertCommand('bench update')">
-                                                    <i class="bi bi-arrow-clockwise"></i> Update Bench
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mt-3">
+                                                <button class="btn btn-outline-danger btn-sm" id="revoke-access" style="display: none;">
+                                                    <i class="bi bi-x-circle"></i> Revoke Access
                                                 </button>
-                                                <button class="btn btn-outline-warning btn-sm" 
-                                                        onclick="insertCommand('bench migrate')">
-                                                    <i class="bi bi-arrow-right"></i> Migrate
+                                                <button class="btn btn-outline-warning btn-sm" id="extend-access" style="display: none;">
+                                                    <i class="bi bi-clock"></i> Extend Access
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
+                            </div>
+                            
+                            <div class="row mt-3">
+                                <div class="col-12">
                                     <div class="card">
                                         <div class="card-header">
-                                            <h6 class="mb-0"><i class="bi bi-clock-history"></i> Command History</h6>
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-list-check"></i> Active SSH Sessions
+                                            </h6>
                                         </div>
-                                        <div class="card-body p-0">
-                                            <div class="command-history" id="command-history">
-                                                <div class="text-center text-muted p-3">
-                                                    <i class="bi bi-clock-history"></i><br>
-                                                    <small>No commands executed yet</small>
+                                        <div class="card-body">
+                                            <div class="table-responsive">
+                                                <table class="table table-striped" id="ssh-sessions-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Container</th>
+                                                            <th>Username</th>
+                                                            <th>Port</th>
+                                                            <th>Created</th>
+                                                            <th>Expires</th>
+                                                            <th>Status</th>
+                                                            <th>Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="ssh-sessions-tbody">
+                                                        <tr>
+                                                            <td colspan="7" class="text-center text-muted">No active SSH sessions</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
                                                 </div>
                                             </div>
                                         </div>
@@ -501,21 +1727,16 @@
 </div>
 
 <!-- Confirmation Modal -->
-<div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+<div class="modal fade" id="confirmationModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="confirmationModalLabel">
-                    <i class="bi bi-exclamation-triangle"></i> Confirm Action
-                </h5>
+                <h5 class="modal-title">Confirm Action</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p id="confirmationMessage">Are you sure you want to perform this action?</p>
-                <div class="alert alert-warning">
-                    <i class="bi bi-info-circle"></i> 
-                    <span id="confirmationWarning">This operation may take several minutes to complete.</span>
-                </div>
+                <p id="confirmationMessage">Are you sure you want to execute this command?</p>
+                <p id="confirmationWarning" class="text-warning">This operation may take several minutes to complete.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -528,404 +1749,105 @@
 
 {% block custom_js %}
 <script>
-// Global variables
-let selectedContainer = '';
-let commandHistory = [];
-let currentHistoryIndex = -1;
-let currentStep = 1;
-let currentWorkingDir = '/home/frappe';
-
 // Initialize UI
 document.addEventListener('DOMContentLoaded', function() {
+    // Check if we're in a browser environment with required objects
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        console.error('Not in a browser environment');
+        return;
+    }
+    
+    // Initialize event listeners
     initializeEventListeners();
-    updateStepIndicator();
+    
+    // Initialize terminal
+    initializeTerminal();
+    
+    // Initialize SSH
+    initializeSSHEventListeners();
 });
 
 function initializeEventListeners() {
-    // Container selection for UI panel
-    document.getElementById('app-container-select').addEventListener('change', function() {
-        selectedContainer = this.value;
-        if (selectedContainer) {
-            appendToTerminal(`Connected to container: ${selectedContainer}`);
-            appendToTerminal(`Ready for commands...`);
-        } else {
-            appendToTerminal('Disconnected from container');
+    // Container selection for terminal access
+    const containerSelect = document.getElementById('container-select');
+    if (containerSelect) {
+        containerSelect.addEventListener('change', function() {
+            const selectedContainer = this.value;
+            if (selectedContainer && window.terminal) {
+                console.log("Connecting to container from dropdown:", selectedContainer);
+                window.terminal.connectToContainer(selectedContainer);
+                
+                // Update terminal title
+                const terminalTitle = document.getElementById('terminal-title');
+                if (terminalTitle) {
+                    terminalTitle.textContent = `Terminal: ${selectedContainer}`;
+                }
         }
     });
+    }
     
-    // Console container selection for terminal access
-    document.getElementById('console-container-select').addEventListener('change', function() {
-        selectedContainer = this.value;
-        const terminalInput = document.getElementById('terminal-input');
-        
-        if (selectedContainer) {
-            terminalInput.disabled = false;
-            terminalInput.placeholder = `Enter command for ${selectedContainer}...`;
-            appendToTerminal(`Connected to container: ${selectedContainer}`);
-            appendToTerminal(`Ready for commands...`);
-            getCurrentDirectory();
-        } else {
-            terminalInput.disabled = true;
-            terminalInput.placeholder = 'Select a container first...';
-            appendToTerminal('Disconnected from container');
-        }
-    });
-    
-    // Terminal input handling
-    const terminalInput = document.getElementById('terminal-input');
-    terminalInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && this.value.trim() !== '') {
-            const command = this.value.trim();
-            executeCommand(command);
-            this.value = '';
-        } else if (e.key === 'ArrowUp') {
-            navigateHistory('up');
-            e.preventDefault();
-        } else if (e.key === 'ArrowDown') {
-            navigateHistory('down');
-            e.preventDefault();
-        }
-    });
-    
-    // Get App form submission
-    document.getElementById('get-app-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const container = document.getElementById('app-container-select').value;
-        if (!container) {
-            showToast('Please select a container first', 'error');
-            return;
-        }
-        
-        const repoUrl = document.getElementById('app-repo-url').value.trim();
-        if (!repoUrl) {
-            showToast('Please enter a repository URL', 'error');
-            return;
-        }
-        
-        const branch = document.getElementById('app-branch').value.trim();
-        let command = `bench get-app ${repoUrl}`;
-        if (branch) {
-            command += ` --branch ${branch}`;
-        }
-        
-        showConfirmationModal(container, command, function() {
-            executeApiCommand('get-app', container, {
-                repo_url: repoUrl,
-                branch: branch
+    // Terminal clear button
+    const clearButton = document.getElementById('terminal-clear-btn');
+    if (clearButton) {
+        clearButton.addEventListener('click', function() {
+            if (window.terminal) {
+                window.terminal.clear();
+            }
+        });
+    }
+}
+
+function initializeTerminal() {
+    // Initialize terminal
+    const terminalContainer = document.getElementById('terminal-container');
+    if (terminalContainer) {
+        try {
+            console.log("Creating terminal instance...");
+            window.terminal = new XTermWS(terminalContainer, {
+                theme: {
+                    background: '#1a1a1a',
+                    foreground: '#ffffff',
+                    cursor: '#ffffff',
+                    selection: 'rgba(255, 255, 255, 0.3)',
+                    black: '#000000',
+                    red: '#cc0000',
+                    green: '#4e9a06',
+                    yellow: '#c4a000',
+                    blue: '#3465a4',
+                    magenta: '#75507b',
+                    cyan: '#06989a',
+                    white: '#d3d7cf',
+                    brightBlack: '#555753',
+                    brightRed: '#ef2929',
+                    brightGreen: '#8ae234',
+                    brightYellow: '#fce94f',
+                    brightBlue: '#729fcf',
+                    brightMagenta: '#ad7fa8',
+                    brightCyan: '#34e2e2',
+                    brightWhite: '#eeeeec'
+                }
             });
-        });
-    });
-    
-    // Install App form submission
-    document.getElementById('install-app-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const container = document.getElementById('app-container-select').value;
-        if (!container) {
-            showToast('Please select a container first', 'error');
-            return;
-        }
-        
-        const appName = document.getElementById('app-name').value.trim();
-        if (!appName) {
-            showToast('Please enter an app name', 'error');
-            return;
-        }
-        
-        const siteName = document.getElementById('site-name').value.trim();
-        if (!siteName) {
-            showToast('Please enter a site name', 'error');
-            return;
-        }
-        
-        const command = `bench --site ${siteName} install-app ${appName}`;
-        
-        showConfirmationModal(container, command, function() {
-            executeApiCommand('install-app', container, {
-                app_name: appName,
-                site_name: siteName
-            });
-        });
-    });
-}
-
-// Quick install function for common apps
-function quickInstall(appName) {
-    const container = document.getElementById('app-container-select').value;
-    if (!container) {
-        showToast('Please select a container first', 'error');
-        return;
-    }
-    
-    const appUrls = {
-        'erpnext': 'https://github.com/frappe/erpnext',
-        'frappe': 'https://github.com/frappe/frappe',
-        'hrms': 'https://github.com/frappe/hrms',
-        'education': 'https://github.com/frappe/education'
-    };
-    
-    const repoUrl = appUrls[appName];
-    if (!repoUrl) {
-        showToast('App not found in quick install list', 'error');
-        return;
-    }
-    
-    // Pre-fill the form
-    document.getElementById('app-repo-url').value = repoUrl;
-    document.getElementById('app-name').value = appName;
-    
-    showToast(`Pre-filled ${appName} installation form`, 'success');
-}
-
-// Update step indicator
-function updateStep(step) {
-    currentStep = step;
-    updateStepIndicator();
-}
-
-function updateStepIndicator() {
-    for (let i = 1; i <= 4; i++) {
-        const stepElement = document.getElementById(`step-${i}`);
-        stepElement.classList.remove('active', 'completed');
-        
-        if (i < currentStep) {
-            stepElement.classList.add('completed');
-        } else if (i === currentStep) {
-            stepElement.classList.add('active');
-        }
-    }
-}
-
-// Execute command via API
-async function executeApiCommand(action, container, params) {
-    const commandOutput = document.getElementById('command-output');
-    const statusIndicator = document.getElementById('status-indicator');
-    const statusText = document.getElementById('status-text');
-    const progressContainer = document.getElementById('progress-container');
-    const progressBar = document.getElementById('progress-bar');
-    const progressStatus = document.getElementById('progress-status');
-    
-    // Show loading state
-    commandOutput.textContent = 'Executing command, please wait...';
-    statusIndicator.className = 'status-indicator status-running';
-    statusText.textContent = 'Running';
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '30%';
-    progressStatus.textContent = 'Executing command...';
-    
-    try {
-        const response = await fetch(`/api/frappe/${action}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                container: container,
-                ...params
-            })
-        });
-        
-        const result = await response.json();
-        
-        progressBar.style.width = '100%';
-        progressStatus.textContent = 'Complete';
-        
-        if (result.success) {
-            commandOutput.textContent = result.output || 'Command executed successfully';
-            statusIndicator.className = 'status-indicator status-success';
-            statusText.textContent = 'Success';
-            showToast('Command executed successfully', 'success');
             
-            if (action === 'get-app') {
-                updateStep(3);
-            } else if (action === 'install-app') {
-                updateStep(4);
+            // Auto-connect if container is already selected
+            const containerSelect = document.getElementById('container-select');
+            if (containerSelect && containerSelect.value) {
+                setTimeout(() => {
+                    if (window.terminal) {
+                        console.log("Auto-connecting to container:", containerSelect.value);
+                        window.terminal.connectToContainer(containerSelect.value);
+                        
+                        // Update terminal title
+                        const terminalTitle = document.getElementById('terminal-title');
+                        if (terminalTitle) {
+                            terminalTitle.textContent = `Terminal: ${containerSelect.value}`;
+                        }
+                    }
+                }, 1000);
             }
-        } else {
-            commandOutput.textContent = `Error: ${result.error || 'Unknown error occurred'}`;
-            statusIndicator.className = 'status-indicator status-error';
-            statusText.textContent = 'Error';
-            showToast(`Error: ${result.error}`, 'error');
+        } catch (error) {
+            console.error("Error initializing terminal:", error);
         }
-    } catch (error) {
-        console.error('Error executing command:', error);
-        commandOutput.textContent = `Error: ${error.message}`;
-        statusIndicator.className = 'status-indicator status-error';
-        statusText.textContent = 'Error';
-        showToast(`Error: ${error.message}`, 'error');
-    } finally {
-        setTimeout(() => {
-            progressContainer.style.display = 'none';
-            progressBar.style.width = '0%';
-        }, 2000);
     }
-}
-
-// Execute command in terminal
-async function executeCommand(command) {
-    if (!selectedContainer) {
-        appendToTerminal('Error: No container selected');
-        return;
-    }
-    
-    appendToTerminal(`$ ${command}`);
-    addToHistory(command);
-    
-    try {
-        const response = await fetch('/api/frappe/execute-command', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                container: selectedContainer,
-                command: command
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Update current working directory if provided
-            if (result.current_dir) {
-                currentWorkingDir = result.current_dir;
-                updateTerminalPrompt();
-            }
-            appendToTerminal(result.output || 'Command executed successfully');
-        } else {
-            appendToTerminal(`Error: ${result.error || 'Unknown error occurred'}`);
-        }
-    } catch (error) {
-        console.error('Error executing command:', error);
-        appendToTerminal(`Error: ${error.message}`);
-    }
-}
-
-// Update terminal prompt to show current directory
-function updateTerminalPrompt() {
-    const prompt = document.getElementById('terminal-prompt');
-    if (prompt) {
-        prompt.textContent = `frappe@${selectedContainer}:${currentWorkingDir}$`;
-    }
-}
-
-// Get current directory when container is selected
-async function getCurrentDirectory() {
-    if (!selectedContainer) return;
-    
-    try {
-        const response = await fetch('/api/frappe/get-current-dir', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                container: selectedContainer
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            currentWorkingDir = result.current_dir;
-            updateTerminalPrompt();
-        }
-    } catch (error) {
-        console.error('Error getting current directory:', error);
-    }
-}
-
-// Append text to terminal output
-function appendToTerminal(text) {
-    const terminal = document.getElementById('terminal-output');
-    const timestamp = new Date().toLocaleTimeString();
-    terminal.innerHTML += `\n[${timestamp}] ${text}`;
-    terminal.scrollTop = terminal.scrollHeight;
-}
-
-// Add command to history
-function addToHistory(command) {
-    // Don't add duplicates consecutively
-    if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== command) {
-        commandHistory.push(command);
-    }
-    currentHistoryIndex = commandHistory.length;
-    
-    // Update history UI
-    updateHistoryUI();
-}
-
-// Update command history UI
-function updateHistoryUI() {
-    const historyContainer = document.getElementById('command-history');
-    
-    if (commandHistory.length === 0) {
-        historyContainer.innerHTML = `
-            <div class="text-center text-muted p-3">
-                <i class="bi bi-clock-history"></i><br>
-                <small>No commands executed yet</small>
-            </div>
-        `;
-        return;
-    }
-    
-    historyContainer.innerHTML = '';
-    
-    // Show most recent commands first
-    const recentCommands = [...commandHistory].reverse().slice(0, 10);
-    
-    recentCommands.forEach(cmd => {
-        const item = document.createElement('div');
-        item.className = 'command-history-item';
-        item.textContent = cmd;
-        item.onclick = function() {
-            document.getElementById('terminal-input').value = cmd;
-        };
-        historyContainer.appendChild(item);
-    });
-}
-
-// Navigate command history
-function navigateHistory(direction) {
-    if (commandHistory.length === 0) return;
-    
-    if (direction === 'up') {
-        currentHistoryIndex = Math.max(0, currentHistoryIndex - 1);
-    } else {
-        currentHistoryIndex = Math.min(commandHistory.length, currentHistoryIndex + 1);
-    }
-    
-    const input = document.getElementById('terminal-input');
-    if (currentHistoryIndex < commandHistory.length) {
-        input.value = commandHistory[currentHistoryIndex];
-    } else {
-        input.value = '';
-    }
-}
-
-// Insert predefined command
-function insertCommand(command) {
-    const input = document.getElementById('terminal-input');
-    input.value = command;
-    input.focus();
-}
-
-// Show confirmation modal
-function showConfirmationModal(container, command, callback) {
-    const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
-    document.getElementById('confirmationMessage').textContent = `Are you sure you want to execute: ${command}`;
-    document.getElementById('confirmationWarning').textContent = 'This operation may take several minutes to complete.';
-    
-    const confirmBtn = document.getElementById('confirmActionBtn');
-    confirmBtn.onclick = function() {
-        modal.hide();
-        if (typeof callback === 'function') {
-            callback();
-        }
-    };
-    
-    modal.show();
 }
 
 // Show toast notification
@@ -961,5 +1883,363 @@ function createToastContainer() {
     document.body.appendChild(container);
     return container;
 }
+
+// Temporary SSH Access Management
+let currentSSHSession = null;
+
+// Initialize SSH event listeners
+function initializeSSHEventListeners() {
+    const tempSSHForm = document.getElementById('temp-ssh-form');
+    const checkStatusBtn = document.getElementById('check-ssh-status');
+    const downloadKeyBtn = document.getElementById('download-private-key');
+    const copyCommandBtn = document.getElementById('copy-ssh-command');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (tempSSHForm) {
+        tempSSHForm.addEventListener('submit', handleTempSSHSetup);
+    }
+    
+    if (checkStatusBtn) {
+        checkStatusBtn.addEventListener('click', checkSSHStatus);
+    }
+    
+    if (downloadKeyBtn) {
+        downloadKeyBtn.addEventListener('click', downloadPrivateKey);
+    }
+    
+    if (copyCommandBtn) {
+        copyCommandBtn.addEventListener('click', copySSHCommand);
+    }
+    
+    if (revokeBtn) {
+        revokeBtn.addEventListener('click', revokeSSHAccess);
+    }
+    
+    if (extendBtn) {
+        extendBtn.addEventListener('click', extendSSHAccess);
+    }
+    
+    // Load existing sessions on page load
+    loadSSHSessions();
+}
+
+// Handle temporary SSH setup
+async function handleTempSSHSetup(e) {
+    e.preventDefault();
+    
+    const container = document.getElementById('temp-container-select').value;
+    const username = document.getElementById('temp-username').value;
+    const duration = document.getElementById('temp-duration').value;
+    const port = document.getElementById('temp-port').value;
+    const description = document.getElementById('temp-description').value;
+    
+    if (!container || !username) {
+        showToast('Please select a container and enter username', 'error');
+            return;
+        }
+        
+    updateAccessInfo('Setting up SSH access...', 'warning');
+    
+    try {
+        const response = await fetch('/api/temp-ssh/setup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                container: container,
+                username: username,
+                duration: duration,
+                port: port,
+                description: description
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            showSSHConnectionDetails(result);
+            updateAccessInfo('SSH access configured successfully!', 'success');
+            showToast('Temporary SSH access created', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            updateAccessInfo(`SSH setup failed: ${result.error}`, 'danger');
+            showToast(`SSH setup failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`SSH setup error: ${error.message}`, 'danger');
+        showToast(`SSH setup error: ${error.message}`, 'error');
+    }
+}
+
+// Show SSH connection details
+function showSSHConnectionDetails(session, connectionDetails) {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const hostInfo = document.getElementById('ssh-host-info');
+    const portInfo = document.getElementById('ssh-port-info');
+    const usernameInfo = document.getElementById('ssh-username-info');
+    const keyInfo = document.getElementById('ssh-key-info');
+    
+    // Use connectionDetails if available, otherwise fall back to session
+    const host = connectionDetails?.host || session?.host || '192.168.68.101';
+    const port = connectionDetails?.port || session?.port || '2210';
+    const username = connectionDetails?.username || session?.username || 'frappe';
+    const keyName = connectionDetails?.key_name || session?.key_name || 'temp_ssh_key';
+    
+    if (detailsDiv) detailsDiv.style.display = 'block';
+    if (hostInfo) hostInfo.textContent = `Host: ${host}`;
+    if (portInfo) portInfo.textContent = `Port: ${port}`;
+    if (usernameInfo) usernameInfo.textContent = `Username: ${username}`;
+    if (keyInfo) keyInfo.textContent = `Key: ${keyName}`;
+    
+    // Store current session for download
+    window.currentSSHSession = session;
+    
+    // Show action buttons
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    if (revokeBtn) revokeBtn.style.display = 'inline-block';
+    if (extendBtn) extendBtn.style.display = 'inline-block';
+}
+
+// Download private key
+async function downloadPrivateKey() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/download-key/${currentSSHSession.session_id}`);
+        const blob = await response.blob();
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSSHSession.key_name}.pem`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('Private key downloaded', 'success');
+    } catch (error) {
+        showToast(`Download failed: ${error.message}`, 'error');
+    }
+}
+
+// Copy SSH command to clipboard
+async function copySSHCommand() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const sshCommand = `ssh -i ${currentSSHSession.key_name}.pem -p ${currentSSHSession.port} ${currentSSHSession.username}@${currentSSHSession.host}`;
+    
+    try {
+        await navigator.clipboard.writeText(sshCommand);
+        showToast('SSH command copied to clipboard', 'success');
+    } catch (error) {
+        showToast(`Copy failed: ${error.message}`, 'error');
+    }
+}
+
+// Check SSH status
+async function checkSSHStatus() {
+    const container = document.getElementById('temp-container-select').value;
+    
+    if (!container) {
+        showToast('Please select a container', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/temp-ssh/status/${container}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            updateAccessInfo(`SSH Status: ${result.status}`, 'info');
+            showToast(`SSH Status: ${result.status}`, 'info');
+        } else {
+            updateAccessInfo(`SSH Status Check Failed: ${result.error}`, 'danger');
+            showToast(`Status check failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        updateAccessInfo(`Status check error: ${error.message}`, 'danger');
+        showToast(`Status check error: ${error.message}`, 'error');
+    }
+}
+
+// Revoke SSH access
+async function revokeSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to revoke SSH access?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = null;
+            hideSSHConnectionDetails();
+            updateAccessInfo('SSH access revoked', 'info');
+            showToast('SSH access revoked', 'info');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Extend SSH access
+async function extendSSHAccess() {
+    if (!currentSSHSession) {
+        showToast('No active SSH session', 'error');
+        return;
+    }
+    
+    const newDuration = prompt('Enter new duration in hours:', '24');
+    if (!newDuration || isNaN(newDuration)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/extend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: currentSSHSession.session_id,
+                duration: newDuration
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentSSHSession = result.session;
+            updateAccessInfo('SSH access extended', 'success');
+            showToast('SSH access extended', 'success');
+            loadSSHSessions(); // Refresh sessions table
+        } else {
+            showToast(`Extend failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Extend error: ${error.message}`, 'error');
+    }
+}
+
+// Load SSH sessions
+async function loadSSHSessions() {
+    try {
+        const response = await fetch('/api/temp-ssh/sessions');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateSSHSessionsTable(result.sessions);
+        }
+    } catch (error) {
+        console.error('Error loading SSH sessions:', error);
+    }
+}
+
+// Update SSH sessions table
+function updateSSHSessionsTable(sessions) {
+    const tbody = document.getElementById('ssh-sessions-tbody');
+    if (!tbody) return;
+    
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active SSH sessions</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = sessions.map(session => `
+        <tr>
+            <td>${session.container}</td>
+            <td>${session.username}</td>
+            <td>${session.port}</td>
+            <td>${new Date(session.created_at).toLocaleString()}</td>
+            <td>${new Date(session.expires_at).toLocaleString()}</td>
+            <td><span class="badge bg-${session.status === 'active' ? 'success' : 'danger'}">${session.status}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('${session.session_id}')">
+                    <i class="bi bi-x-circle"></i> Revoke
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Revoke specific session
+async function revokeSession(sessionId) {
+    if (!confirm('Are you sure you want to revoke this SSH session?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/temp-ssh/revoke', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('SSH session revoked', 'success');
+            loadSSHSessions(); // Refresh sessions table
+    } else {
+            showToast(`Revoke failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Revoke error: ${error.message}`, 'error');
+    }
+}
+
+// Update access info
+function updateAccessInfo(message, type) {
+    const infoDiv = document.getElementById('access-info');
+    if (infoDiv) {
+        infoDiv.className = `alert alert-${type}`;
+        infoDiv.innerHTML = `<i class="bi bi-info-circle"></i> ${message}`;
+    }
+}
+
+// Hide SSH connection details
+function hideSSHConnectionDetails() {
+    const detailsDiv = document.getElementById('ssh-connection-details');
+    const revokeBtn = document.getElementById('revoke-access');
+    const extendBtn = document.getElementById('extend-access');
+    
+    if (detailsDiv) detailsDiv.style.display = 'none';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    if (extendBtn) extendBtn.style.display = 'none';
+}
+
 </script>
 {% endblock %}

@@ -284,3 +284,30 @@ Traceback (most recent call last):
   File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 523, in _filter_test_common
     raise TemplateRuntimeError(msg)
 jinja2.exceptions.TemplateRuntimeError: No test named 'containing'.
+2025-09-14 19:15:48,540 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1769]
+2025-09-14 19:15:55,954 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1769]
+2025-09-14 19:23:52,606 INFO: Container IP: <no value> [in /var/www/html/frappe-docker/web-manager/app.py:1979]
+2025-09-14 19:23:52,619 WARNING: iptables rule failed: iptables v1.8.7 (nf_tables): Bad IP address "<no value>"
+
+Try `iptables -h' or 'iptables --help' for more information.
+ [in /var/www/html/frappe-docker/web-manager/app.py:1988]
+2025-09-14 19:25:10,966 INFO: Container IP: <no value> [in /var/www/html/frappe-docker/web-manager/app.py:1922]
+2025-09-14 19:25:10,972 INFO: Started socat port forwarding from host:2222 to <no value>:2222 [in /var/www/html/frappe-docker/web-manager/app.py:1938]
+2025-09-14 19:30:28,351 INFO: Container IP: 172.22.0.2 [in /var/www/html/frappe-docker/web-manager/app.py:1922]
+2025-09-14 19:30:28,356 INFO: Started socat port forwarding from host:2222 to 172.22.0.2:2222 [in /var/www/html/frappe-docker/web-manager/app.py:1938]
+2025-09-14 19:41:20,535 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:41:41,592 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:43:05,614 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:50:51,413 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:51:57,824 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:52:14,197 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:54:00,780 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:59:16,042 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 19:59:17,004 INFO: Container IP: 172.22.0.2 [in /var/www/html/frappe-docker/web-manager/app.py:1956]
+2025-09-14 19:59:17,009 INFO: Started socat port forwarding from host:2225 to 172.22.0.2:2225 [in /var/www/html/frappe-docker/web-manager/app.py:1972]
+2025-09-14 19:59:51,389 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 19:59:52,381 INFO: Container IP: 172.22.0.2 [in /var/www/html/frappe-docker/web-manager/app.py:1956]
+2025-09-14 19:59:52,386 INFO: Started socat port forwarding from host:2225 to 172.22.0.2:2225 [in /var/www/html/frappe-docker/web-manager/app.py:1972]
+2025-09-14 20:01:58,431 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 20:14:30,553 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 20:28:44,751 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1825]
