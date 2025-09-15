@@ -261,13 +261,16 @@ class SecureDockerManager:
             # Log the command (sanitized)
             logger.info(f"Executing command: {cmd[:100]}...")
             
+            # Get the current working directory dynamically
+            current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
             result = subprocess.run(
                 cmd, 
                 shell=True, 
                 capture_output=True, 
                 text=True, 
                 timeout=timeout,
-                cwd='/var/www/html/frappe-docker'
+                cwd=current_dir
             )
             
             return {
@@ -287,7 +290,7 @@ class SecureDockerManager:
     def get_containers():
         """Get list of containers securely"""
         cmd = "sudo docker ps -a --format json"
-        result = SecureDockerManager.run_command(cmd)
+        result = SecureDockerManager.run_command(cmd, timeout=60)
         
         if not result['success']:
             return []
@@ -328,7 +331,7 @@ class SecureDockerManager:
         
         # Build secure command
         cmd = f"sudo docker {action} {container_name}"
-        result = SecureDockerManager.run_command(cmd)
+        result = SecureDockerManager.run_command(cmd, timeout=60)
         
         logger.info(f"Container action: {action} on {container_name} - {'Success' if result['success'] else 'Failed'}")
         
@@ -347,7 +350,7 @@ class SecureDockerManager:
         
         # Build secure command
         cmd = f"sudo docker logs --tail {tail} {container_name}"
-        result = SecureDockerManager.run_command(cmd)
+        result = SecureDockerManager.run_command(cmd, timeout=60)
         
         if result['success']:
             return result['stdout']
