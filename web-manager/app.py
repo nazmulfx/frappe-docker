@@ -1588,7 +1588,7 @@ def expose_ssh_port_socat(container, port):
         logger.info(f"Container IP: {container_ip}")
         
         # Start socat port forwarding
-        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",fork", f"TCP:{container_ip}:{port}"]
+        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",bind=0.0.0.0,fork,reuseaddr", f"TCP:{container_ip}:22"]
         socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Give socat a moment to start
@@ -1661,8 +1661,24 @@ def temp_ssh_setup():
             logger.error(f"Failed to generate SSH key pair: {str(e)}")
             return jsonify({'success': False, 'error': f'Failed to generate SSH key pair: {str(e)}'})
         
-        # Handle port - use provided port or find available one
-        if port:
+        # ONE CONTAINER = ONE PORT SYSTEM
+        # Always use the same port for the same container
+        container_port_map = {
+            'test20_local-app': 2222,
+            'test16_local-app': 2223,
+            'test15_local-app': 2224,
+            'test14_local-app': 2225,
+            'test13_local-app': 2226,
+            'test12_local-app': 2227,
+            'test11_local-app': 2228,
+            'test10_local-app': 2229,
+        }
+        
+        # Use predefined port for container, or fallback to dynamic
+        if container in container_port_map:
+            port = container_port_map[container]
+            logger.info(f"Using predefined port {port} for container {container}")
+        elif port:
             try:
                 port = int(port)
                 logger.info(f"Using provided port: {port}")
@@ -1675,6 +1691,11 @@ def temp_ssh_setup():
                 logger.error("No available ports found")
                 return jsonify({'success': False, 'error': 'No available ports'})
             logger.info(f"Using auto-selected port: {port}")
+        
+        # CRITICAL: Clean up ALL old sessions for this container FIRST
+        logger.info(f"Cleaning up ALL old SSH sessions for container: {container}")
+        cleaned_sessions = cleanup_old_ssh_sessions_for_container(container)
+        logger.info(f"Cleaned up {len(cleaned_sessions)} old sessions")
         
         # Check if container has exposed ports
         logger.info(f"Checking container port configuration: {container}")
@@ -2054,7 +2075,7 @@ def setup_ssh_server_simple(container, username, public_key, port):
         
         # Simple SSH config
         config_lines = [
-            f"Port {port}",
+            "Port 22",
             "PermitRootLogin no",
             "PasswordAuthentication no", 
             "PubkeyAuthentication yes",
@@ -2070,7 +2091,7 @@ def setup_ssh_server_simple(container, username, public_key, port):
         
         # Start SSH server
         start_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"sshd -D -p {port} &"]
+                    "/usr/sbin/sshd -D -p 22 &"]
         result = subprocess.run(start_cmd, capture_output=True, text=True)
         
         return {'success': True}
@@ -2105,7 +2126,7 @@ def expose_ssh_port_docker(container, port):
         logger.info(f"Container IP: {container_ip}")
         
         # Start socat port forwarding
-        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",fork", f"TCP:{container_ip}:{port}"]
+        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",bind=0.0.0.0,fork,reuseaddr", f"TCP:{container_ip}:22"]
         socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Give socat a moment to start
@@ -2179,7 +2200,7 @@ def setup_ssh_server_in_container(container, username, public_key, port):
             return {'success': False, 'error': f"Failed to add public key: {result.stderr}"}
         
         # Create SSH config file using a different approach
-        ssh_config_content = f"""Port {port}
+        ssh_config_content = f"""Port 22
 PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
@@ -2201,7 +2222,7 @@ StrictModes no
         
         # Start SSH server
         start_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"pkill -f sshd || true; sleep 2; nohup /usr/sbin/sshd -D -p {port} > /dev/null 2>&1 &"]
+                    f"pkill -f sshd || true; sleep 2; nohup /usr/sbin//usr/sbin/sshd -D -p 22 > /dev/null 2>&1 &"]
         result = subprocess.run(start_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"SSH start output: {result.stdout}")
@@ -2253,6 +2274,50 @@ def save_ssh_session_to_file(session_info):
         logger.error(f"Failed to save SSH session to file: {str(e)}")
         return False
 
+def cleanup_old_ssh_sessions_for_container(container):
+    """Clean up ALL old SSH sessions for a specific container - ONE CONTAINER = ONE PORT"""
+    try:
+        logger.info(f"=== CLEANING UP ALL OLD SSH SESSIONS FOR CONTAINER: {container} ===")
+        cleaned_sessions = []
+
+        # Step 1: Kill ALL socat processes for this container
+        logger.info(f"Killing all socat processes for container {container}")
+        kill_all_socat_cmd = ["sudo", "pkill", "-f", f"socat.*TCP.*{container}"]
+        subprocess.run(kill_all_socat_cmd, capture_output=True, text=True)
+        
+        # Step 2: Kill ALL SSH servers in this container
+        logger.info(f"Stopping all SSH servers in container {container}")
+        stop_all_ssh_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", "pkill -f sshd || true"]
+        subprocess.run(stop_all_ssh_cmd, capture_output=True, text=True)
+
+        # Step 3: Remove all session files for this container
+        sessions_dir = "ssh_sessions"
+        if os.path.exists(sessions_dir):
+            for filename in os.listdir(sessions_dir):
+                if filename.endswith(".json"):
+                    session_file = os.path.join(sessions_dir, filename)
+                    try:
+                        with open(session_file, "r") as f:
+                            session_data = json.load(f)
+                        if session_data.get("container") == container:
+                            os.remove(session_file)
+                            logger.info(f"Removed session file: {session_file}")
+                    except Exception as e:
+                        logger.error(f"Error processing session file {session_file}: {str(e)}")
+
+        # Step 4: Remove from memory
+        for session_id, session_info in list(ssh_connections.items()):
+            if session_info.get("container") == container:
+                logger.info(f"Removing session {session_id} from memory for container {container}")
+                del ssh_connections[session_id]
+                cleaned_sessions.append(session_id)
+
+        logger.info(f"=== CLEANUP COMPLETE: Removed {len(cleaned_sessions)} sessions for container {container} ===")
+        return cleaned_sessions
+
+    except Exception as e:
+        logger.error(f"Error cleaning up old sessions: {str(e)}")
+        return []
 def load_ssh_sessions_from_files():
     """Load SSH sessions from persistent file storage"""
     try:
@@ -2370,7 +2435,7 @@ def restore_ssh_port_forwarding(session_info):
             return True
         
         # Start socat port forwarding
-        socat_cmd = ['sudo', 'socat', f'TCP-LISTEN:{port},fork', f'TCP:{container_ip}:{port}']
+        socat_cmd = ['sudo', 'socat', f'TCP-LISTEN:{port},fork', f'TCP:{container_ip}:22']
         socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Give socat a moment to start
