@@ -1061,6 +1061,10 @@ def app_installation():
 def frappe_get_app():
     """API endpoint for 'bench get-app' command"""
     try:
+        # Initialize variables
+        output = ''
+        error = ''
+        
         data = request.json
         container = data.get('container')
         repo_url = data.get('repo_url')
@@ -1127,6 +1131,10 @@ def frappe_get_app():
 def frappe_install_app():
     """API endpoint for 'bench install-app' command"""
     try:
+        # Initialize variables
+        output = ''
+        error = ''
+        
         data = request.json
         container = data.get('container')
         app_name = data.get('app_name')
@@ -1192,6 +1200,10 @@ def frappe_install_app():
 def execute_command_api():
     """UNIVERSAL TERMINAL - Execute ANY command in ANY container"""
     try:
+        # Initialize variables
+        output = ''
+        error = ''
+        
         data = request.json
         container = data.get('container')
         command = data.get('command')
@@ -1218,10 +1230,14 @@ def execute_command_api():
                 
                 # Handle relative paths
                 if not target_dir.startswith('/'):
-                    if target_dir == '..':
-                        # Go up one directory
-                        current_dir = '/'.join(current_dir.split('/')[:-1]) or '/'
-                    elif target_dir == '.':
+                    if target_dir == '..' or target_dir == '../':
+                        # Go up one directory - improved logic
+                        parts = current_dir.rstrip('/').split('/')
+                        if len(parts) > 1:
+                            current_dir = '/'.join(parts[:-1]) or '/'
+                        else:
+                            current_dir = '/'
+                    elif target_dir == '.' or target_dir == './':
                         # Stay in current directory
                         pass
                     else:
@@ -1255,12 +1271,13 @@ def execute_command_api():
             # Extract the file pattern
             file_pattern = command.split(' ', 2)[2]
             
-            # First check if the file exists
-            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"ls {file_pattern} 2>/dev/null || echo 'no_files'"]
+            # First check if the file exists (improved logic)
+            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && ls {file_pattern} 2>/dev/null"]
             process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
             
-            if 'no_files' in stdout.decode() and not stdout.decode().strip().replace('no_files', ''):
+            # If ls command failed or returned empty, file doesn't exist
+            if process.returncode != 0 or not stdout.decode().strip():
                 return jsonify({'error': f"tail: cannot open '{file_pattern}' for reading: No such file or directory"})
             
             # Get initial content (last 10 lines)
@@ -1273,8 +1290,8 @@ def execute_command_api():
             
             if process.returncode != 0:
                 return jsonify({'error': error or f"Error executing tail on {file_pattern}"})
-        
-        return jsonify({
+            
+            return jsonify({
                 'output': output,
                 'is_streaming': True,
                 'stream_command': command,
@@ -1286,7 +1303,7 @@ def execute_command_api():
         cmd = ["sudo", "docker", "exec", "-w", current_dir, container, "bash", "-c", command]
         
         # For bench commands, use streaming approach
-        if any(keyword in command.lower() for keyword in ['bench get-app', 'bench install-app', 'bench new-site']):
+        if command.lower().startswith('bench '):
             try:
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
                 
@@ -1297,15 +1314,6 @@ def execute_command_api():
                     if not line:
                         break
                     output_lines.append(line.rstrip())
-                    # For long commands, return partial output every few lines
-                    if len(output_lines) % 5 == 0:
-                        return jsonify({
-                            'output': '\n'.join(output_lines),
-                            'is_streaming': True,
-                            'stream_command': command,
-            'current_dir': current_dir,
-                            'partial': True
-                        })
                 
                 # Get final output
                 output = '\n'.join(output_lines)
@@ -1321,7 +1329,9 @@ def execute_command_api():
                 return jsonify({
                     'output': output,
                     'error': error,
-                    'current_dir': current_dir
+                    'current_dir': current_dir,
+                    'is_streaming': True,
+                    'stream_command': command
                 })
                 
             except Exception as e:
@@ -1371,6 +1381,8 @@ def execute_command_api():
     except Exception as e:
         logger.error(f"Error executing command: {str(e)}")
         return jsonify({'error': str(e)})
+
+
 
 
 # Add these new API endpoints for terminal functionality
