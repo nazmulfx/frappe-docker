@@ -1198,170 +1198,64 @@ def frappe_install_app():
 @app.route('/api/frappe/execute-command', methods=['POST'])
 @require_auth
 def execute_command_api():
-    """UNIVERSAL TERMINAL - Execute ANY command in ANY container"""
+    """UNIVERSAL TERMINAL - Execute ANY command in ANY container with REAL-TIME STREAMING"""
     try:
-        # Initialize variables
-        output = ''
-        error = ''
-        
         data = request.json
         container = data.get('container')
         command = data.get('command')
         current_dir = data.get('current_dir', '/home/frappe/frappe-bench')
-        
+
         if not container:
             return jsonify({'error': 'Container name is required'})
-        
         if not command:
             return jsonify({'error': 'Command is required'})
-        
-        # UNIVERSAL TERMINAL - NO RESTRICTIONS!
-        # Accept any container name and any command
-        # Let Docker handle the validation
-        
-        # Handle cd command specially
+
+        # --- Handle cd manually ---
         if command.startswith('cd ') or command == 'cd':
-            try:
-                # Extract the target directory
-                if command == 'cd':
-                    target_dir = '/app'  # Default to /app if just 'cd'
+            target_dir = command[3:].strip() if command != 'cd' else '/app'
+            if not target_dir.startswith('/'):
+                if target_dir in ('..', '../'):
+                    parts = current_dir.rstrip('/').split('/')
+                    current_dir = '/'.join(parts[:-1]) or '/'
+                elif target_dir in ('.', './'):
+                    pass
                 else:
-                    target_dir = command[3:].strip()
-                
-                # Handle relative paths
-                if not target_dir.startswith('/'):
-                    if target_dir == '..' or target_dir == '../':
-                        # Go up one directory - improved logic
-                        parts = current_dir.rstrip('/').split('/')
-                        if len(parts) > 1:
-                            current_dir = '/'.join(parts[:-1]) or '/'
-                        else:
-                            current_dir = '/'
-                    elif target_dir == '.' or target_dir == './':
-                        # Stay in current directory
-                        pass
-                    else:
-                        # Append to current directory
-                        current_dir = f"{current_dir.rstrip('/')}/{target_dir}"
-                else:
-                    # Absolute path
-                    current_dir = target_dir
-                
-                # Verify the directory exists
-                check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"[ -d '{current_dir}' ] && echo 'exists' || echo 'not_exists'"]
-                process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = process.communicate()
-                
-                if 'exists' in stdout.decode():
-                    return jsonify({
-                        'output': '',
-                        'current_dir': current_dir
-                    })
-                else:
-                    return jsonify({
-                        'error': f"cd: {target_dir}: No such file or directory",
-                        'current_dir': current_dir
-                    })
-            except Exception as e:
-                logger.error(f"Error handling cd command: {str(e)}")
-                return jsonify({'error': str(e)})
-        
-        # For tail -f commands, use a special approach to stream output
-        if command.startswith('tail -f ') or command.startswith('tail -F '):
-            # Extract the file pattern
-            file_pattern = command.split(' ', 2)[2]
-            
-            # First check if the file exists (improved logic)
-            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && ls {file_pattern} 2>/dev/null"]
-            process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
-            
-            # If ls command failed or returned empty, file doesn't exist
-            if process.returncode != 0 or not stdout.decode().strip():
-                return jsonify({'error': f"tail: cannot open '{file_pattern}' for reading: No such file or directory"})
-            
-            # Get initial content (last 10 lines)
-            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && tail -n 10 {file_pattern}"]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
-            
-            output = stdout.decode()
-            error = stderr.decode()
-            
-            if process.returncode != 0:
-                return jsonify({'error': error or f"Error executing tail on {file_pattern}"})
-            
-            return jsonify({
-                'output': output,
-                'is_streaming': True,
-                'stream_command': command,
-                'current_dir': current_dir
-            })
-        
-        # UNIVERSAL TERMINAL - Execute command with REAL-TIME streaming
-        # Use -w flag for working directory and -it for interactive TTY
+                    current_dir = f"{current_dir.rstrip('/')}/{target_dir}"
+            else:
+                current_dir = target_dir
+
+            check_cmd = [
+                "sudo", "docker", "exec", "-u", "root", container,
+                "bash", "-c", f"[ -d '{current_dir}' ] && echo exists || echo not_exists"
+            ]
+            proc = subprocess.run(check_cmd, capture_output=True, text=True)
+            if "exists" in proc.stdout:
+                return jsonify({'output': '', 'current_dir': current_dir})
+            else:
+                return jsonify({'error': f"cd: {target_dir}: No such file or directory", 'current_dir': current_dir})
+
+        # --- Build docker exec command ---
         cmd = ["sudo", "docker", "exec", "-w", current_dir, container, "bash", "-c", command]
-        
-        # For bench commands, use streaming approach
-        if command.lower().startswith('bench '):
-            try:
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
-                
-                # Read output line by line for streaming
-                output_lines = []
-                while True:
-                    line = process.stdout.readline()
-                    if not line:
-                        break
-                    output_lines.append(line.rstrip())
-                
-                # Get final output
-                output = '\n'.join(output_lines)
-                error = ""
-                
-                # Check if process completed successfully
-                process.wait()
-                if process.returncode != 0:
-                    error = f"Command failed with exit code {process.returncode}"
-                    if 'bench get-app' in command and 'Aborted' in output:
-                        error = error + "\n💡 Tip: Use 'bench get-app app_name --overwrite' to overwrite existing apps"
-                
-                return jsonify({
-                    'output': output,
-                    'error': error,
-                    'current_dir': current_dir,
-                    'is_streaming': True,
-                    'stream_command': command
-                })
-                
-            except Exception as e:
-                return jsonify({
-                    'error': f'Error executing command: {str(e)}',
-                    'current_dir': current_dir
-                })
-        else:
-            # For regular commands, use the original approach
-            timeout_seconds = 10
-            try:
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                stdout, stderr = process.communicate(timeout=timeout_seconds)
-                
-                output = stdout
-                error = stderr
-                
-                if process.returncode != 0:
-                    return jsonify({
-                        'error': error or 'Command execution failed',
-                        'current_dir': current_dir
-                    })
-            except subprocess.TimeoutExpired:
-                process.kill()
-                return jsonify({
-                    'error': f'Command timed out after {timeout_seconds} seconds.',
-                    'current_dir': current_dir
-                })
-        
-        # Log the command execution
+
+        # --- Real-time streaming for all commands ---
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+
+        output_lines = []
+        for line in process.stdout:
+            output_lines.append(line.rstrip())
+
+        process.wait()
+        output = "\n".join(output_lines)
+        error = "" if process.returncode == 0 else f"Command failed with exit code {process.returncode}"
+
+        # --- Save audit log ---
         username = session.get('username', 'unknown')
         log_entry = AuditLog(
             user_id=session.get('user_id'),
@@ -1369,18 +1263,23 @@ def execute_command_api():
             ip_address=request.remote_addr,
             event_type='command_execution',
             message=f"Executed command '{command}' in container {container}",
-            status='success'
+            status='success' if process.returncode == 0 else 'failed'
         )
         db.session.add(log_entry)
         db.session.commit()
-        
+
         return jsonify({
             'output': output,
-            'current_dir': current_dir
+            'error': error,
+            'current_dir': current_dir,
+            'is_streaming': True,
+            'stream_command': command
         })
+
     except Exception as e:
         logger.error(f"Error executing command: {str(e)}")
         return jsonify({'error': str(e)})
+
 
 
 
