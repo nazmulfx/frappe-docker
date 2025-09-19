@@ -302,7 +302,7 @@ PrintMotd no"""
             f"TCP:{container_ip}:22"  # FIXED: Always forward to port 22
         ]
         
-        log_file = f"/tmp/socat_{external_port}.log"
+        log_file = f"socat_{external_port}.log"
         
         try:
             # Start socat with proper process management

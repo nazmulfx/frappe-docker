@@ -3,7 +3,7 @@
 SECURE Web Docker Manager with Complete User Management System
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import subprocess
