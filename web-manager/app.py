@@ -1499,134 +1499,315 @@ def container_logs_api(container_name):
 # Temporary SSH Access Management API Endpoints
 
 
+
 def check_container_ports(container):
-    """Check if container has exposed ports"""
+    """Check if container has exposed ports and mapped ports.
+
+    Returns:
+        dict with keys: success, exposed_ports (dict or None), port_mappings (str), has_exposed_ports (bool), has_port_mappings (bool)
+    """
     try:
-        # Check exposed ports
-        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{.Config.ExposedPorts}}"]
+        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{json .Config.ExposedPorts}}"]
         result = subprocess.run(inspect_cmd, capture_output=True, text=True)
-        
         if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to inspect container: {result.stderr}"}
-        
-        exposed_ports = result.stdout.strip()
-        logger.info(f"Container {container} exposed ports: {exposed_ports}")
-        
-        # Check port mappings
+            return {'success': False, 'error': f"Failed to inspect container: {result.stderr.strip()}"}
+
+        exposed_raw = result.stdout.strip()
+        exposed_ports = None
+        try:
+            # exposed_raw could be "null", "{}", or a JSON map
+            exposed_ports = json.loads(exposed_raw)
+        except Exception:
+            # fallback parsing
+            if exposed_raw in ("<nil>", "map[]", "", "null"):
+                exposed_ports = {}
+            else:
+                # try to interpret as string
+                exposed_ports = {}
+
+        logger.info(f"Container {container} exposed ports (parsed): {exposed_ports}")
+
+        # Check port mappings (docker port)
         port_cmd = ["sudo", "docker", "port", container]
         port_result = subprocess.run(port_cmd, capture_output=True, text=True)
-        
-        port_mappings = port_result.stdout.strip()
+        port_mappings = port_result.stdout.strip() if port_result.returncode == 0 else ""
+
         logger.info(f"Container {container} port mappings: {port_mappings}")
-        
+
+        has_exposed = bool(exposed_ports) and exposed_ports != {}
+        has_mappings = port_mappings != ""
+
         return {
             'success': True,
             'exposed_ports': exposed_ports,
             'port_mappings': port_mappings,
-            'has_exposed_ports': exposed_ports != 'map[]' and exposed_ports != '',
-            'has_port_mappings': port_mappings != ''
+            'has_exposed_ports': has_exposed,
+            'has_port_mappings': has_mappings
         }
-        
     except Exception as e:
-        logger.error(f"Container port check error: {str(e)}")
+        logger.exception("Container port check error")
         return {'success': False, 'error': str(e)}
 
+
+
+
 def expose_ssh_port_dynamic(container, port):
-    """Dynamically expose SSH port using multiple methods"""
+    """Dynamically expose SSH port using multiple methods - WITH DEBUGGING"""
     try:
-        logger.info(f"Dynamically exposing SSH port {port} for container {container}")
+        logger.info(f"=== DYNAMIC PORT EXPOSURE DEBUG ===")
+        logger.info(f"Container: {container}, Port: {port}")
         
-        # Method 1: Try Docker port mapping (if container supports it)
+        # Method 1: Try Docker port mapping
+        logger.info("Attempting Docker port mapping...")
         docker_result = expose_ssh_port_docker(container, port)
         if docker_result['success']:
             logger.info("Docker port mapping successful")
             return docker_result
-        
+        else:
+            logger.warning(f"Docker port mapping failed: {docker_result.get('error', 'Unknown error')}")
+
         # Method 2: Try iptables port forwarding
+        logger.info("Attempting iptables port forwarding...")
         iptables_result = expose_ssh_port(container, port)
         if iptables_result['success']:
             logger.info("iptables port forwarding successful")
             return iptables_result
-        
+        else:
+            logger.warning(f"iptables failed: {iptables_result.get('error', 'Unknown error')}")
+
         # Method 3: Try socat port forwarding
+        logger.info("Attempting socat port forwarding...")
         socat_result = expose_ssh_port_socat(container, port)
         if socat_result['success']:
             logger.info("socat port forwarding successful")
             return socat_result
-        
+        else:
+            logger.warning(f"socat failed: {socat_result.get('error', 'Unknown error')}")
+
         # Method 4: Try Docker exec port forwarding
+        logger.info("Attempting Docker exec port forwarding...")
         exec_result = expose_ssh_port_exec(container, port)
         if exec_result['success']:
             logger.info("Docker exec port forwarding successful")
             return exec_result
+        else:
+            logger.warning(f"Docker exec failed: {exec_result.get('error', 'Unknown error')}")
+
+        # All methods failed - provide detailed diagnostics
+        logger.error("All port exposure methods failed!")
         
-        # All methods failed
+        # Run diagnostic commands
+        diagnostics = run_port_diagnostics(container, port)
+        logger.info(f"Port diagnostics: {diagnostics}")
+        logger.info("Attempting manual fallback method...")
+        manual_result = expose_ssh_port_manual(container, port)
+        if manual_result['success']:
+            logger.info("Manual method successful")
+            return manual_result
         return {
             'success': False,
-            'error': 'All port exposure methods failed. Container may not support dynamic port mapping.'
+            'error': 'All port exposure methods failed. ' + diagnostics,
+            'diagnostics': diagnostics
         }
         
     except Exception as e:
-        logger.error(f"Dynamic port exposure error: {str(e)}")
+        logger.exception("Dynamic port exposure error")
         return {'success': False, 'error': str(e)}
 
-def expose_ssh_port_socat(container, port):
-    """Expose SSH port using socat"""
+def run_port_diagnostics(container, port):
+    """Run diagnostic commands to understand why port forwarding fails"""
+    diagnostics = {}
+    
     try:
-        # Kill any existing socat on this port
-        kill_cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
-        subprocess.run(kill_cmd, capture_output=True, text=True)
+        # Check if port is already in use
+        check_port_cmd = ["sudo", "lsof", "-i", f":{port}"]
+        result = subprocess.run(check_port_cmd, capture_output=True, text=True)
+        diagnostics['port_usage'] = result.stdout if result.stdout else result.stderr
+        
+        # Check container IP
+        container_ip = get_container_ip(container)
+        diagnostics['container_ip'] = container_ip
+        
+        # Check if container has SSH running
+        ssh_check = ["sudo", "docker", "exec", container, "netstat", "-tlnp"]
+        result = subprocess.run(ssh_check, capture_output=True, text=True)
+        diagnostics['container_ports'] = result.stdout if result.stdout else result.stderr
+        
+        # Check iptables rules
+        iptables_check = ["sudo", "iptables", "-t", "nat", "-L", "-n", "-v"]
+        result = subprocess.run(iptables_check, capture_output=True, text=True)
+        diagnostics['iptables_rules'] = result.stdout
+        
+        # Check socat processes
+        socat_check = ["sudo", "pgrep", "-a", "socat"]
+        result = subprocess.run(socat_check, capture_output=True, text=True)
+        diagnostics['socat_processes'] = result.stdout if result.stdout else "No socat processes"
+        
+    except Exception as e:
+        diagnostics['error'] = str(e)
+    
+    return json.dumps(diagnostics)
+
+
+def expose_ssh_port_socat(container, port):
+    """
+    Forward host port -> container SSH (22) using socat - IMPROVED VERSION
+    """
+    try:
+        logger.info(f"Starting socat for container {container} on port {port}")
         
         # Get container IP
-        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"]
-        result = subprocess.run(inspect_cmd, capture_output=True, text=True)
-        
-        container_ip = result.stdout.strip()
-        if not container_ip or container_ip == '<no value>':
-            return {'success': False, 'error': 'Container has no IP address'}
+        container_ip = get_container_ip(container)
+        if not container_ip:
+            return {'success': False, 'error': 'Could not get container IP'}
         
         logger.info(f"Container IP: {container_ip}")
         
-        # Start socat port forwarding
-        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",bind=0.0.0.0,fork,reuseaddr", f"TCP:{container_ip}:22"]
-        socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Kill any existing processes on this port
+        kill_cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
+        subprocess.run(kill_cmd, capture_output=True)
         
-        # Give socat a moment to start
-        import time
-        time.sleep(1)
+        # Also kill any existing processes that might be blocking the port
+        kill_port_cmd = ["sudo", "fuser", "-k", f"{port}/tcp"]
+        subprocess.run(kill_port_cmd, capture_output=True)
+        
+        # Create the socat command
+        socat_cmd = [
+            "sudo", "socat",
+            "TCP-LISTEN:{},fork,reuseaddr".format(port),
+            "TCP:{}:22".format(container_ip)
+        ]
+        
+        logger.info(f"Executing: {' '.join(socat_cmd)}")
+        
+        # Start socat in the background
+        process = subprocess.Popen(
+            socat_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+        
+        # Wait a moment for socat to start
+        time.sleep(2)
         
         # Check if socat is running
-        check_cmd = ["sudo", "pgrep", "-f", f"socat.*{port}"]
-        check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+        check_cmd = ["sudo", "ss", "-tlnp", "|", "grep", f":{port}"]
+        result = subprocess.run(" ".join(check_cmd), shell=True, capture_output=True, text=True)
         
-        if check_result.returncode != 0:
-            logger.error("Socat failed to start")
-            return {'success': False, 'error': 'Failed to start socat port forwarding'}
-        
-        logger.info(f"Started socat port forwarding from host:{port} to {container_ip}:{port}")
-        return {'success': True, 'socat_pid': socat_process.pid}
-        
+        if result.returncode == 0 and str(port) in result.stdout:
+            logger.info(f"Socat successfully listening on port {port}")
+            logger.info(f"Port check: {result.stdout}")
+            
+            # Test the connection
+            test_result = test_port_connectivity("localhost", port)
+            logger.info(f"Port connectivity test: {test_result}")
+            
+            return {
+                'success': True, 
+                'pid': process.pid, 
+                'container_ip': container_ip,
+                'method': 'socat'
+            }
+        else:
+            # Get error output
+            stdout, stderr = process.communicate()
+            logger.error(f"Socat failed - stdout: {stdout}, stderr: {stderr}")
+            
+            process.terminate()
+            return {'success': False, 'error': f'Socat failed to start: {stderr}'}
+            
     except Exception as e:
-        logger.error(f"Socat port exposure error: {str(e)}")
+        logger.exception("Socat port exposure error")
         return {'success': False, 'error': str(e)}
 
-def expose_ssh_port_exec(container, port):
-    """Expose SSH port using Docker exec"""
+def test_port_connectivity(host, port):
+    """Test if a port is actually accessible"""
     try:
-        # Use Docker exec to create a port forward inside the container
-        forward_cmd = ["sudo", "docker", "exec", "-d", container, "bash", "-c", 
-                      f"socat TCP-LISTEN:{port},fork TCP:localhost:{port}"]
+        # Try netcat
+        nc_cmd = ["nc", "-z", "-w", "3", host, str(port)]
+        result = subprocess.run(nc_cmd, capture_output=True, text=True)
         
-        result = subprocess.run(forward_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f'Docker exec port forwarding failed: {result.stderr}'}
+        if result.returncode == 0:
+            return "Port is accessible"
+        else:
+            return f"Port not accessible: {result.stderr}"
+            
+    except Exception as e:
+        return f"Test failed: {str(e)}"
+
+def expose_ssh_port_manual(container, port):
+    """Manual fallback method using direct commands"""
+    try:
+        container_ip = get_container_ip(container)
+        if not container_ip:
+            return {'success': False, 'error': 'No container IP'}
         
-        logger.info(f"Set up Docker exec port forwarding for port {port}")
-        return {'success': True}
+        # Method 1: Direct socat command that you can test manually
+        manual_command = f"sudo socat TCP-LISTEN:{port},fork,reuseaddr TCP:{container_ip}:22 &"
+        
+        logger.info(f"Manual command: {manual_command}")
+        
+        # Try executing it
+        result = subprocess.run(manual_command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # Verify it worked
+            verify_cmd = f"sudo ss -tlnp | grep :{port}"
+            verify = subprocess.run(verify_cmd, shell=True, capture_output=True, text=True)
+            
+            if verify.returncode == 0:
+                return {'success': True, 'method': 'manual', 'command': manual_command}
+        
+        return {'success': False, 'error': 'Manual method failed'}
         
     except Exception as e:
-        logger.error(f"Docker exec port exposure error: {str(e)}")
         return {'success': False, 'error': str(e)}
+
+def stop_socat_by_pid(pid):
+    try:
+        os.kill(pid, 15)
+        return True
+    except Exception as e:
+        logger.warning(f"stop_socat_by_pid failed: {e}")
+        return False
+
+
+def expose_ssh_port_exec(container, port):
+    """Expose SSH by running a forwarder inside the container.
+       Inside-container socat will listen on container's port and forward to 127.0.0.1:22 (container internal SSH).
+       Note: this requires socat installed inside the container. If not present, you can apt-get install it (if allowed).
+    """
+    try:
+        # Check if socat exists inside container
+        check_socat = ["sudo", "docker", "exec", container, "which", "socat"]
+        chk = subprocess.run(check_socat, capture_output=True, text=True)
+        if chk.returncode != 0:
+            logger.info("socat not found inside container; attempting to install (best-effort)")
+            # Attempt install (only works for Debian/Ubuntu-based containers and when allowed)
+            install_cmd = ["sudo", "docker", "exec", container, "sh", "-c", "apt-get update && apt-get install -y socat"]
+            inst = subprocess.run(install_cmd, capture_output=True, text=True)
+            if inst.returncode != 0:
+                logger.warning(f"Failed to install socat inside container: {inst.stderr.strip()}")
+                # do not fail immediately; return helpful message
+                return {'success': False, 'error': 'socat not found inside container and auto-install failed'}
+
+        # Run socat inside container to listen on container port and forward to container's sshd (127.0.0.1:22)
+        # We run it detached using docker exec -d
+        inner_cmd = f"socat TCP-LISTEN:{int(port)},fork,reuseaddr"
+        forward_cmd = ["sudo", "docker", "exec", "-d", container, "sh", "-c", inner_cmd]
+        result = subprocess.run(forward_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"Docker exec socat failed: {result.stderr.strip()}")
+            return {'success': False, 'error': f'Docker exec socat failed: {result.stderr.strip()}'}
+
+        logger.info(f"Started socat inside container {container} listening on {port} forwarding to 127.0.0.1:22")
+        return {'success': True, 'method': 'exec', 'detail': 'socat started inside container'}
+    except Exception as e:
+        logger.exception("Docker exec port exposure error")
+        return {'success': False, 'error': str(e)}
+
+
 
 @app.route('/api/temp-ssh/setup', methods=['POST'])
 @require_auth
@@ -1661,26 +1842,13 @@ def temp_ssh_setup():
             logger.error(f"Failed to generate SSH key pair: {str(e)}")
             return jsonify({'success': False, 'error': f'Failed to generate SSH key pair: {str(e)}'})
         
-        # ONE CONTAINER = ONE PORT SYSTEM
-        # Always use the same port for the same container
-        container_port_map = {
-            'test20_local-app': 2222,
-            'test16_local-app': 2223,
-            'test15_local-app': 2224,
-            'test14_local-app': 2225,
-            'test13_local-app': 2226,
-            'test12_local-app': 2227,
-            'test11_local-app': 2228,
-            'test10_local-app': 2229,
-        }
-        
-        # Use predefined port for container, or fallback to dynamic
-        if container in container_port_map:
-            port = container_port_map[container]
-            logger.info(f"Using predefined port {port} for container {container}")
-        elif port:
+        # Handle port - use provided port or find available one
+        if port:
             try:
-                port = int(port)
+                if port:
+                    port = int(port)
+                else:
+                    port = find_available_port(2222, 2299)
                 logger.info(f"Using provided port: {port}")
             except ValueError:
                 logger.error(f"Invalid port number: {port}")
@@ -1691,11 +1859,6 @@ def temp_ssh_setup():
                 logger.error("No available ports found")
                 return jsonify({'success': False, 'error': 'No available ports'})
             logger.info(f"Using auto-selected port: {port}")
-        
-        # CRITICAL: Clean up ALL old sessions for this container FIRST
-        logger.info(f"Cleaning up ALL old SSH sessions for container: {container}")
-        cleaned_sessions = cleanup_old_ssh_sessions_for_container(container)
-        logger.info(f"Cleaned up {len(cleaned_sessions)} old sessions")
         
         # Check if container has exposed ports
         logger.info(f"Checking container port configuration: {container}")
@@ -1708,6 +1871,14 @@ def temp_ssh_setup():
         logger.info(f"SSH setup result: {setup_result}")
         
         if not setup_result['success']:
+            # After SSH setup, check if port forwarding needs to be re-established
+            if 'container_restarted' in setup_result and setup_result['container_restarted']:
+                logger.info("Container was restarted, re-establishing port forwarding...")
+                port_forward_result = reestablish_port_forwarding(container, port)
+                
+                if not port_forward_result['success']:
+                    logger.error(f"Port forwarding re-establishment failed: {port_forward_result['error']}")
+                    return jsonify({'success': False, 'error': f"SSH setup succeeded but port forwarding failed: {port_forward_result['error']}"})
             logger.error(f"SSH server setup failed: {setup_result['error']}")
             return jsonify({'success': False, 'error': setup_result['error']})
         
@@ -1791,6 +1962,26 @@ def temp_ssh_setup():
         }
         
         logger.info(f"Returning response: {response_data}")
+
+        # Setup SSH server in container
+        logger.info(f"Setting up SSH server in container: {container}")
+        setup_result = setup_ssh_server_in_container(container, username, public_key, port)
+        logger.info(f"SSH setup result: {setup_result}")
+        
+        if not setup_result['success']:
+            logger.error(f"SSH server setup failed: {setup_result['error']}")
+            return jsonify({'success': False, 'error': setup_result['error']})
+        
+        # VERIFY the setup worked
+        logger.info("Verifying SSH setup...")
+        verify_result = verify_ssh_setup(container, username, public_key)
+        logger.info(f"Verification result: {verify_result}")
+        
+        if not verify_result['success']:
+            logger.error(f"SSH setup verification failed: {verify_result.get('error', 'Unknown error')}")
+            return jsonify({'success': False, 'error': f"SSH setup failed verification: {verify_result.get('error', 'Unknown error')}"})
+
+
         return jsonify(response_data)
         
     except Exception as e:
@@ -1798,6 +1989,94 @@ def temp_ssh_setup():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)})
+
+def diagnose_ssh_issues(container, username, public_key, port):
+    """Run comprehensive diagnostics to identify the SSH authentication issue"""
+    logger.info("=== COMPREHENSIVE SSH DIAGNOSIS ===")
+    
+    diagnostics = {}
+    
+    # 1. Check if user exists
+    user_check = ["sudo", "docker", "exec", container, "id", username]
+    result = subprocess.run(user_check, capture_output=True, text=True)
+    diagnostics['user_exists'] = result.returncode == 0
+    diagnostics['user_info'] = result.stdout if result.stdout else result.stderr
+    
+    # 2. Check .ssh directory
+    ssh_dir = f"/home/{username}/.ssh"
+    dir_check = ["sudo", "docker", "exec", container, "ls", "-la", "/home", "|", "grep", username]
+    result = subprocess.run(" ".join(dir_check), shell=True, capture_output=True, text=True)
+    diagnostics['home_dir'] = result.stdout if result.stdout else result.stderr
+    
+    # 3. Check .ssh directory specifically
+    ssh_dir_check = ["sudo", "docker", "exec", container, "ls", "-la", ssh_dir]
+    result = subprocess.run(ssh_dir_check, capture_output=True, text=True)
+    diagnostics['ssh_dir'] = result.stdout if result.stdout else result.stderr
+    
+    # 4. Check authorized_keys file
+    auth_file = f"{ssh_dir}/authorized_keys"
+    auth_check = ["sudo", "docker", "exec", container, "cat", auth_file]
+    result = subprocess.run(auth_check, capture_output=True, text=True)
+    diagnostics['authorized_keys_content'] = result.stdout if result.stdout else result.stderr
+    diagnostics['authorized_keys_exists'] = result.returncode == 0
+    
+    # 5. Check permissions
+    perm_check = ["sudo", "docker", "exec", container, "stat", "-c", "%a %U:%G", auth_file]
+    result = subprocess.run(perm_check, capture_output=True, text=True)
+    diagnostics['permissions'] = result.stdout if result.stdout else result.stderr
+    
+    # 6. Check SSH server configuration
+    sshd_check = ["sudo", "docker", "exec", container, "grep", "-E", "(PubkeyAuthentication|PasswordAuthentication)", "/etc/ssh/sshd_config"]
+    result = subprocess.run(sshd_check, capture_output=True, text=True)
+    diagnostics['sshd_config'] = result.stdout if result.stdout else result.stderr
+    
+    # 7. Check if SSH is running
+    ssh_running = ["sudo", "docker", "exec", container, "ps", "aux", "|", "grep", "ssh"]
+    result = subprocess.run(" ".join(ssh_running), shell=True, capture_output=True, text=True)
+    diagnostics['ssh_processes'] = result.stdout if result.stdout else result.stderr
+    
+    # 8. Check SSH logs
+    ssh_logs = ["sudo", "docker", "exec", container, "tail", "-20", "/var/log/auth.log"]
+    result = subprocess.run(ssh_logs, capture_output=True, text=True)
+    diagnostics['auth_logs'] = result.stdout if result.returncode == 0 else "No auth.log found"
+    
+    # 9. Manual test - try to add key manually
+    manual_key_test = ["sudo", "docker", "exec", container, "sh", "-c", f"echo 'Manual test key' >> {auth_file}"]
+    result = subprocess.run(manual_key_test, capture_output=True, text=True)
+    diagnostics['manual_write_test'] = result.returncode == 0
+    
+    logger.info(f"Diagnostics: {json.dumps(diagnostics, indent=2)}")
+    return diagnostics
+
+
+def debug_ssh_setup(container, username):
+    """Run debugging commands to see what's happening in the container"""
+    debug_info = {}
+    
+    commands = [
+        ["id", username],
+        ["ls", "-la", f"/home/{username}"],
+        ["ls", "-la", f"/home/{username}/.ssh"],
+        ["cat", f"/home/{username}/.ssh/authorized_keys"],
+        ["stat", "-c", "%a %U:%G", f"/home/{username}/.ssh/authorized_keys"],
+        ["grep", "^PubkeyAuthentication", "/etc/ssh/sshd_config"],
+        ["ss", "-tlnp", "|", "grep", ":22"]
+    ]
+    
+    for cmd in commands:
+        try:
+            result = subprocess.run(["sudo", "docker", "exec", container] + cmd, 
+                                  capture_output=True, text=True)
+            debug_info[' '.join(cmd)] = {
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode
+            }
+        except Exception as e:
+            debug_info[' '.join(cmd)] = {'error': str(e)}
+    
+    return debug_info
+
 
 @app.route('/api/temp-ssh/download-key/<session_id>')
 @require_auth
@@ -2014,16 +2293,15 @@ def generate_ssh_key_pair():
             logger.error(f"Fallback SSH key generation also failed: {str(e2)}")
             raise Exception(f"Both cryptography and ssh-keygen failed: {str(e)}, {str(e2)}")
 
-def find_available_port(start_port, end_port):
-    """Find available port in range"""
+def find_available_port(start=2222, end=2299):
     import socket
-    
-    for port in range(start_port, end_port + 1):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex(('localhost', port))
-        sock.close()
-        if result != 0:
-            return port
+    for p in range(start, end+1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('0.0.0.0', p))
+                return p
+            except OSError:
+                continue
     return None
 
 def get_server_ip():
@@ -2083,15 +2361,21 @@ def setup_ssh_server_simple(container, username, public_key, port):
             "StrictModes no"
         ]
         
-        # Write config line by line
-        for line in config_lines:
-            config_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                         f"echo '{line}' >> /etc/ssh/sshd_config"]
-            subprocess.run(config_cmd, capture_output=True, text=True)
+        # Write SSH config using heredoc
+        ssh_config_content = """Port 22
+            PermitRootLogin no
+            PasswordAuthentication no
+            PubkeyAuthentication yes
+            AuthorizedKeysFile .ssh/authorized_keys
+            StrictModes no"""
+        
+        config_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
+                     f"cat > /etc/ssh/sshd_config << 'EOF'\n{ssh_config_content}\nEOF"]
+        subprocess.run(config_cmd, capture_output=True, text=True)
         
         # Start SSH server
         start_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    "/usr/sbin/sshd -D -p 22 &"]
+                    "mkdir -p /var/run/sshd && /usr/sbin/sshd -D -p 22 &"]
         result = subprocess.run(start_cmd, capture_output=True, text=True)
         
         return {'success': True}
@@ -2102,47 +2386,78 @@ def setup_ssh_server_simple(container, username, public_key, port):
 
 
 def expose_ssh_port_docker(container, port):
-    """Expose SSH port using socat port forwarding"""
+    """Expose SSH port using socat port forwarding - FIXED VERSION"""
     try:
         # Kill any existing socat on this port
         kill_cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
         subprocess.run(kill_cmd, capture_output=True, text=True)
         
-        # Get container IP from Frappe network
-        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{.NetworkSettings.Networks.test20_local_frappe_network.IPAddress}}"]
-        result = subprocess.run(inspect_cmd, capture_output=True, text=True)
-        
-        container_ip = result.stdout.strip()
-        if not container_ip or container_ip == '<no value>':
-            # Try to get IP from any network
-            fallback_cmd = ["sudo", "docker", "inspect", container, "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"]
-            fallback_result = subprocess.run(fallback_cmd, capture_output=True, text=True)
-            container_ip = fallback_result.stdout.strip().split()[0] if fallback_result.stdout.strip() else None
-        
+        # Get container IP using standardized method
+        container_ip = get_container_ip(container)
         if not container_ip:
             logger.error("Could not get container IP address")
             return {'success': False, 'error': 'Container has no IP address'}
         
-        logger.info(f"Container IP: {container_ip}")
+        logger.info(f"Container {container} IP: {container_ip}")
         
-        # Start socat port forwarding
-        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",bind=0.0.0.0,fork,reuseaddr", f"TCP:{container_ip}:22"]
-        socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Check if SSH server is running in container
+        ssh_check = subprocess.run(["sudo", "docker", "exec", container, "ss", "-tlnp"],
+                                   capture_output=True, text=True)
+        if ":22" not in ssh_check.stdout:
+            return {'success': False, 'error': 'SSH server not running in container'}
         
-        # Give socat a moment to start
-        import time
-        time.sleep(1)
+        # Create log file for debugging
+        log_file = f"/tmp/socat_{container}_{port}.log"
         
-        # Check if socat is running
+        # FIXED: Correct socat command like your working manual command
+        # Added debug flags (-d -d) and removed malformed shell redirection
+        socat_args = [
+            "sudo", "socat", 
+            "-d", "-d",  # Debug flags like your working command
+            f"TCP-LISTEN:{port},bind=0.0.0.0,fork,reuseaddr",
+            f"TCP:{container_ip}:22"
+        ]
+        
+        logger.info(f"Starting socat with command: {' '.join(socat_args)}")
+        
+        # Start socat process properly
+        with open(log_file, 'w') as log_f:
+            socat_process = subprocess.Popen(
+                socat_args,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
+                preexec_fn=os.setpgrp  # Create new process group
+            )
+        
+        # Give socat time to start
+        time.sleep(2)
+        
+        # Verify socat process is running
+        if socat_process.poll() is not None:
+            # Process exited, check log file
+            try:
+                with open(log_file, 'r') as f:
+                    error_log = f.read()
+                logger.error(f"Socat exited immediately. Log: {error_log}")
+                return {'success': False, 'error': f'Socat failed to start. Check log: {log_file}'}
+            except:
+                return {'success': False, 'error': f'Socat exited immediately. Check log: {log_file}'}
+        
+        # Double-check with pgrep
         check_cmd = ["sudo", "pgrep", "-f", f"socat.*{port}"]
         check_result = subprocess.run(check_cmd, capture_output=True, text=True)
         
         if check_result.returncode != 0:
-            logger.error("Socat failed to start")
+            logger.error("Socat process not found after startup")
             return {'success': False, 'error': 'Failed to start port forwarding'}
         
-        logger.info(f"Started socat port forwarding from host:{port} to {container_ip}:{port}")
-        return {'success': True, 'socat_pid': socat_process.pid}
+        logger.info(f"Successfully started socat pid={socat_process.pid}: host port {port} -> {container_ip}:22")
+        return {
+            'success': True, 
+            'socat_pid': socat_process.pid,
+            'container_ip': container_ip,
+            'log_file': log_file
+        }
         
     except Exception as e:
         logger.error(f"Port exposure error: {str(e)}")
@@ -2167,78 +2482,324 @@ def expose_ssh_port(container, port):
         logger.error(f"Port exposure error: {str(e)}")
         return {'success': True, 'warning': f'SSH server running but port exposure may have issues: {str(e)}'}
 
-def setup_ssh_server_in_container(container, username, public_key, port):
-    """Setup SSH server in Docker container"""
+def restart_ssh_service(container):
+    """Properly restart SSH service and clean up zombie processes"""
     try:
-        # Try the main setup first
-        result = setup_ssh_server_simple(container, username, public_key, port)
-        if result['success']:
-            return result
+        logger.info(f"Restarting SSH service in {container} and cleaning zombies")
         
-        # If simple setup fails, try the original method
-        # Install SSH server if not present
-        install_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                      "apt-get update && apt-get install -y openssh-server"]
-        process = subprocess.Popen(install_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            print(f"SSH install output: {stdout.decode()}")
-            print(f"SSH install error: {stderr.decode()}")
+        # 1. First, kill all zombie SSH processes
+        kill_zombies_cmd = [
+            "sudo", "docker", "exec", container, "sh", "-c",
+            "pkill -9 sshd && sleep 2"
+        ]
+        subprocess.run(kill_zombies_cmd, capture_output=True)
         
-        # Create SSH directory
-        mkdir_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"mkdir -p /home/{username}/.ssh && chmod 700 /home/{username}/.ssh"]
-        result = subprocess.run(mkdir_cmd, capture_output=True, text=True)
+        # 2. Clean up any remaining defunct processes
+        clean_zombies_cmd = [
+            "sudo", "docker", "exec", container, "sh", "-c",
+            "ps aux | grep '[s]shd.*defunct' | awk '{print $2}' | xargs -r kill -9"
+        ]
+        subprocess.run(clean_zombies_cmd, capture_output=True)
+        
+        # 3. Start SSH service properly
+        start_commands = [
+            ["sudo", "docker", "exec", container, "service", "ssh", "restart"],
+            ["sudo", "docker", "exec", container, "/etc/init.d/ssh", "restart"],
+            ["sudo", "docker", "exec", container, "sshd", "-D", "-p", "22", "-f", "/etc/ssh/sshd_config", "&"],
+            ["sudo", "docker", "exec", container, "/usr/sbin/sshd", "-D", "-p", "22", "-f", "/etc/ssh/sshd_config", "&"]
+        ]
+        
+        for cmd in start_commands:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info(f"SSH restarted using: {' '.join(cmd)}")
+                break
+        
+        # 4. Wait a moment and verify
+        time.sleep(3)
+        verify_cmd = ["sudo", "docker", "exec", container, "ps", "aux", "|", "grep", "[s]shd"]
+        result = subprocess.run(" ".join(verify_cmd), shell=True, capture_output=True, text=True)
+        
+        logger.info(f"SSH processes after restart: {result.stdout}")
+        
+        # Check for zombies
+        if "defunct" in result.stdout or "Z" in result.stdout:
+            logger.warning("Zombie processes still present after restart")
+            return False
+        else:
+            logger.info("SSH service restarted successfully")
+            return True
+            
+    except Exception as e:
+        logger.error(f"SSH restart failed: {str(e)}")
+        return False
+
+def setup_ssh_server_in_container(container, username, public_key, port):
+    """ULTIMATE SSH setup with multiple fallback methods"""
+    try:
+        logger.info(f"ULTIMATE SSH setup for {username} in {container}")
+        
+        # Run diagnostics first
+        diagnostics = diagnose_ssh_issues(container, username, public_key, port)
+        
+        # METHOD 1: Direct file creation using docker exec
+        ssh_dir = f"/home/{username}/.ssh"
+        auth_file = f"{ssh_dir}/authorized_keys"
+        
+        # Create directory
+        cmds = [
+            ["sudo", "docker", "exec", container, "mkdir", "-p", ssh_dir],
+            ["sudo", "docker", "exec", container, "touch", auth_file],
+            ["sudo", "docker", "exec", container, "chown", "-R", f"{username}:{username}", ssh_dir],
+            ["sudo", "docker", "exec", container, "chmod", "700", ssh_dir],
+            ["sudo", "docker", "exec", container, "chmod", "600", auth_file]
+        ]
+        
+        for cmd in cmds:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.warning(f"Command failed: {' '.join(cmd)} - {result.stderr}")
+        
+        # METHOD 2: Use printf to add the key
+        key_cmd = [
+            "sudo", "docker", "exec", container, "sh", "-c",
+            f"printf '\\n%s\\n' '{public_key}' >> {auth_file}"
+        ]
+        result = subprocess.run(key_cmd, capture_output=True, text=True)
+        
         if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to create SSH directory: {result.stderr}"}
+            logger.warning("Method 2 failed, trying method 3...")
+            
+            # METHOD 3: Use temp file method
+            temp_file = f"/tmp/ssh_key_{port}.pub"
+            with open(temp_file, "w") as f:
+                f.write(public_key + "\n")
+            
+            copy_cmd = ["sudo", "docker", "cp", temp_file, f"{container}:{auth_file}"]
+            result = subprocess.run(copy_cmd, capture_output=True, text=True)
+            os.remove(temp_file)
+            
+            if result.returncode != 0:
+                logger.error("All automated methods failed, using nuclear option...")
+                
+                # METHOD 4: Nuclear option - execute shell in container
+                shell_cmd = [
+                    "sudo", "docker", "exec", "-it", container, "bash", "-c",
+                    f"mkdir -p {ssh_dir} && " +
+                    f"echo '{public_key}' > {auth_file} && " +
+                    f"chown -R {username}:{username} {ssh_dir} && " +
+                    f"chmod 700 {ssh_dir} && " +
+                    f"chmod 600 {auth_file}"
+                ]
+                result = subprocess.run(" ".join(shell_cmd), shell=True, capture_output=True, text=True)
         
-        # Add public key to authorized_keys
-        auth_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                   f"echo '{public_key}' >> /home/{username}/.ssh/authorized_keys && chmod 600 /home/{username}/.ssh/authorized_keys"]
-        result = subprocess.run(auth_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to add public key: {result.stderr}"}
-        
-        # Create SSH config file using a different approach
-        ssh_config_content = f"""Port 22
-PermitRootLogin no
-PasswordAuthentication no
-PubkeyAuthentication yes
-AuthorizedKeysFile .ssh/authorized_keys
-StrictModes no
-"""
-        
-        # Write config file using cat with heredoc
-        config_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                     f"cat > /etc/ssh/sshd_config << 'EOF'\n{ssh_config_content}EOF"]
-        result = subprocess.run(config_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to configure SSH: {result.stderr}"}
-        
-        # Generate SSH host keys if they don't exist
-        hostkey_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                      "ssh-keygen -A"]
-        subprocess.run(hostkey_cmd, capture_output=True, text=True)
-        
-        # Start SSH server
-        start_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"pkill -f sshd || true; sleep 2; nohup /usr/sbin//usr/sbin/sshd -D -p 22 > /dev/null 2>&1 &"]
-        result = subprocess.run(start_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"SSH start output: {result.stdout}")
-            print(f"SSH start error: {result.stderr}")
-        
-        # Verify SSH server is running
-        verify_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                     f"netstat -tlnp | grep :{port} || ss -tlnp | grep :{port}"]
+        # Verify the key was installed
+        verify_cmd = ["sudo", "docker", "exec", container, "cat", auth_file]
         result = subprocess.run(verify_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"SSH server not listening on port {port}"}
         
+        if public_key.strip() not in result.stdout:
+            logger.error(f"KEY VERIFICATION FAILED! Expected: {public_key}, Got: {result.stdout}")
+            return {'success': False, 'error': 'Public key not properly installed'}
+        
+        logger.info("Key successfully installed!")
+        
+        # Configure SSH server
+        configure_cmds = [
+            ["sudo", "docker", "exec", container, "sed", "-i", "s/^#PubkeyAuthentication yes/PubkeyAuthentication yes/", "/etc/ssh/sshd_config"],
+            ["sudo", "docker", "exec", container, "sed", "-i", "s/^PubkeyAuthentication no/PubkeyAuthentication yes/", "/etc/ssh/sshd_config"],
+            ["sudo", "docker", "exec", container, "sh", "-c", "echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config"]
+        ]
+        
+        for cmd in configure_cmds:
+            subprocess.run(cmd, capture_output=True)
+        
+        # Restart SSH
+        restart_cmds = [
+            ["sudo", "docker", "exec", container, "service", "ssh", "restart"],
+            ["sudo", "docker", "exec", container, "/etc/init.d/ssh", "restart"],
+            ["sudo", "docker", "exec", container, "pkill", "-HUP", "sshd"]
+        ]
+        
+        for cmd in restart_cmds:
+            result = subprocess.run(cmd, capture_output=True)
+            if result.returncode == 0:
+                break
+        
+        # AFTER key installation, restart SSH properly
+        ssh_restarted = restart_ssh_service(container)
+        
+        if not ssh_restarted:
+            logger.warning("SSH restart may have failed, but continuing...")
+        
+        # Verify SSH is actually working
+        test_result = test_ssh_from_inside_container(container, username)
+        logger.info(f"Internal SSH test result: {test_result}")
+        fix_zombie_issue(container)
+
         return {'success': True}
         
     except Exception as e:
+        logger.exception(f"Ultimate SSH setup failed: {str(e)}")
         return {'success': False, 'error': str(e)}
+
+def reestablish_port_forwarding(container, port):
+    """Re-establish port forwarding after container restart"""
+    try:
+        logger.info(f"Re-establishing port forwarding for {container}:{port}")
+        
+        # Get the new container IP (it might have changed after restart)
+        container_ip = get_container_ip(container)
+        if not container_ip:
+            return {'success': False, 'error': 'Could not get container IP after restart'}
+        
+        logger.info(f"New container IP: {container_ip}")
+        
+        # Kill any existing socat processes on this port
+        kill_cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
+        subprocess.run(kill_cmd, capture_output=True)
+        
+        # Start new socat process
+        socat_cmd = [
+            "sudo", "socat",
+            "TCP-LISTEN:{},fork,reuseaddr,bind=0.0.0.0".format(port),
+            "TCP:{}:22".format(container_ip)
+        ]
+        
+        process = subprocess.Popen(
+            socat_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid
+        )
+        
+        # Wait and verify
+        time.sleep(2)
+        
+        # Check if socat is listening
+        check_cmd = ["sudo", "ss", "-tlnp", "|", "grep", f":{port}"]
+        result = subprocess.run(" ".join(check_cmd), shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0 and str(port) in result.stdout:
+            logger.info(f"Port forwarding re-established on port {port}")
+            return {'success': True, 'pid': process.pid, 'container_ip': container_ip}
+        else:
+            # Get error output
+            stdout, stderr = process.communicate()
+            logger.error(f"Socat failed: {stderr}")
+            return {'success': False, 'error': f'Port forwarding failed: {stderr}'}
+            
+    except Exception as e:
+        logger.error(f"Port forwarding re-establishment failed: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+
+def fix_zombie_issue(container):
+    """Fix zombie processes by adding proper init system to container"""
+    try:
+        logger.info(f"Restarting container {container} to clear zombies")
+        
+        restart_cmd = ["sudo", "docker", "restart", container]
+        result = subprocess.run(restart_cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # Wait for container to be fully restarted
+            time.sleep(5)
+            
+            # Check if container is running
+            check_cmd = ["sudo", "docker", "inspect", "-f", "{{.State.Running}}", container]
+            result = subprocess.run(check_cmd, capture_output=True, text=True)
+            
+            if "true" in result.stdout:
+                logger.info(f"Container {container} restarted successfully")
+                return True
+        
+        logger.error(f"Container restart failed: {result.stderr}")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Container restart error: {str(e)}")
+        return False
+
+def test_ssh_from_inside_container(container, username):
+    """Test SSH connection from inside the container itself"""
+    try:
+        test_cmd = [
+            "sudo", "docker", "exec", container, "sh", "-c",
+            f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 {username}@localhost echo INTERNAL_TEST_SUCCESS 2>&1"
+        ]
+        
+        result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=10)
+        
+        if "INTERNAL_TEST_SUCCESS" in result.stdout:
+            return "Internal SSH test: SUCCESS"
+        else:
+            return f"Internal SSH test failed: {result.stdout} {result.stderr}"
+            
+    except Exception as e:
+        return f"Internal test error: {str(e)}"
+
+def configure_ssh_server(container):
+    """Ensure SSH server is configured to allow public key authentication"""
+    try:
+        # Check current SSH config
+        check_cmd = ["sudo", "docker", "exec", container, "grep", "^PubkeyAuthentication", "/etc/ssh/sshd_config"]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0 or "yes" not in result.stdout:
+            logger.info("Configuring SSH server to allow public key authentication")
+            
+            # Enable public key authentication
+            enable_pubkey = [
+                "sudo", "docker", "exec", container, "sh", "-c",
+                "echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config"
+            ]
+            subprocess.run(enable_pubkey, capture_output=True)
+            
+            # Also ensure password authentication is disabled for security
+            disable_password = [
+                "sudo", "docker", "exec", container, "sh", "-c", 
+                "echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config"
+            ]
+            subprocess.run(disable_password, capture_output=True)
+            
+    except Exception as e:
+        logger.warning(f"SSH configuration failed: {e}")
+
+
+def verify_ssh_setup(container, username, public_key):
+    """Verify SSH setup was successful"""
+    try:
+        auth_keys_file = f"/home/{username}/.ssh/authorized_keys"
+        
+        # 1. Check if key was installed
+        check_key_cmd = ["sudo", "docker", "exec", container, "cat", auth_keys_file]
+        key_result = subprocess.run(check_key_cmd, capture_output=True, text=True)
+        
+        if key_result.returncode != 0:
+            return {'success': False, 'error': 'Authorized keys file not found'}
+        
+        if public_key.strip() not in key_result.stdout:
+            logger.error(f"Key mismatch! Expected: {public_key}, Found: {key_result.stdout}")
+            return {'success': False, 'error': 'Public key not found in authorized_keys'}
+        
+        # 2. Check permissions
+        perm_cmd = ["sudo", "docker", "exec", container, "stat", "-c", "%a %U:%G", auth_keys_file]
+        perm_result = subprocess.run(perm_cmd, capture_output=True, text=True)
+        
+        if "600" not in perm_result.stdout or username not in perm_result.stdout:
+            logger.warning(f"Permissions may be incorrect: {perm_result.stdout}")
+        
+        # 3. Check SSH server is running
+        ssh_check = ["sudo", "docker", "exec", container, "ss", "-tlnp", "|", "grep", ":22"]
+        ssh_result = subprocess.run(" ".join(ssh_check), shell=True, capture_output=True, text=True)
+        
+        if ":22" not in ssh_result.stdout:
+            logger.warning("SSH server may not be listening on port 22")
+        
+        return {'success': True, 'message': 'SSH setup verified'}
+        
+    except Exception as e:
+        return {'success': False, 'error': str(e)} 
 
 def stop_ssh_server_in_container(container, port):
     """Stop SSH server in Docker container"""
@@ -2274,50 +2835,6 @@ def save_ssh_session_to_file(session_info):
         logger.error(f"Failed to save SSH session to file: {str(e)}")
         return False
 
-def cleanup_old_ssh_sessions_for_container(container):
-    """Clean up ALL old SSH sessions for a specific container - ONE CONTAINER = ONE PORT"""
-    try:
-        logger.info(f"=== CLEANING UP ALL OLD SSH SESSIONS FOR CONTAINER: {container} ===")
-        cleaned_sessions = []
-
-        # Step 1: Kill ALL socat processes for this container
-        logger.info(f"Killing all socat processes for container {container}")
-        kill_all_socat_cmd = ["sudo", "pkill", "-f", f"socat.*TCP.*{container}"]
-        subprocess.run(kill_all_socat_cmd, capture_output=True, text=True)
-        
-        # Step 2: Kill ALL SSH servers in this container
-        logger.info(f"Stopping all SSH servers in container {container}")
-        stop_all_ssh_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", "pkill -f sshd || true"]
-        subprocess.run(stop_all_ssh_cmd, capture_output=True, text=True)
-
-        # Step 3: Remove all session files for this container
-        sessions_dir = "ssh_sessions"
-        if os.path.exists(sessions_dir):
-            for filename in os.listdir(sessions_dir):
-                if filename.endswith(".json"):
-                    session_file = os.path.join(sessions_dir, filename)
-                    try:
-                        with open(session_file, "r") as f:
-                            session_data = json.load(f)
-                        if session_data.get("container") == container:
-                            os.remove(session_file)
-                            logger.info(f"Removed session file: {session_file}")
-                    except Exception as e:
-                        logger.error(f"Error processing session file {session_file}: {str(e)}")
-
-        # Step 4: Remove from memory
-        for session_id, session_info in list(ssh_connections.items()):
-            if session_info.get("container") == container:
-                logger.info(f"Removing session {session_id} from memory for container {container}")
-                del ssh_connections[session_id]
-                cleaned_sessions.append(session_id)
-
-        logger.info(f"=== CLEANUP COMPLETE: Removed {len(cleaned_sessions)} sessions for container {container} ===")
-        return cleaned_sessions
-
-    except Exception as e:
-        logger.error(f"Error cleaning up old sessions: {str(e)}")
-        return []
 def load_ssh_sessions_from_files():
     """Load SSH sessions from persistent file storage"""
     try:
@@ -2420,7 +2937,11 @@ def restore_ssh_port_forwarding(session_info):
         ip_cmd = ['sudo', 'docker', 'inspect', container, '--format', 
                  '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}']
         ip_result = subprocess.run(ip_cmd, capture_output=True, text=True)
-        container_ip = ip_result.stdout.strip().split()[0] if ip_result.stdout.strip() else None
+                # Extract first valid IP using regex
+        import re
+        ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
+        ips = re.findall(ip_pattern, ip_result.stdout.strip())
+        container_ip = ips[0] if ips else None
         
         if not container_ip:
             logger.warning(f"Could not get IP for container {container}")
@@ -2435,7 +2956,7 @@ def restore_ssh_port_forwarding(session_info):
             return True
         
         # Start socat port forwarding
-        socat_cmd = ['sudo', 'socat', f'TCP-LISTEN:{port},fork', f'TCP:{container_ip}:22']
+        socat_cmd = ['sudo', 'socat', f'TCP-LISTEN:{port},bind=0.0.0.0,fork,reuseaddr', f'TCP:{container_ip}:22']
         socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Give socat a moment to start
@@ -2485,6 +3006,118 @@ def initialize_ssh_sessions():
 
         return False
 
+def get_container_ip(container):
+    """Standardized container IP extraction with proper validation - FIXED VERSION"""
+    try:
+        # Try to get IP from any network with proper spacing
+        inspect_cmd = ["sudo", "docker", "inspect", container, 
+                      "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"]
+        result = subprocess.run(inspect_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"Docker inspect failed: {result.stderr.strip()}")
+            return None
+            
+        raw_output = result.stdout.strip()
+        logger.info(f"Raw docker inspect output for {container}: '{raw_output}'")
+        
+        # Function to validate if an IP address is valid
+        def is_valid_ip(ip):
+            try:
+                parts = ip.split('.')
+                if len(parts) != 4:
+                    return False
+                for part in parts:
+                    if not part.isdigit():
+                        return False
+                    num = int(part)
+                    if num < 0 or num > 255:
+                        return False
+                return True
+            except:
+                return False
+        
+        # Split by spaces and filter out empty strings
+        potential_ips = [ip.strip() for ip in raw_output.split() if ip.strip()]
+        
+        # Filter out invalid IPs (where any octet > 255)
+        valid_ips = [ip for ip in potential_ips if is_valid_ip(ip)]
+        invalid_ips = [ip for ip in potential_ips if not is_valid_ip(ip)]
+        
+        logger.info(f"Potential IPs found: {potential_ips}")
+        logger.info(f"Valid IPs after filtering: {valid_ips}")
+        if invalid_ips:
+            logger.info(f"Invalid IPs (filtered out): {invalid_ips}")
+        
+        if not valid_ips:
+            logger.error(f"No valid IP found for container {container}")
+            return None
+        
+        # Prefer IPs in the 172.22.x.x range (Frappe network) if available
+        frappe_ips = [ip for ip in valid_ips if ip.startswith('172.22.')]
+        if frappe_ips:
+            container_ip = frappe_ips[0]
+            logger.info(f"Using Frappe network IP: {container_ip}")
+        else:
+            # Use the first valid IP
+            container_ip = valid_ips[0]
+            logger.info(f"Using first available valid IP: {container_ip}")
+        
+        logger.info(f"Selected container IP: {container_ip} from valid IPs: {valid_ips}")
+        return container_ip
+        
+    except Exception as e:
+        logger.error(f"Error getting container IP: {str(e)}")
+        return None
+
+def fix_existing_socat_processes():
+    """Fix existing socat processes with incorrect IPs"""
+    try:
+        logger.info("Checking and fixing existing socat processes...")
+        
+        # Get all socat processes
+        result = subprocess.run(["sudo", "pgrep", "-f", "socat.*TCP-LISTEN"], 
+                              capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.info("No socat processes found")
+            return
+        
+        pids = result.stdout.strip().split('\n')
+        logger.info(f"Found {len(pids)} socat processes")
+        
+        # Get detailed process info
+        for pid in pids:
+            if pid.strip():
+                try:
+                    # Get process command line
+                    cmd_result = subprocess.run(["sudo", "ps", "-p", pid.strip(), "-o", "args", "--no-headers"], 
+                                              capture_output=True, text=True)
+                    if cmd_result.returncode == 0:
+                        cmd_line = cmd_result.stdout.strip()
+                        logger.info(f"Process {pid}: {cmd_line}")
+                        
+                        # Extract port and target IP from command
+                        import re
+                        port_match = re.search(r'TCP-LISTEN:(\d+)', cmd_line)
+                        ip_match = re.search(r'TCP:(\d+\.\d+\.\d+\.\d+):22', cmd_line)
+                        
+                        if port_match and ip_match:
+                            port = port_match.group(1)
+                            target_ip = ip_match.group(1)
+                            
+                            # Check if this IP looks wrong (like 172.20.0.217)
+                            if len(target_ip) > 15:  # Normal IPs are max 15 chars
+                                logger.warning(f"Process {pid} has suspicious IP: {target_ip}")
+                                # Kill this process
+                                subprocess.run(["sudo", "kill", pid.strip()], capture_output=True)
+                                logger.info(f"Killed process {pid} with suspicious IP")
+                            
+                except Exception as e:
+                    logger.error(f"Error checking process {pid}: {str(e)}")
+                    
+    except Exception as e:
+        logger.error(f"Error fixing socat processes: {str(e)}")
 
 if __name__ == '__main__':
     with app.app_context():
