@@ -254,7 +254,7 @@ PrintMotd no"""
     
     def _kill_existing_socat(self, port):
         """Kill existing socat processes on port"""
-        cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
+        cmd = ["sudo", "-n", "pkill", "-f", f"socat.*{port}"]
         subprocess.run(cmd, capture_output=True, text=True)
         
         # Also kill any process using the port
@@ -296,8 +296,9 @@ PrintMotd no"""
     def _start_socat_forwarding(self, container_ip, external_port):
         """Start socat port forwarding with proper process management"""
         # FIXED: Forward to port 22 (SSH port), not custom port
+        # Try socat without sudo first, then with sudo if needed
         socat_cmd = [
-            "sudo", "socat",
+            "socat",
             f"TCP-LISTEN:{external_port},bind=0.0.0.0,fork,reuseaddr",
             f"TCP:{container_ip}:22"  # FIXED: Always forward to port 22
         ]
@@ -312,6 +313,27 @@ PrintMotd no"""
                     stdout=log_f,
                     stderr=subprocess.STDOUT,
                     preexec_fn=os.setsid  # Create new session
+                )
+            
+            # Check if socat started successfully, if not try with sudo
+            time.sleep(1)
+            check_cmd = ["pgrep", "-f", f"socat.*{external_port}"]
+            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+            
+            if check_result.returncode != 0:
+                # Socat failed, try with sudo
+                logger.info("Socat failed without sudo, trying with sudo...")
+                socat_cmd_sudo = ["sudo", "-n", "socat"] + socat_cmd[1:]
+                
+                # Kill the failed process
+                process.terminate()
+                
+                # Start with sudo
+                process = subprocess.Popen(
+                    socat_cmd_sudo,
+                    stdout=log_f,
+                    stderr=subprocess.STDOUT,
+                    preexec_fn=os.setsid
                 )
             
             # Give socat time to start
@@ -338,7 +360,7 @@ PrintMotd no"""
     def _verify_socat_running(self, port):
         """Verify socat is running and listening"""
         # Check with pgrep
-        cmd = ["sudo", "pgrep", "-f", f"socat.*{port}"]
+        cmd = ["sudo", "-n", "pgrep", "-f", f"socat.*{port}"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
