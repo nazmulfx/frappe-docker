@@ -303,7 +303,7 @@ PrintMotd no"""
             f"TCP:{container_ip}:22"  # FIXED: Always forward to port 22
         ]
         
-        log_file = f"socat_{external_port}.log"
+        log_file = f"ssh_sessions/socat_{external_port}.log"
         
         try:
             # Start socat with proper process management
@@ -616,15 +616,85 @@ PrintMotd no"""
             logger.error(f"Session revocation error: {str(e)}")
             return {'success': False, 'error': str(e)}
     
+    def _has_other_active_sessions(self, container, username):
+        """Check if there are other active SSH sessions for the same user in the same container"""
+        try:
+            for session_id, session in self.ssh_connections.items():
+                if (session['container'] == container and 
+                    session['username'] == username and 
+                    session['status'] == 'active' and 
+                    session['expires_at'] > datetime.now()):
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking active sessions: {str(e)}")
+            return True  # Conservative approach - don't remove if we can't check
+
+    def _remove_ssh_keys_from_container(self, container, username, remove_user=False):
+        """Remove SSH keys from Docker container
+        
+        Args:
+            container: Docker container name
+            username: SSH username to clean up
+            remove_user: If True, remove the entire user account
+        """
+        try:
+            logger.info(f"Removing SSH keys for {username} from {container}")
+            
+            # Remove authorized_keys file
+            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
+                   f"rm -f /home/{username}/.ssh/authorized_keys"]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.warning(f"Failed to remove authorized_keys: {result.stderr}")
+            
+            # Remove .ssh directory if empty
+            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
+                   f"rmdir /home/{username}/.ssh 2>/dev/null || true"]
+            subprocess.run(cmd, capture_output=True, text=True)
+            
+            # Optionally remove the entire user account
+            if remove_user:
+                logger.info(f"Removing user {username} from {container}")
+                cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
+                       f"userdel -r {username} 2>/dev/null || true"]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    logger.info(f"User {username} removed from {container}")
+                else:
+                    logger.warning(f"Failed to remove user {username}: {result.stderr}")
+            
+            logger.info(f"SSH keys removed for {username} from {container}")
+            
+        except Exception as e:
+            logger.error(f"SSH key removal error: {str(e)}")
+
     def _cleanup_session(self, session):
         """Cleanup SSH session resources"""
         try:
             container = session['container']
             port = session['port']
+            username = session['username']
             
             # Kill socat process
             subprocess.run(['sudo', 'pkill', '-f', f'socat.*{port}'], 
                          capture_output=True, text=True)
+            
+            # Remove socat log file
+            log_file = f"ssh_sessions/socat_{port}.log"
+            if os.path.exists(log_file):
+                try:
+                    os.remove(log_file)
+                    logger.info(f"Removed socat log file: {log_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove log file {log_file}: {str(e)}")
+            
+            # Remove SSH keys from container
+            # Only remove user if no other active sessions exist for this user
+            remove_user = not self._has_other_active_sessions(container, username)
+            self._remove_ssh_keys_from_container(container, username, remove_user)
             
             # Stop SSH server (optional - may be used by other sessions)
             # subprocess.run(['sudo', 'docker', 'exec', container, 'service', 'ssh', 'stop'],
@@ -635,6 +705,40 @@ PrintMotd no"""
         except Exception as e:
             logger.error(f"Session cleanup error: {str(e)}")
     
+
+    def cleanup_orphaned_log_files(self):
+        """Clean up orphaned socat log files that don't have active sessions"""
+        try:
+            if not os.path.exists(self.sessions_dir):
+                return
+            
+            # Get all active session ports
+            active_ports = set()
+            for session in self.ssh_connections.values():
+                if session['status'] == 'active':
+                    active_ports.add(session['port'])
+            
+            # Find all socat log files
+            for filename in os.listdir(self.sessions_dir):
+                if filename.startswith('socat_') and filename.endswith('.log'):
+                    # Extract port from filename (socat_2222.log -> 2222)
+                    try:
+                        port_str = filename.replace('socat_', '').replace('.log', '')
+                        port = int(port_str)
+                        
+                        # If port is not in active sessions, remove the log file
+                        if port not in active_ports:
+                            log_file = os.path.join(self.sessions_dir, filename)
+                            os.remove(log_file)
+                            logger.info(f"Removed orphaned log file: {filename}")
+                    except ValueError:
+                        # Skip files that don't match the expected pattern
+                        continue
+            
+        except Exception as e:
+            logger.error(f"Orphaned log cleanup error: {str(e)}")
+    
+
     def cleanup_expired_sessions(self):
         """Clean up expired SSH sessions"""
         try:
@@ -650,6 +754,9 @@ PrintMotd no"""
             
             if expired_sessions:
                 logger.info(f"Cleaned up {len(expired_sessions)} expired sessions")
+            
+            # Also clean up orphaned log files
+            self.cleanup_orphaned_log_files()
             
         except Exception as e:
             logger.error(f"Expired session cleanup error: {str(e)}")
@@ -696,4 +803,10 @@ def cleanup_expired_sessions():
 
 def get_session_private_key(session_id):
     """Backward compatibility wrapper"""
+def cleanup_orphaned_log_files():
+    """Backward compatibility wrapper"""
+    return ssh_manager.cleanup_orphaned_log_files()
+def cleanup_orphaned_ssh_users():
+    """Backward compatibility wrapper"""
+    return ssh_manager.cleanup_orphaned_ssh_users()
     return ssh_manager.get_session_private_key(session_id)

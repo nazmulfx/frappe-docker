@@ -310,6 +310,62 @@ def cleanup_expired_sessions():
         logger.error(f"Cleanup SSH sessions error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@ssh_bp.route('/cleanup-orphaned', methods=['POST'])
+@require_auth
+def cleanup_orphaned_files():
+    """Clean up orphaned log files"""
+    try:
+        username = session.get('username', 'unknown')
+        ip = request.remote_addr
+        
+        # Run orphaned cleanup
+        ssh_manager.cleanup_orphaned_log_files()
+        
+        # Log the action
+        log_audit('ssh_cleanup', username, ip, 'Cleaned up orphaned SSH log files')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Orphaned files cleaned up successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Orphaned cleanup error: {str(e)}")
+        log_audit('ssh_cleanup', session.get('username', 'unknown'), request.remote_addr, 
+                 f'Orphaned cleanup failed: {str(e)}', 'error')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@ssh_bp.route('/cleanup-orphaned-users', methods=['POST'])
+@require_auth
+def cleanup_orphaned_ssh_users():
+    """Clean up orphaned SSH users from containers"""
+    try:
+        username = session.get('username', 'unknown')
+        ip = request.remote_addr
+        
+        # Run orphaned SSH user cleanup
+        ssh_manager.cleanup_orphaned_ssh_users()
+        
+        # Log the action
+        log_audit('ssh_cleanup_users', username, ip, 'Cleaned up orphaned SSH users from containers')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Orphaned SSH users cleaned up successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Orphaned SSH user cleanup error: {str(e)}")
+        log_audit('ssh_cleanup_users', session.get('username', 'unknown'), request.remote_addr, 
+                 f'Orphaned SSH user cleanup failed: {str(e)}', 'error')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 @ssh_bp.route('/containers')
 @require_auth
 def get_containers():

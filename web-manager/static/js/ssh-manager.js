@@ -55,6 +55,7 @@ async function handleTempSSHSetup(e) {
     }
     
     updateAccessInfo('Setting up SSH access...', 'warning');
+    hideSSHConnectionDetails()
     
     try {
         const response = await fetch('/api/temp-ssh/setup', {
