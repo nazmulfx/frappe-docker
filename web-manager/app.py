@@ -9,7 +9,6 @@ from functools import wraps
 import subprocess
 import json
 import re
-import os
 import secrets
 import time
 import logging
@@ -21,21 +20,15 @@ import io
 from datetime import datetime, timedelta
 from config import Config
 from models import db, User, AuditLog, create_default_admin
-import paramiko
-from datetime import timedelta
-import socket
 
-import threading
-import uuid
-import os
-import tempfile
-from datetime import datetime
 
+
+
+# SSH Manager imports
+from ssh_routes import ssh_bp
+from ssh_pages import ssh_pages_bp
 
 app = Flask(__name__)
-# SSH Connection Storage
-ssh_connections = {}
-
 
 # Configure Flask for URL generation
 app.config['SERVER_NAME'] = 'localhost:5000'
@@ -45,6 +38,11 @@ app.config.from_object(Config)
 
 # Initialize database
 db.init_app(app)
+
+# Register SSH blueprints
+app.register_blueprint(ssh_bp)
+app.register_blueprint(ssh_pages_bp)
+
 
 # Context processor to make CSRF token available in all templates
 @app.context_processor
@@ -1496,1000 +1494,102 @@ def container_logs_api(container_name):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Temporary SSH Access Management API Endpoints
 
 
-def check_container_ports(container):
-    """Check if container has exposed ports"""
-    try:
-        # Check exposed ports
-        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{.Config.ExposedPorts}}"]
-        result = subprocess.run(inspect_cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to inspect container: {result.stderr}"}
-        
-        exposed_ports = result.stdout.strip()
-        logger.info(f"Container {container} exposed ports: {exposed_ports}")
-        
-        # Check port mappings
-        port_cmd = ["sudo", "docker", "port", container]
-        port_result = subprocess.run(port_cmd, capture_output=True, text=True)
-        
-        port_mappings = port_result.stdout.strip()
-        logger.info(f"Container {container} port mappings: {port_mappings}")
-        
-        return {
-            'success': True,
-            'exposed_ports': exposed_ports,
-            'port_mappings': port_mappings,
-            'has_exposed_ports': exposed_ports != 'map[]' and exposed_ports != '',
-            'has_port_mappings': port_mappings != ''
-        }
-        
-    except Exception as e:
-        logger.error(f"Container port check error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-def expose_ssh_port_dynamic(container, port):
-    """Dynamically expose SSH port using multiple methods"""
-    try:
-        logger.info(f"Dynamically exposing SSH port {port} for container {container}")
-        
-        # Method 1: Try Docker port mapping (if container supports it)
-        docker_result = expose_ssh_port_docker(container, port)
-        if docker_result['success']:
-            logger.info("Docker port mapping successful")
-            return docker_result
-        
-        # Method 2: Try iptables port forwarding
-        iptables_result = expose_ssh_port(container, port)
-        if iptables_result['success']:
-            logger.info("iptables port forwarding successful")
-            return iptables_result
-        
-        # Method 3: Try socat port forwarding
-        socat_result = expose_ssh_port_socat(container, port)
-        if socat_result['success']:
-            logger.info("socat port forwarding successful")
-            return socat_result
-        
-        # Method 4: Try Docker exec port forwarding
-        exec_result = expose_ssh_port_exec(container, port)
-        if exec_result['success']:
-            logger.info("Docker exec port forwarding successful")
-            return exec_result
-        
-        # All methods failed
-        return {
-            'success': False,
-            'error': 'All port exposure methods failed. Container may not support dynamic port mapping.'
-        }
-        
-    except Exception as e:
-        logger.error(f"Dynamic port exposure error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-def expose_ssh_port_socat(container, port):
-    """Expose SSH port using socat"""
-    try:
-        # Kill any existing socat on this port
-        kill_cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
-        subprocess.run(kill_cmd, capture_output=True, text=True)
-        
-        # Get container IP
-        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"]
-        result = subprocess.run(inspect_cmd, capture_output=True, text=True)
-        
-        container_ip = result.stdout.strip()
-        if not container_ip or container_ip == '<no value>':
-            return {'success': False, 'error': 'Container has no IP address'}
-        
-        logger.info(f"Container IP: {container_ip}")
-        
-        # Start socat port forwarding
-        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",bind=0.0.0.0,fork,reuseaddr", f"TCP:{container_ip}:22"]
-        socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Give socat a moment to start
-        import time
-        time.sleep(1)
-        
-        # Check if socat is running
-        check_cmd = ["sudo", "pgrep", "-f", f"socat.*{port}"]
-        check_result = subprocess.run(check_cmd, capture_output=True, text=True)
-        
-        if check_result.returncode != 0:
-            logger.error("Socat failed to start")
-            return {'success': False, 'error': 'Failed to start socat port forwarding'}
-        
-        logger.info(f"Started socat port forwarding from host:{port} to {container_ip}:{port}")
-        return {'success': True, 'socat_pid': socat_process.pid}
-        
-    except Exception as e:
-        logger.error(f"Socat port exposure error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-def expose_ssh_port_exec(container, port):
-    """Expose SSH port using Docker exec"""
-    try:
-        # Use Docker exec to create a port forward inside the container
-        forward_cmd = ["sudo", "docker", "exec", "-d", container, "bash", "-c", 
-                      f"socat TCP-LISTEN:{port},fork TCP:localhost:{port}"]
-        
-        result = subprocess.run(forward_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f'Docker exec port forwarding failed: {result.stderr}'}
-        
-        logger.info(f"Set up Docker exec port forwarding for port {port}")
-        return {'success': True}
-        
-    except Exception as e:
-        logger.error(f"Docker exec port exposure error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
+# Backward compatibility routes for old SSH endpoints
 @app.route('/api/temp-ssh/setup', methods=['POST'])
 @require_auth
-def temp_ssh_setup():
-    """Setup temporary SSH access for external connections"""
-    try:
-        data = request.json
-        container = data.get('container')
-        username = data.get('username', 'frappe')
-        duration = int(data.get('duration', 24))  # hours
-        port = data.get('port')
-        description = data.get('description', '')
-        
-        logger.info(f"=== SSH SETUP START ===")
-        logger.info(f"SSH setup request: container={container}, username={username}, duration={duration}, port={port}")
-        
-        if not container:
-            logger.error("No container specified")
-            return jsonify({'success': False, 'error': 'Container name is required'})
-        
-        # Generate session ID and key name
-        session_id = str(uuid.uuid4())
-        key_name = f"temp_ssh_{session_id[:8]}"
-        
-        logger.info(f"Generated session_id: {session_id}, key_name: {key_name}")
-        
-        # Generate SSH key pair
-        try:
-            private_key, public_key = generate_ssh_key_pair()
-            logger.info(f"Generated SSH key pair successfully - Private key length: {len(private_key)}")
-        except Exception as e:
-            logger.error(f"Failed to generate SSH key pair: {str(e)}")
-            return jsonify({'success': False, 'error': f'Failed to generate SSH key pair: {str(e)}'})
-        
-        # ONE CONTAINER = ONE PORT SYSTEM
-        # Always use the same port for the same container
-        container_port_map = {
-            'test20_local-app': 2222,
-            'test16_local-app': 2223,
-            'test15_local-app': 2224,
-            'test14_local-app': 2225,
-            'test13_local-app': 2226,
-            'test12_local-app': 2227,
-            'test11_local-app': 2228,
-            'test10_local-app': 2229,
-        }
-        
-        # Use predefined port for container, or fallback to dynamic
-        if container in container_port_map:
-            port = container_port_map[container]
-            logger.info(f"Using predefined port {port} for container {container}")
-        elif port:
-            try:
-                port = int(port)
-                logger.info(f"Using provided port: {port}")
-            except ValueError:
-                logger.error(f"Invalid port number: {port}")
-                return jsonify({'success': False, 'error': 'Invalid port number'})
-        else:
-            port = find_available_port(2222, 2299)
-            if not port:
-                logger.error("No available ports found")
-                return jsonify({'success': False, 'error': 'No available ports'})
-            logger.info(f"Using auto-selected port: {port}")
-        
-        # CRITICAL: Clean up ALL old sessions for this container FIRST
-        logger.info(f"Cleaning up ALL old SSH sessions for container: {container}")
-        cleaned_sessions = cleanup_old_ssh_sessions_for_container(container)
-        logger.info(f"Cleaned up {len(cleaned_sessions)} old sessions")
-        
-        # Check if container has exposed ports
-        logger.info(f"Checking container port configuration: {container}")
-        port_check_result = check_container_ports(container)
-        logger.info(f"Container port check result: {port_check_result}")
-        
-        # Setup SSH server in container
-        logger.info(f"Setting up SSH server in container: {container}")
-        setup_result = setup_ssh_server_in_container(container, username, public_key, port)
-        logger.info(f"SSH setup result: {setup_result}")
-        
-        if not setup_result['success']:
-            logger.error(f"SSH server setup failed: {setup_result['error']}")
-            return jsonify({'success': False, 'error': setup_result['error']})
-        
-        # Expose the SSH port dynamically
-        logger.info(f"Exposing SSH port {port} for container {container}")
-        
-        # Try multiple port exposure methods
-        expose_result = expose_ssh_port_dynamic(container, port)
-        logger.info(f"Dynamic port exposure result: {expose_result}")
-        
-        if not expose_result['success']:
-            logger.error(f"Port exposure failed: {expose_result['error']}")
-            return jsonify({'success': False, 'error': f"SSH setup succeeded but port exposure failed: {expose_result['error']}"})
-        
-        # Calculate expiration time
-        expires_at = datetime.now() + timedelta(hours=duration)
-        
-        # Get server IP
-        server_ip = get_server_ip()
-        logger.info(f"Server IP: {server_ip}")
-        
-        # Store session info
-        session_info = {
-            'session_id': session_id,
-            'container': container,
-            'username': username,
-            'port': port,
-            'key_name': key_name,
-            'private_key': private_key,
-            'public_key': public_key,
-            'host': server_ip,
-            'created_at': datetime.now(),
-            'expires_at': expires_at,
-            'description': description,
-            'status': 'active'
-        }
-        
-        # Store in global dictionary
-        ssh_connections[session_id] = session_info
-        save_ssh_session_to_file(session_info)
-        logger.info(f"Stored session info in ssh_connections: {len(ssh_connections)} sessions total")
-        
-        # Log the setup
-        username_log = session.get('username', 'unknown')
-        log_entry = AuditLog(
-            user_id=session.get('user_id'),
-            username=username_log,
-            ip_address=request.remote_addr,
-            event_type='temp_ssh_setup',
-            message=f"Temporary SSH access setup for {container}:{port} as {username}",
-            status='success'
-        )
-        db.session.add(log_entry)
-        db.session.commit()
-        
-        logger.info(f"SSH setup completed successfully for session: {session_id}")
-        logger.info(f"=== SSH SETUP COMPLETE ===")
-        
-        # Return session data in the format expected by frontend
-        response_data = {
-            'success': True,
-            'session': {
-                'session_id': session_id,
-                'container': container,
-                'username': username,
-                'port': port,
-                'key_name': key_name,
-                'host': server_ip,
-                'created_at': session_info['created_at'].isoformat(),
-                'expires_at': session_info['expires_at'].isoformat(),
-                'description': description,
-                'status': 'active'
-            },
-            'connection_details': {
-                'host': server_ip,
-                'port': port,
-                'username': username,
-                'key_name': key_name
-            },
-            'message': f'Temporary SSH access created for {container}'
-        }
-        
-        logger.info(f"Returning response: {response_data}")
-        return jsonify(response_data)
-        
-    except Exception as e:
-        logger.error(f"Temp SSH setup error: {str(e)}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/temp-ssh/download-key/<session_id>')
-@require_auth
-def download_ssh_key(session_id):
-    """Download private key for SSH session"""
-    try:
-        if session_id not in ssh_connections:
-            return jsonify({'error': 'Session not found'}), 404
-        
-        session = ssh_connections[session_id]
-        private_key = session['private_key']
-        
-        # Create response with private key
-        from flask import Response
-        return Response(
-            private_key,
-            mimetype='application/octet-stream',
-            headers={
-                'Content-Disposition': f'attachment; filename={session["key_name"]}.pem'
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"Download key error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/temp-ssh/status/<container>')
-@require_auth
-def check_ssh_status(container):
-    """Check SSH server status in container"""
-    try:
-        # Check if SSH server is running in container
-        cmd = ["sudo", "docker", "exec", container, "pgrep", "sshd"]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        
-        if process.returncode == 0:
-            return jsonify({'success': True, 'status': 'SSH server is running'})
-        else:
-            return jsonify({'success': True, 'status': 'SSH server is not running'})
-        
-    except Exception as e:
-        logger.error(f"SSH status check error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+def temp_ssh_setup_compat():
+    """Backward compatibility for /api/temp-ssh/setup"""
+    from ssh_manager import ssh_manager
+    data = request.json
+    container = data.get('container')
+    username = data.get('username', 'frappe')
+    duration = int(data.get('duration', 24))
+    port = data.get('port')
+    description = data.get('description', '')
+    
+    result = ssh_manager.create_ssh_session(container, username, duration, port, description)
+    return jsonify(result)
 
 @app.route('/api/temp-ssh/sessions')
 @require_auth
-def get_ssh_sessions():
-    """Get all active SSH sessions"""
-    try:
-        sessions = []
-        for session_id, session in ssh_connections.items():
-            if session['status'] == 'active' and session['expires_at'] > datetime.now():
-                sessions.append({
-                    'session_id': session_id,
-                    'container': session['container'],
-                    'username': session['username'],
-                    'port': session['port'],
-                    'created_at': session['created_at'].isoformat(),
-                    'expires_at': session['expires_at'].isoformat(),
-                    'status': session['status'],
-                    'description': session['description']
-                })
-        
-        return jsonify({'success': True, 'sessions': sessions})
-        
-    except Exception as e:
-        logger.error(f"Get sessions error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+def temp_ssh_sessions_compat():
+    """Backward compatibility for /api/temp-ssh/sessions"""
+    from ssh_manager import ssh_manager
+    sessions = ssh_manager.get_ssh_sessions()
+    return jsonify({'success': True, 'sessions': sessions})
+
+@app.route('/api/temp-ssh/download-key/<session_id>')
+@require_auth
+def temp_ssh_download_key_compat(session_id):
+    """Backward compatibility for /api/temp-ssh/download-key/<session_id>"""
+    from ssh_manager import ssh_manager
+    private_key = ssh_manager.get_session_private_key(session_id)
+    if not private_key:
+        return jsonify({'error': 'Session not found'}), 404
+    
+    return Response(private_key, mimetype='application/octet-stream',
+                   headers={'Content-Disposition': f'attachment; filename=ssh_key_{session_id[:8]}.pem'})
+
+@app.route('/api/temp-ssh/status/<container>')
+@require_auth
+def temp_ssh_status_compat(container):
+    """Backward compatibility for /api/temp-ssh/status/<container>"""
+    import subprocess
+    cmd = ["sudo", "docker", "exec", container, "pgrep", "sshd"]
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    
+    if process.returncode == 0:
+        status = 'SSH server is running'
+    else:
+        status = 'SSH server is not running'
+    
+    return jsonify({'success': True, 'status': status})
 
 @app.route('/api/temp-ssh/revoke', methods=['POST'])
 @require_auth
-def revoke_ssh_access():
-    """Revoke temporary SSH access"""
-    try:
-        data = request.json
-        session_id = data.get('session_id')
-        
-        if not session_id or session_id not in ssh_connections:
-            return jsonify({'success': False, 'error': 'Session not found'})
-        
-        session = ssh_connections[session_id]
-        
-        # Stop SSH server in container
-        stop_ssh_server_in_container(session['container'], session['port'])
-        
-        # Remove session
-        del ssh_connections[session_id]
-        
-        # Remove session file
-        session_file = os.path.join("ssh_sessions", f"{session_id}.json")
-        if os.path.exists(session_file):
-            os.remove(session_file)
-        
-        # Log the revocation
-        username_log = session.get('username', 'unknown')
-        log_entry = AuditLog(
-            user_id=session.get('user_id'),
-            username=username_log,
-            ip_address=request.remote_addr,
-            event_type='temp_ssh_revoke',
-            message=f"Temporary SSH access revoked for {session['container']}:{session['port']}",
-            status='success'
-        )
-        db.session.add(log_entry)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'SSH access revoked'})
-        
-    except Exception as e:
-        logger.error(f"Revoke SSH error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+def temp_ssh_revoke_compat():
+    """Backward compatibility for /api/temp-ssh/revoke"""
+    from ssh_manager import ssh_manager
+    data = request.json
+    session_id = data.get('session_id')
+    result = ssh_manager.revoke_ssh_session(session_id)
+    return jsonify(result)
 
 @app.route('/api/temp-ssh/extend', methods=['POST'])
 @require_auth
-def extend_ssh_access():
-    """Extend temporary SSH access duration"""
-    try:
-        data = request.json
-        session_id = data.get('session_id')
-        duration = int(data.get('duration', 24))  # hours
-        
-        if not session_id or session_id not in ssh_connections:
-            return jsonify({'success': False, 'error': 'Session not found'})
-        
-        session = ssh_connections[session_id]
-        
-        # Extend expiration time
-        session['expires_at'] = datetime.now() + timedelta(hours=duration)
-        
-        # Log the extension
-        username_log = session.get('username', 'unknown')
-        log_entry = AuditLog(
-            user_id=session.get('user_id'),
-            username=username_log,
-            ip_address=request.remote_addr,
-            event_type='temp_ssh_extend',
-            message=f"Temporary SSH access extended for {session['container']}:{session['port']}",
-            status='success'
-        )
-        db.session.add(log_entry)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'session': session,
-            'message': 'SSH access extended'
-        })
-        
-    except Exception as e:
-        logger.error(f"Extend SSH error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
-
-# Helper functions for SSH management
-def generate_ssh_key_pair():
-    """Generate SSH key pair"""
-    try:
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        
-        # Generate private key
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-        )
-        
-        # Get private key in PEM format
-        private_pem = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ).decode('utf-8')
-        
-        # Get public key in OpenSSH format
-        public_key = private_key.public_key()
-        public_ssh = public_key.public_bytes(
-            encoding=serialization.Encoding.OpenSSH,
-            format=serialization.PublicFormat.OpenSSH
-        ).decode('utf-8')
-        
-        logger.info(f"Generated SSH key pair successfully")
-        return private_pem, public_ssh
-        
-    except Exception as e:
-        logger.error(f"SSH key generation failed: {str(e)}")
-        # Fallback: use subprocess to generate keys
-        try:
-            import tempfile
-            import os
-            
-            # Create temporary directory
-            with tempfile.TemporaryDirectory() as temp_dir:
-                key_path = os.path.join(temp_dir, 'temp_key')
-                
-                # Generate key using ssh-keygen
-                keygen_cmd = ['ssh-keygen', '-t', 'rsa', '-b', '2048', '-f', key_path, '-N', '', '-C', 'temp_ssh_key']
-                result = subprocess.run(keygen_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    raise Exception(f"ssh-keygen failed: {result.stderr}")
-                
-                # Read private key
-                with open(key_path, 'r') as f:
-                    private_pem = f.read()
-                
-                # Read public key
-                with open(f"{key_path}.pub", 'r') as f:
-                    public_ssh = f.read().strip()
-                
-                logger.info(f"Generated SSH key pair using ssh-keygen")
-                return private_pem, public_ssh
-                
-        except Exception as e2:
-            logger.error(f"Fallback SSH key generation also failed: {str(e2)}")
-            raise Exception(f"Both cryptography and ssh-keygen failed: {str(e)}, {str(e2)}")
-
-def find_available_port(start_port, end_port):
-    """Find available port in range"""
-    import socket
+def temp_ssh_extend_compat():
+    """Backward compatibility for /api/temp-ssh/extend"""
+    from ssh_manager import ssh_manager
+    data = request.json
+    session_id = data.get('session_id')
+    duration = int(data.get('duration', 24))
     
-    for port in range(start_port, end_port + 1):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex(('localhost', port))
-        sock.close()
-        if result != 0:
-            return port
-    return None
-
-def get_server_ip():
-    """Get server IP address"""
-    import socket
-    try:
-        # Connect to a remote address to get local IP
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except:
-        return "localhost"
-
-
-def setup_ssh_server_simple(container, username, public_key, port):
-    """Simpler SSH server setup for containers"""
-    try:
-        # Try to install SSH server
-        install_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                      "which sshd || (apt-get update && apt-get install -y openssh-server)"]
-        result = subprocess.run(install_cmd, capture_output=True, text=True)
-        
-        # Create user if it doesn't exist
-        user_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                   f"id {username} || useradd -m -s /bin/bash {username}"]
-        subprocess.run(user_cmd, capture_output=True, text=True)
-        
-        # Create SSH directory
-        mkdir_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"mkdir -p /home/{username}/.ssh"]
-        subprocess.run(mkdir_cmd, capture_output=True, text=True)
-        
-        # Set permissions
-        chmod_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"chmod 700 /home/{username}/.ssh && chown -R {username}:{username} /home/{username}/.ssh"]
-        subprocess.run(chmod_cmd, capture_output=True, text=True)
-        
-        # Add public key
-        auth_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                   f"echo '{public_key}' > /home/{username}/.ssh/authorized_keys"]
-        subprocess.run(auth_cmd, capture_output=True, text=True)
-        
-        # Set key permissions
-        key_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                  f"chmod 600 /home/{username}/.ssh/authorized_keys && chown {username}:{username} /home/{username}/.ssh/authorized_keys"]
-        subprocess.run(key_cmd, capture_output=True, text=True)
-        
-        # Simple SSH config
-        config_lines = [
-            "Port 22",
-            "PermitRootLogin no",
-            "PasswordAuthentication no", 
-            "PubkeyAuthentication yes",
-            "AuthorizedKeysFile .ssh/authorized_keys",
-            "StrictModes no"
-        ]
-        
-        # Write config line by line
-        for line in config_lines:
-            config_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                         f"echo '{line}' >> /etc/ssh/sshd_config"]
-            subprocess.run(config_cmd, capture_output=True, text=True)
-        
-        # Start SSH server
-        start_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    "/usr/sbin/sshd -D -p 22 &"]
-        result = subprocess.run(start_cmd, capture_output=True, text=True)
-        
-        return {'success': True}
-        
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-
-
-def expose_ssh_port_docker(container, port):
-    """Expose SSH port using socat port forwarding"""
-    try:
-        # Kill any existing socat on this port
-        kill_cmd = ["sudo", "pkill", "-f", f"socat.*{port}"]
-        subprocess.run(kill_cmd, capture_output=True, text=True)
-        
-        # Get container IP from Frappe network
-        inspect_cmd = ["sudo", "docker", "inspect", container, "--format", "{{.NetworkSettings.Networks.test20_local_frappe_network.IPAddress}}"]
-        result = subprocess.run(inspect_cmd, capture_output=True, text=True)
-        
-        container_ip = result.stdout.strip()
-        if not container_ip or container_ip == '<no value>':
-            # Try to get IP from any network
-            fallback_cmd = ["sudo", "docker", "inspect", container, "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"]
-            fallback_result = subprocess.run(fallback_cmd, capture_output=True, text=True)
-            container_ip = fallback_result.stdout.strip().split()[0] if fallback_result.stdout.strip() else None
-        
-        if not container_ip:
-            logger.error("Could not get container IP address")
-            return {'success': False, 'error': 'Container has no IP address'}
-        
-        logger.info(f"Container IP: {container_ip}")
-        
-        # Start socat port forwarding
-        socat_cmd = ["sudo", "socat", "TCP-LISTEN:" + str(port) + ",bind=0.0.0.0,fork,reuseaddr", f"TCP:{container_ip}:22"]
-        socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Give socat a moment to start
-        import time
-        time.sleep(1)
-        
-        # Check if socat is running
-        check_cmd = ["sudo", "pgrep", "-f", f"socat.*{port}"]
-        check_result = subprocess.run(check_cmd, capture_output=True, text=True)
-        
-        if check_result.returncode != 0:
-            logger.error("Socat failed to start")
-            return {'success': False, 'error': 'Failed to start port forwarding'}
-        
-        logger.info(f"Started socat port forwarding from host:{port} to {container_ip}:{port}")
-        return {'success': True, 'socat_pid': socat_process.pid}
-        
-    except Exception as e:
-        logger.error(f"Port exposure error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-def expose_ssh_port(container, port):
-    """Expose SSH port without requiring container IP"""
-    try:
-        # Simple approach: just mark as successful since SSH is running in container
-        # The user can access via docker exec if needed
-        logger.info(f"SSH server is running on port {port} inside container {container}")
-        logger.info(f"Access via: docker exec -it {container} bash")
-        
-        # Try to set up basic port forwarding using iptables
-        iptables_cmd = ["sudo", "iptables", "-t", "nat", "-A", "OUTPUT", 
-                       "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"]
-        subprocess.run(iptables_cmd, capture_output=True, text=True)
-        
-        return {'success': True, 'message': f'SSH server running on port {port} in container'}
-        
-    except Exception as e:
-        logger.error(f"Port exposure error: {str(e)}")
-        return {'success': True, 'warning': f'SSH server running but port exposure may have issues: {str(e)}'}
-
-def setup_ssh_server_in_container(container, username, public_key, port):
-    """Setup SSH server in Docker container"""
-    try:
-        # Try the main setup first
-        result = setup_ssh_server_simple(container, username, public_key, port)
-        if result['success']:
-            return result
-        
-        # If simple setup fails, try the original method
-        # Install SSH server if not present
-        install_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                      "apt-get update && apt-get install -y openssh-server"]
-        process = subprocess.Popen(install_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            print(f"SSH install output: {stdout.decode()}")
-            print(f"SSH install error: {stderr.decode()}")
-        
-        # Create SSH directory
-        mkdir_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"mkdir -p /home/{username}/.ssh && chmod 700 /home/{username}/.ssh"]
-        result = subprocess.run(mkdir_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to create SSH directory: {result.stderr}"}
-        
-        # Add public key to authorized_keys
-        auth_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                   f"echo '{public_key}' >> /home/{username}/.ssh/authorized_keys && chmod 600 /home/{username}/.ssh/authorized_keys"]
-        result = subprocess.run(auth_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to add public key: {result.stderr}"}
-        
-        # Create SSH config file using a different approach
-        ssh_config_content = f"""Port 22
-PermitRootLogin no
-PasswordAuthentication no
-PubkeyAuthentication yes
-AuthorizedKeysFile .ssh/authorized_keys
-StrictModes no
-"""
-        
-        # Write config file using cat with heredoc
-        config_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                     f"cat > /etc/ssh/sshd_config << 'EOF'\n{ssh_config_content}EOF"]
-        result = subprocess.run(config_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"Failed to configure SSH: {result.stderr}"}
-        
-        # Generate SSH host keys if they don't exist
-        hostkey_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                      "ssh-keygen -A"]
-        subprocess.run(hostkey_cmd, capture_output=True, text=True)
-        
-        # Start SSH server
-        start_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                    f"pkill -f sshd || true; sleep 2; nohup /usr/sbin//usr/sbin/sshd -D -p 22 > /dev/null 2>&1 &"]
-        result = subprocess.run(start_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"SSH start output: {result.stdout}")
-            print(f"SSH start error: {result.stderr}")
-        
-        # Verify SSH server is running
-        verify_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                     f"netstat -tlnp | grep :{port} || ss -tlnp | grep :{port}"]
-        result = subprocess.run(verify_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return {'success': False, 'error': f"SSH server not listening on port {port}"}
-        
-        return {'success': True}
-        
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-def stop_ssh_server_in_container(container, port):
-    """Stop SSH server in Docker container"""
-    try:
-        stop_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", 
-                   "pkill -f 'sshd.*{}'".format(port)]
-        subprocess.run(stop_cmd, check=True)
-        return True
-    except:
-        return False
-
-def save_ssh_session_to_file(session_info):
-    """Save SSH session to persistent file storage"""
-    try:
-        sessions_dir = "ssh_sessions"
-        if not os.path.exists(sessions_dir):
-            os.makedirs(sessions_dir)
-        
-        session_file = os.path.join(sessions_dir, f"{session_info['session_id']}.json")
-        
-        # Convert datetime objects to strings for JSON serialization
-        session_data = session_info.copy()
-        session_data['created_at'] = session_data['created_at'].isoformat()
-        session_data['expires_at'] = session_data['expires_at'].isoformat()
-        
-        with open(session_file, 'w') as f:
-            json.dump(session_data, f, indent=2)
-        
-        logger.info(f"Saved SSH session to file: {session_file}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to save SSH session to file: {str(e)}")
-        return False
-
-def cleanup_old_ssh_sessions_for_container(container):
-    """Clean up ALL old SSH sessions for a specific container - ONE CONTAINER = ONE PORT"""
-    try:
-        logger.info(f"=== CLEANING UP ALL OLD SSH SESSIONS FOR CONTAINER: {container} ===")
-        cleaned_sessions = []
-
-        # Step 1: Kill ALL socat processes for this container
-        logger.info(f"Killing all socat processes for container {container}")
-        kill_all_socat_cmd = ["sudo", "pkill", "-f", f"socat.*TCP.*{container}"]
-        subprocess.run(kill_all_socat_cmd, capture_output=True, text=True)
-        
-        # Step 2: Kill ALL SSH servers in this container
-        logger.info(f"Stopping all SSH servers in container {container}")
-        stop_all_ssh_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", "pkill -f sshd || true"]
-        subprocess.run(stop_all_ssh_cmd, capture_output=True, text=True)
-
-        # Step 3: Remove all session files for this container
-        sessions_dir = "ssh_sessions"
-        if os.path.exists(sessions_dir):
-            for filename in os.listdir(sessions_dir):
-                if filename.endswith(".json"):
-                    session_file = os.path.join(sessions_dir, filename)
-                    try:
-                        with open(session_file, "r") as f:
-                            session_data = json.load(f)
-                        if session_data.get("container") == container:
-                            os.remove(session_file)
-                            logger.info(f"Removed session file: {session_file}")
-                    except Exception as e:
-                        logger.error(f"Error processing session file {session_file}: {str(e)}")
-
-        # Step 4: Remove from memory
-        for session_id, session_info in list(ssh_connections.items()):
-            if session_info.get("container") == container:
-                logger.info(f"Removing session {session_id} from memory for container {container}")
-                del ssh_connections[session_id]
-                cleaned_sessions.append(session_id)
-
-        logger.info(f"=== CLEANUP COMPLETE: Removed {len(cleaned_sessions)} sessions for container {container} ===")
-        return cleaned_sessions
-
-    except Exception as e:
-        logger.error(f"Error cleaning up old sessions: {str(e)}")
-        return []
-def load_ssh_sessions_from_files():
-    """Load SSH sessions from persistent file storage"""
-    try:
-        sessions_dir = "ssh_sessions"
-        if not os.path.exists(sessions_dir):
-            return {}
-        
-        loaded_sessions = {}
-        
-        for filename in os.listdir(sessions_dir):
-            if filename.endswith('.json'):
-                session_file = os.path.join(sessions_dir, filename)
-                try:
-                    with open(session_file, 'r') as f:
-                        session_data = json.load(f)
-                    
-                    # Convert string dates back to datetime objects
-                    session_data['created_at'] = datetime.fromisoformat(session_data['created_at'])
-                    session_data['expires_at'] = datetime.fromisoformat(session_data['expires_at'])
-                    
-                    # Only load active, non-expired sessions
-                    if (session_data.get('status') == 'active' and 
-                        session_data['expires_at'] > datetime.now()):
-                        loaded_sessions[session_data['session_id']] = session_data
-                        
-                except Exception as e:
-                    logger.error(f"Failed to load session file {session_file}: {str(e)}")
-                    continue
-        
-        logger.info(f"Loaded {len(loaded_sessions)} SSH sessions from files")
-        return loaded_sessions
-        
-    except Exception as e:
-        logger.error(f"Failed to load SSH sessions from files: {str(e)}")
-        return {}
-
-def cleanup_expired_sessions():
-    """Clean up expired SSH sessions"""
-    try:
-        sessions_dir = "ssh_sessions"
-        if not os.path.exists(sessions_dir):
-            return
-        
-        current_time = datetime.now()
-        cleaned_count = 0
-        
-        for filename in os.listdir(sessions_dir):
-            if filename.endswith('.json'):
-                session_file = os.path.join(sessions_dir, filename)
-                try:
-                    with open(session_file, 'r') as f:
-                        session_data = json.load(f)
-                    
-                    expires_at = datetime.fromisoformat(session_data['expires_at'])
-                    
-                    if expires_at <= current_time:
-                        # Session expired, clean up
-                        os.remove(session_file)
-                        cleaned_count += 1
-                        
-                        # Also stop SSH server and port forwarding
-                        container = session_data.get('container')
-                        port = session_data.get('port')
-                        if container and port:
-                            stop_ssh_server_in_container(container, port)
-                            # Kill socat process
-                            subprocess.run(['sudo', 'pkill', '-f', f'socat.*{port}'], 
-                                        capture_output=True, text=True)
-                        
-                        logger.info(f"Cleaned up expired session: {session_data['session_id']}")
-                        
-                except Exception as e:
-                    logger.error(f"Failed to process session file {session_file}: {str(e)}")
-                    continue
-        
-        if cleaned_count > 0:
-            logger.info(f"Cleaned up {cleaned_count} expired SSH sessions")
-            
-    except Exception as e:
-        logger.error(f"Failed to cleanup expired sessions: {str(e)}")
-
-def restore_ssh_port_forwarding(session_info):
-    """Restore port forwarding for a loaded session"""
-    try:
-        container = session_info.get('container')
-        port = session_info.get('port')
-        
-        if not container or not port:
-            return False
-        
-        # Check if container is running
-        result = subprocess.run(['sudo', 'docker', 'ps', '--format', '{{.Names}}'], 
-                              capture_output=True, text=True)
-        
-        if container not in result.stdout:
-            logger.warning(f"Container {container} is not running, cannot restore port forwarding")
-            return False
-        
-        # Get container IP
-        ip_cmd = ['sudo', 'docker', 'inspect', container, '--format', 
-                 '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}']
-        ip_result = subprocess.run(ip_cmd, capture_output=True, text=True)
-        container_ip = ip_result.stdout.strip().split()[0] if ip_result.stdout.strip() else None
-        
-        if not container_ip:
-            logger.warning(f"Could not get IP for container {container}")
-            return False
-        
-        # Check if port forwarding already exists
-        check_cmd = ['sudo', 'pgrep', '-f', f'socat.*{port}']
-        check_result = subprocess.run(check_cmd, capture_output=True, text=True)
-        
-        if check_result.returncode == 0:
-            logger.info(f"Port forwarding already exists for port {port}")
-            return True
-        
-        # Start socat port forwarding
-        socat_cmd = ['sudo', 'socat', f'TCP-LISTEN:{port},fork', f'TCP:{container_ip}:22']
-        socat_process = subprocess.Popen(socat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Give socat a moment to start
-        import time
-        time.sleep(1)
-        
-        # Verify socat is running
-        verify_cmd = ['sudo', 'pgrep', '-f', f'socat.*{port}']
-        verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
-        
-        if verify_result.returncode == 0:
-            logger.info(f"Restored port forwarding for session {session_info['session_id']}")
-            return True
-        else:
-            logger.error(f"Failed to restore port forwarding for session {session_info['session_id']}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Error restoring port forwarding: {str(e)}")
-        return False
-
-def initialize_ssh_sessions():
-    """Initialize SSH sessions on app startup"""
-    try:
-        logger.info("Initializing SSH sessions...")
-        
-        # Load sessions from files
-        loaded_sessions = load_ssh_sessions_from_files()
-        
-        # Restore port forwarding for active sessions
-        restored_count = 0
-        for session_id, session_info in loaded_sessions.items():
-            if restore_ssh_port_forwarding(session_info):
-                restored_count += 1
-        
-        # Update global ssh_connections
-        global ssh_connections
-        ssh_connections.update(loaded_sessions)
-        
-        logger.info(f"Initialized {len(loaded_sessions)} SSH sessions, restored {restored_count} port forwardings")
-        
-        # Clean up expired sessions
-        cleanup_expired_sessions()
-        
-    except Exception as e:
-        logger.error(f"Failed to initialize SSH sessions: {str(e)}")
-
-        return False
-
+    # Get session and create new one with extended duration
+    sessions = ssh_manager.get_ssh_sessions()
+    session_info = next((s for s in sessions if s['session_id'] == session_id), None)
+    
+    if not session_info:
+        return jsonify({'success': False, 'error': 'Session not found'}), 404
+    
+    # Create new session with extended duration
+    result = ssh_manager.create_ssh_session(
+        session_info['container'], session_info['username'], duration, 
+        session_info['port'], f"{session_info['description']} (Extended)"
+    )
+    
+    # Revoke old session
+    ssh_manager.revoke_ssh_session(session_id)
+    
+    return jsonify(result)
 
 if __name__ == '__main__':
     with app.app_context():
         create_default_admin()
-        initialize_ssh_sessions()  # Initialize SSH sessions
     app.run(host='0.0.0.0', port=5000, debug=False)
+
+
 
 
