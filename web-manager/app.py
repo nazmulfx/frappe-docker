@@ -1198,6 +1198,24 @@ def frappe_install_app():
 @app.route('/api/frappe/execute-command', methods=['POST'])
 @require_auth
 def execute_command_api():
+    def log_command_execution(command, container, success, error_message=None):
+        """Helper function to log command execution"""
+        username = session.get('username', 'unknown')
+        status = 'success' if success else 'failed'
+        message = f"Executed command '{command}' in container {container}"
+        if error_message:
+            message += f" - Error: {error_message}"
+        
+        log_entry = AuditLog(
+            user_id=session.get('user_id'),
+            username=username,
+            ip_address=request.remote_addr,
+            event_type='command_execution',
+            message=message,
+            status=status
+        )
+        db.session.add(log_entry)
+        db.session.commit()
     """UNIVERSAL TERMINAL - Execute ANY command in ANY container"""
     try:
         # Initialize variables
@@ -1326,6 +1344,9 @@ def execute_command_api():
                     if 'bench get-app' in command and 'Aborted' in output:
                         error = error + "\n💡 Tip: Use 'bench get-app app_name --overwrite' to overwrite existing apps"
                 
+                
+                # Log command execution
+                log_command_execution(command, container, process.returncode == 0, error if process.returncode != 0 else None)
                 return jsonify({
                     'output': output,
                     'error': error,
@@ -1596,6 +1617,92 @@ def temp_ssh_extend_compat():
     ssh_manager.revoke_ssh_session(session_id)
     
     return jsonify(result)
+
+
+# Terminal Logs API endpoints
+@app.route('/api/frappe/terminal-logs', methods=['GET'])
+@require_auth
+def get_terminal_logs():
+    """Get terminal error logs from audit logs"""
+    try:
+        # Get terminal error logs from audit logs
+        logs = AuditLog.query.filter(
+            AuditLog.event_type == 'command_execution',
+            AuditLog.status == 'failed'
+        ).order_by(AuditLog.timestamp.desc()).limit(100).all()
+        
+        # Format logs for frontend
+        formatted_logs = []
+        for log in logs:
+            # Parse the message to extract command and container
+            message = log.message or ''
+            command = 'Unknown'
+            container = 'Unknown'
+            
+            # Extract command and container from message
+            if 'Executed command' in message and 'in container' in message:
+                try:
+                    # Format: "Executed command 'command' in container container_name"
+                    parts = message.split("\"")
+                    if len(parts) >= 2:
+                        command = parts[1]
+                    container_part = message.split("in container ")[-1].split(" - Error:")[0] if "in container " in message else "Unknown"
+                    container = container_part.strip()
+                except:
+                    pass
+            
+            formatted_logs.append({
+                'id': log.id,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'container': container,
+                'command': command,
+                'error': log.message or 'Command execution failed',
+                'exit_code': 1,  # Default for failed commands
+                'username': log.username or 'Unknown',
+                'ip_address': log.ip_address or 'Unknown',
+                'full_error': log.message or ''  # Full error message for Terminal Logs
+            })
+        
+        return jsonify({
+            'success': True,
+            'logs': formatted_logs,
+            'count': len(formatted_logs)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting terminal logs: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'logs': [],
+            'count': 0
+        })
+
+@app.route('/api/frappe/clear-terminal-logs', methods=['POST'])
+@require_auth
+def clear_terminal_logs():
+    """Clear terminal error logs"""
+    try:
+        # Delete terminal error logs from audit logs
+        deleted_count = AuditLog.query.filter(
+            AuditLog.event_type == 'command_execution',
+            AuditLog.status == 'failed'
+        ).delete()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleared {deleted_count} terminal error logs',
+            'deleted_count': deleted_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing terminal logs: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 if __name__ == '__main__':
     with app.app_context():

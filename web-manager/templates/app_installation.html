@@ -90,41 +90,135 @@
 
                         <!-- Console Panel Tab -->
                         <div class="tab-pane fade" id="console-panel" role="tabpanel">
-                            <div class="container-selector mb-3">
-                                <label for="container-select" class="form-label fw-bold">
-                                    <i class="bi bi-terminal"></i> Select Container for Terminal Access
-                                </label>
-                                <select class="form-select form-select-lg" id="container-select">
-                                    <option value="">-- Choose a container --</option>
-                                    {% for project_name, project_containers in container_groups.items() %}
-                                        <optgroup label="{{ project_name }}">
-                                            {% for container in project_containers %}
-                                                {% if container.service_type == 'App Server' %}
-                                                    <option value="{{ container.name }}">{{ container.name }}</option>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </optgroup>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text">
-                                    <i class="bi bi-info-circle"></i> Select a container to access its terminal for advanced operations
-                                </div>
-                            </div>
+                            <ul class="nav nav-pills nav-fill mb-3" id="terminalTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="terminal-console-tab" data-bs-toggle="pill" data-bs-target="#terminal-console" type="button" role="tab" aria-controls="terminal-console" aria-selected="true">
+                                        <i class="bi bi-terminal"></i> Terminal Console
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="terminal-logs-tab" data-bs-toggle="pill" data-bs-target="#terminal-logs" type="button" role="tab" aria-controls="terminal-logs" aria-selected="false">
+                                        <i class="bi bi-journal-text"></i> Terminal Logs
+                                    </button>
+                                </li>
+                            </ul>
                             
-                            <div class="card">
-                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <i class="bi bi-terminal-fill me-2"></i>
-                                        <span id="terminal-title">AWS Console-like Terminal</span>
+                            <div class="tab-content" id="terminalTabsContent">
+                                <div class="tab-pane fade show active" id="terminal-console" role="tabpanel">
+                                    <div class="container-selector mb-3">
+                                        <label for="container-select" class="form-label fw-bold">
+                                            <i class="bi bi-terminal"></i> Select Container for Terminal Access
+                                        </label>
+                                        <select class="form-select form-select-lg" id="container-select">
+                                            <option value="">-- Choose a container --</option>
+                                            {% for project_name, project_containers in container_groups.items() %}
+                                                <optgroup label="{{ project_name }}">
+                                                    {% for container in project_containers %}
+                                                        {% if container.service_type == 'App Server' %}
+                                                            <option value="{{ container.name }}">{{ container.name }}</option>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </optgroup>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="form-text">
+                                            <i class="bi bi-info-circle"></i> Select a container to access its terminal for advanced operations
+                                        </div>
                                     </div>
-                                    <div>
-                                        <button class="btn btn-sm btn-outline-light" id="terminal-clear-btn">
-                                            <i class="bi bi-eraser"></i> Clear
-                                        </button>
+                                    
+                                    <div class="card">
+                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="bi bi-terminal-fill me-2"></i>
+                                                <span id="terminal-title">AWS Console-like Terminal</span>
+                                            </div>
+                                            <div>
+                                                <button class="btn btn-sm btn-outline-light" id="terminal-clear-btn">
+                                                    <i class="bi bi-eraser"></i> Clear
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="card-body p-0">
+                                            <div id="terminal-container" class="terminal-container"></div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="card-body p-0">
-                                    <div id="terminal-container" class="terminal-container"></div>
+                                
+                                <div class="tab-pane fade" id="terminal-logs" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <i class="bi bi-journal-text me-2"></i>
+                                                        <span class="fw-bold">Terminal Access Error Logs</span>
+                                                    </div>
+                                                    <div>
+                                                        <button class="btn btn-sm btn-outline-dark" id="refresh-logs-btn">
+                                                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-dark" id="clear-logs-btn">
+                                                            <i class="bi bi-trash"></i> Clear
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="card-body p-0">
+                                                    <div class="table-responsive">
+                                                        <table class="table table-striped table-hover mb-0" id="terminal-logs-table">
+                                                            <thead class="table-dark">
+                                                                <tr>
+                                                                    <th width="5%">
+                                                                        <i class="bi bi-hash"></i>
+                                                                    </th>
+                                                                    <th width="15%">
+                                                                        <i class="bi bi-clock"></i> Timestamp
+                                                                    </th>
+                                                                    <th width="15%">
+                                                                        <i class="bi bi-terminal"></i> Container
+                                                                    </th>
+                                                                    <th width="20%">
+                                                                        <i class="bi bi-code-square"></i> Command
+                                                                    </th>
+                                                                    <th width="25%">
+                                                                        <i class="bi bi-exclamation-triangle"></i> Error Message
+                                                                    </th>
+                                                                    <th width="10%">
+                                                                        <i class="bi bi-x-circle"></i> Exit Code
+                                                                    </th>
+                                                                    <th width="10%">
+                                                                        <i class="bi bi-person"></i> User
+                                                                    </th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="terminal-logs-tbody">
+                                                                <tr>
+                                                                    <td colspan="7" class="text-center text-muted py-4">
+                                                                        <i class="bi bi-info-circle me-2"></i>
+                                                                        No terminal error logs found. Terminal errors will appear here.
+                                                                    </td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                                <div class="card-footer bg-light">
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <small class="text-muted">
+                                                                <i class="bi bi-info-circle me-1"></i>
+                                                                Showing terminal command errors and failures
+                                                            </small>
+                                                        </div>
+                                                        <div class="col-md-6 text-end">
+                                                            <small class="text-muted">
+                                                                <span id="logs-count">0</span> error(s) found
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -335,10 +429,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize SSH using the SSHManager module
     if (window.SSHManager) {
         window.SSHManager.initializeSSHEventListeners();
+    
+    // Initialize Terminal Logs
+    initializeTerminalLogs();
     } else {
         console.error('SSHManager not loaded');
     }
 });
+// Global variables for terminal logs
+let lastErrorCount = 0;
+let logsRefreshInterval = null;
+
+
 
 function initializeEventListeners() {
     // Container selection for terminal access
@@ -454,7 +556,226 @@ function createToastContainer() {
     container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
     container.style.zIndex = '11';
     document.body.appendChild(container);
-    return container;
+    
 }
+
+// Terminal Logs functionality with real-time tracking
+function initializeTerminalLogs() {
+    const refreshBtn = document.getElementById('refresh-logs-btn');
+    const clearBtn = document.getElementById('clear-logs-btn');
+    
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', loadTerminalLogs);
+    }
+    
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearTerminalLogs);
+    }
+    
+    // Load logs on sub-tab activation
+    const terminalLogsTab = document.getElementById('terminal-logs-tab');
+    if (terminalLogsTab) {
+        terminalLogsTab.addEventListener('shown.bs.tab', function() {
+            loadTerminalLogs();
+            startPeriodicRefresh();
+        });
+        
+        terminalLogsTab.addEventListener('hidden.bs.tab', function() {
+            stopPeriodicRefresh();
+        });
+    }
+    
+    // Initial load
+    loadTerminalLogs();
+    
+    // Setup real-time error tracking
+    setupRealTimeErrorTracking();
+}
+
+// Real-time error tracking
+
+function setupRealTimeErrorTracking() {
+    console.log('Setting up real-time error tracking...');
+    
+    // Monitor terminal for errors via API calls
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        return originalFetch.apply(this, args).then(response => {
+            // If this is a terminal command execution
+            if (args[0] && args[0].includes('/api/frappe/execute-command')) {
+                return response.clone().json().then(data => {
+                    console.log('Command execution response:', data);
+                    
+                    // Check if command failed
+                    if (data && (data.success === false || data.error || data.exit_code > 0)) {
+                        console.log('Command failed, refreshing logs...');
+                        loadTerminalLogs();
+                    }
+                    return response;
+                }).catch(() => response);
+            }
+            return response;
+        });
+    };
+}
+
+function checkForNewErrors(currentCount) {
+    console.log('Checking for new errors. Current:', currentCount, 'Last:', lastErrorCount);
+    
+    if (currentCount > lastErrorCount && lastErrorCount > 0) {
+        // New error detected
+        const newErrors = currentCount - lastErrorCount;
+        console.log('New errors detected:', newErrors);
+        
+        showErrorNotification(newErrors);
+        
+        // Switch to Terminal Logs tab if user is on Terminal Console
+        const terminalLogsTab = document.getElementById('terminal-logs-tab');
+        const terminalConsoleTab = document.getElementById('terminal-console-tab');
+        
+        if (terminalConsoleTab && terminalConsoleTab.classList.contains('active')) {
+            // User is on Terminal Console, suggest switching to logs
+            showToast('⚠️ ' + newErrors + ' new error(s) detected! Click Terminal Logs tab to view.', 'warning');
+        }
+    }
+    lastErrorCount = currentCount;
+}
+
+function showErrorNotification(errorCount) {
+    console.log('Showing error notification for', errorCount, 'errors');
+    
+    // Add a badge to the Terminal Logs tab
+    const terminalLogsTab = document.getElementById('terminal-logs-tab');
+    if (terminalLogsTab) {
+        // Remove existing badge
+        const existingBadge = terminalLogsTab.querySelector('.badge');
+        if (existingBadge) {
+            existingBadge.remove();
+        }
+        
+        // Add new badge
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-danger ms-2';
+        badge.textContent = errorCount;
+        badge.style.fontSize = '0.7em';
+        terminalLogsTab.appendChild(badge);
+        
+        // Remove badge when user clicks on the tab
+        terminalLogsTab.addEventListener('click', function() {
+            setTimeout(() => {
+                if (badge.parentNode) {
+                    badge.remove();
+                }
+            }, 100);
+        });
+    }
+}
+
+function startPeriodicRefresh() {
+    console.log('Starting periodic refresh...');
+    // Refresh logs every 5 seconds
+    logsRefreshInterval = setInterval(() => {
+        loadTerminalLogs();
+    }, 50000);
+}
+
+function stopPeriodicRefresh() {
+    console.log('Stopping periodic refresh...');
+    if (logsRefreshInterval) {
+        clearInterval(logsRefreshInterval);
+        logsRefreshInterval = null;
+    }
+}
+
+function loadTerminalLogs() {
+    console.log('Loading terminal logs...');
+    fetch('/api/frappe/terminal-logs')
+        .then(response => response.json())
+        .then(data => {
+            console.log('Terminal logs data:', data);
+            const logs = data.logs || [];
+            updateTerminalLogsTable(logs);
+            updateLogsCount(logs.length);
+            
+            // Check for new errors
+            checkForNewErrors(logs.length);
+        })
+        .catch(error => {
+            console.error('Error loading terminal logs:', error);
+            showToast('Failed to load terminal logs', 'error');
+        });
+}
+
+function updateTerminalLogsTable(logs) {
+    console.log("Updating terminal logs table with", logs.length, "logs");
+    const tbody = document.getElementById("terminal-logs-tbody");
+    
+    if (logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">No logs available</td></tr>';
+        return;
+    }
+    
+    // Build table rows
+    tbody.innerHTML = logs.map((log, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${log.timestamp || ""}</td>
+            <td>${log.container || ""}</td>
+            <td><code>${log.command || ""}</code></td>
+            <td>${log.full_error || ""}</td>
+            <td>${log.exit_code}</td>
+            <td>${log.username || ""}</td>
+        </tr>
+        <tr>
+            <td colspan="7" style="white-space:pre-wrap; font-family:monospace; background:#f8f9fa; padding:5px;">
+                ${log.full_error || log.error || ""}
+            </td>
+        </tr>
+    `).join("");
+
+}
+
+function updateLogsCount(count) {
+    const countElement = document.getElementById('logs-count');
+    if (countElement) {
+        countElement.textContent = count;
+    }
+}
+
+function clearTerminalLogs() {
+    if (confirm('Are you sure you want to clear all terminal error logs?')) {
+        fetch('/api/frappe/clear-terminal-logs', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Terminal logs cleared successfully', 'success');
+                loadTerminalLogs();
+            } else {
+                showToast('Failed to clear terminal logs', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error clearing terminal logs:', error);
+            showToast('Failed to clear terminal logs', 'error');
+        });
+    }
+
+
+}
+
+// Terminal Logs functionality with real-time tracking
+
+
+// Real-time error tracking
+
+
+
+
 </script>
+
 {% endblock %}
