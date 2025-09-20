@@ -1,0 +1,14 @@
+http:
+  routers:
+    docker_manager:
+      rule: "Host(`dmf.inventopos.com`)"
+      entryPoints:
+        - websecure
+      service: docker_manager_svc
+      tls:
+        certResolver: letsencrypt
+  services:
+    docker_manager_svc:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:5000"

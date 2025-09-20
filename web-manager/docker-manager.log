@@ -1,0 +1,313 @@
+2025-09-13 13:59:55,946 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    return f(*args, **kwargs)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    return render_template('dashboard.html',
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 150, in render_template
+    template = app.jinja_env.get_or_select_template(template_name_or_list)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1084, in get_or_select_template
+    return self.get_template(template_name_or_list, parent, globals)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1013, in get_template
+    return self._load_template(name, globals)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 972, in _load_template
+    template = self.loader.load(self, name, self.make_globals(globals))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/loaders.py", line 138, in load
+    code = environment.compile(source, name, filename)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 768, in compile
+    self.handle_exception(source=source_hint)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 509, in template
+    {% endblock %}
+jinja2.exceptions.TemplateSyntaxError: Unexpected end of template. Jinja was looking for the following tags: 'endblock'. The innermost block that needs to be closed is 'block'.
+2025-09-13 13:59:58,228 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    return f(*args, **kwargs)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    return render_template('dashboard.html',
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 150, in render_template
+    template = app.jinja_env.get_or_select_template(template_name_or_list)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1084, in get_or_select_template
+    return self.get_template(template_name_or_list, parent, globals)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1013, in get_template
+    return self._load_template(name, globals)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 972, in _load_template
+    template = self.loader.load(self, name, self.make_globals(globals))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/loaders.py", line 138, in load
+    code = environment.compile(source, name, filename)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 768, in compile
+    self.handle_exception(source=source_hint)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 509, in template
+    {% endblock %}
+jinja2.exceptions.TemplateSyntaxError: Unexpected end of template. Jinja was looking for the following tags: 'endblock'. The innermost block that needs to be closed is 'block'.
+2025-09-13 14:01:09,203 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    return f(*args, **kwargs)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    return render_template('dashboard.html',
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 151, in render_template
+    return _render(app, template, context)
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 132, in _render
+    rv = template.render(context)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1304, in render
+    self.environment.handle_exception()
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 1, in top-level template code
+    {% extends "base.html" %}
+  File "/var/www/html/frappe-docker/web-manager/templates/base.html", line 49, in top-level template code
+    {% block content %}{% endblock %}
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 223, in block 'content'
+    {% set running = project_containers|selectattr('status', 'containing', 'Up')|list|length %}
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/async_utils.py", line 45, in wrapper
+    return normal_func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1352, in sync_do_list
+    return list(value)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1791, in select_or_reject
+    if func(item):
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1776, in <lambda>
+    return lambda item: modfunc(func(transfunc(item)))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1771, in func
+    return context.environment.call_test(name, item, args, kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 591, in call_test
+    return self._filter_test_common(
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 523, in _filter_test_common
+    raise TemplateRuntimeError(msg)
+jinja2.exceptions.TemplateRuntimeError: No test named 'containing'.
+2025-09-13 14:01:21,434 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    return f(*args, **kwargs)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    return render_template('dashboard.html',
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 151, in render_template
+    return _render(app, template, context)
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 132, in _render
+    rv = template.render(context)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1304, in render
+    self.environment.handle_exception()
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 1, in top-level template code
+    {% extends "base.html" %}
+  File "/var/www/html/frappe-docker/web-manager/templates/base.html", line 49, in top-level template code
+    {% block content %}{% endblock %}
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 223, in block 'content'
+    {% set running = project_containers|selectattr('status', 'containing', 'Up')|list|length %}
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/async_utils.py", line 45, in wrapper
+    return normal_func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1352, in sync_do_list
+    return list(value)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1791, in select_or_reject
+    if func(item):
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1776, in <lambda>
+    return lambda item: modfunc(func(transfunc(item)))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1771, in func
+    return context.environment.call_test(name, item, args, kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 591, in call_test
+    return self._filter_test_common(
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 523, in _filter_test_common
+    raise TemplateRuntimeError(msg)
+jinja2.exceptions.TemplateRuntimeError: No test named 'containing'.
+2025-09-13 14:01:23,466 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    return f(*args, **kwargs)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    return render_template('dashboard.html',
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 151, in render_template
+    return _render(app, template, context)
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 132, in _render
+    rv = template.render(context)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1304, in render
+    self.environment.handle_exception()
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 1, in top-level template code
+    {% extends "base.html" %}
+  File "/var/www/html/frappe-docker/web-manager/templates/base.html", line 49, in top-level template code
+    {% block content %}{% endblock %}
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 223, in block 'content'
+    {% set running = project_containers|selectattr('status', 'containing', 'Up')|list|length %}
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/async_utils.py", line 45, in wrapper
+    return normal_func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1352, in sync_do_list
+    return list(value)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1791, in select_or_reject
+    if func(item):
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1776, in <lambda>
+    return lambda item: modfunc(func(transfunc(item)))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1771, in func
+    return context.environment.call_test(name, item, args, kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 591, in call_test
+    return self._filter_test_common(
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 523, in _filter_test_common
+    raise TemplateRuntimeError(msg)
+jinja2.exceptions.TemplateRuntimeError: No test named 'containing'.
+2025-09-13 14:02:35,606 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:236]
+2025-09-13 14:02:55,364 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:236]
+2025-09-13 14:03:07,346 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:236]
+2025-09-13 14:03:49,470 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:241]
+2025-09-13 14:04:01,249 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:241]
+2025-09-13 14:04:28,918 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:246]
+2025-09-13 14:04:55,442 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:246]
+2025-09-13 14:05:17,074 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    if time.time() - session['last_activity'] > Config.SESSION_TIMEOUT:
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    'Site Creator': 7,
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 151, in render_template
+    return _render(app, template, context)
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 132, in _render
+    rv = template.render(context)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1304, in render
+    self.environment.handle_exception()
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 1, in top-level template code
+    {% extends "base.html" %}
+  File "/var/www/html/frappe-docker/web-manager/templates/base.html", line 49, in top-level template code
+    {% block content %}{% endblock %}
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 223, in block 'content'
+    {% set running = project_containers|selectattr('status', 'containing', 'Up')|list|length %}
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/async_utils.py", line 45, in wrapper
+    return normal_func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1352, in sync_do_list
+    return list(value)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1791, in select_or_reject
+    if func(item):
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1776, in <lambda>
+    return lambda item: modfunc(func(transfunc(item)))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1771, in func
+    return context.environment.call_test(name, item, args, kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 591, in call_test
+    return self._filter_test_common(
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 523, in _filter_test_common
+    raise TemplateRuntimeError(msg)
+jinja2.exceptions.TemplateRuntimeError: No test named 'containing'.
+2025-09-13 14:05:33,815 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:246]
+2025-09-13 14:06:25,342 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:246]
+2025-09-13 14:07:01,565 INFO: Executing command: sudo docker ps -a --format json... [in /var/www/html/frappe-docker/web-manager/app.py:246]
+2025-09-13 14:10:47,513 ERROR: Exception on / [GET] [in /usr/local/lib/python3.10/dist-packages/flask/app.py:1414]
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/usr/local/lib/python3.10/dist-packages/flask/app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 196, in decorated_function
+    if time.time() - session['last_activity'] > Config.SESSION_TIMEOUT:
+  File "/var/www/html/frappe-docker/web-manager/app.py", line 555, in index
+    'Site Creator': 7,
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 151, in render_template
+    return _render(app, template, context)
+  File "/usr/local/lib/python3.10/dist-packages/flask/templating.py", line 132, in _render
+    rv = template.render(context)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 1304, in render
+    self.environment.handle_exception()
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 939, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 1, in top-level template code
+    {% extends "base.html" %}
+  File "/var/www/html/frappe-docker/web-manager/templates/base.html", line 49, in top-level template code
+    {% block content %}{% endblock %}
+  File "/var/www/html/frappe-docker/web-manager/templates/dashboard.html", line 223, in block 'content'
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/async_utils.py", line 45, in wrapper
+    return normal_func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1352, in sync_do_list
+    return list(value)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1791, in select_or_reject
+    if func(item):
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1776, in <lambda>
+    return lambda item: modfunc(func(transfunc(item)))
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/filters.py", line 1771, in func
+    return context.environment.call_test(name, item, args, kwargs)
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 591, in call_test
+    return self._filter_test_common(
+  File "/usr/local/lib/python3.10/dist-packages/jinja2/environment.py", line 523, in _filter_test_common
+    raise TemplateRuntimeError(msg)
+jinja2.exceptions.TemplateRuntimeError: No test named 'containing'.
+2025-09-14 19:15:48,540 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1769]
+2025-09-14 19:15:55,954 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1769]
+2025-09-14 19:23:52,606 INFO: Container IP: <no value> [in /var/www/html/frappe-docker/web-manager/app.py:1979]
+2025-09-14 19:23:52,619 WARNING: iptables rule failed: iptables v1.8.7 (nf_tables): Bad IP address "<no value>"
+
+Try `iptables -h' or 'iptables --help' for more information.
+ [in /var/www/html/frappe-docker/web-manager/app.py:1988]
+2025-09-14 19:25:10,966 INFO: Container IP: <no value> [in /var/www/html/frappe-docker/web-manager/app.py:1922]
+2025-09-14 19:25:10,972 INFO: Started socat port forwarding from host:2222 to <no value>:2222 [in /var/www/html/frappe-docker/web-manager/app.py:1938]
+2025-09-14 19:30:28,351 INFO: Container IP: 172.22.0.2 [in /var/www/html/frappe-docker/web-manager/app.py:1922]
+2025-09-14 19:30:28,356 INFO: Started socat port forwarding from host:2222 to 172.22.0.2:2222 [in /var/www/html/frappe-docker/web-manager/app.py:1938]
+2025-09-14 19:41:20,535 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:41:41,592 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:43:05,614 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:50:51,413 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:51:57,824 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:52:14,197 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:54:00,780 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1808]
+2025-09-14 19:59:16,042 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 19:59:17,004 INFO: Container IP: 172.22.0.2 [in /var/www/html/frappe-docker/web-manager/app.py:1956]
+2025-09-14 19:59:17,009 INFO: Started socat port forwarding from host:2225 to 172.22.0.2:2225 [in /var/www/html/frappe-docker/web-manager/app.py:1972]
+2025-09-14 19:59:51,389 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 19:59:52,381 INFO: Container IP: 172.22.0.2 [in /var/www/html/frappe-docker/web-manager/app.py:1956]
+2025-09-14 19:59:52,386 INFO: Started socat port forwarding from host:2225 to 172.22.0.2:2225 [in /var/www/html/frappe-docker/web-manager/app.py:1972]
+2025-09-14 20:01:58,431 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 20:14:30,553 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1819]
+2025-09-14 20:28:44,751 INFO: Generated SSH key pair successfully [in /var/www/html/frappe-docker/web-manager/app.py:1825]

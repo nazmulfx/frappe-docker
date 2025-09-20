@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+
+{% block title %}Frappe Manager - {{ container_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-cube text-primary"></i> {{ container_name }}
+        <small class="text-muted">Frappe/ERPNext Manager</small>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button class="btn btn-sm btn-success" onclick="refreshApps()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+            <button class="btn btn-sm btn-info" onclick="showBenchInfo()">
+                <i class="fas fa-info-circle"></i> Bench Info
+            </button>
+        </div>
+        <a href="{{ url_for('container_detail', container_name=container_name) }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Container
+        </a>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-success w-100" onclick="clearCache('all')">
+                            <i class="fas fa-broom"></i><br>Clear All Cache
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-info w-100" onclick="createBackup()">
+                            <i class="fas fa-download"></i><br>Create Backup
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-warning w-100" onclick="runMigration()">
+                            <i class="fas fa-database"></i><br>Run Migration
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-danger w-100" onclick="restartServices()">
+                            <i class="fas fa-redo"></i><br>Restart Services
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- App Management -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-puzzle-piece"></i> Installed Apps</h5>
+            </div>
+            <div class="card-body">
+                <div id="installedApps">
+                    {% if installed_apps.success %}
+                        {% if installed_apps.apps %}
+                            <div class="list-group">
+                                {% for app in installed_apps.apps %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="fas fa-cube text-success"></i>
+                                        <strong>{{ app }}</strong>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="removeApp('{{ app }}')" title="Remove App">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-3">
+                                <i class="fas fa-puzzle-piece fa-2x text-muted mb-2"></i>
+                                <p class="text-muted">No apps found</p>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i> 
+                            Could not load installed apps: {{ installed_apps.error }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-plus-circle"></i> Install New App</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Popular Frappe Apps:</label>
+                    <div class="row">
+                        {% for app in available_apps[:4] %}
+                        <div class="col-6 mb-2">
+                            <button class="btn btn-outline-primary btn-sm w-100" onclick="installApp('{{ app.name }}')">
+                                <i class="fas fa-download"></i> {{ app.name }}
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <label for="customAppName" class="form-label">Custom App Name:</label>
+                    <input type="text" class="form-control" id="customAppName" placeholder="e.g., custom_app">
+                </div>
+                
+                <div class="mb-3">
+                    <label for="customAppUrl" class="form-label">Custom App URL (optional):</label>
+                    <input type="text" class="form-control" id="customAppUrl" placeholder="https://github.com/user/app">
+                </div>
+                
+                <button class="btn btn-primary w-100" onclick="installCustomApp()">
+                    <i class="fas fa-plus"></i> Install Custom App
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Tools -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-tools"></i> System Tools</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Quick Install:</label>
+                    <div class="btn-group w-100" role="group">
+                        <button class="btn btn-outline-secondary" onclick="installPackage('nano')">
+                            <i class="fas fa-edit"></i> nano
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="installPackage('vim')">
+                            <i class="fas fa-edit"></i> vim
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="installPackage('htop')">
+                            <i class="fas fa-chart-bar"></i> htop
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="installPackage('curl')">
+                            <i class="fas fa-download"></i> curl
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="customPackage" class="form-label">Custom Package:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="customPackage" placeholder="package-name">
+                        <button class="btn btn-outline-primary" onclick="installCustomPackage()">
+                            <i class="fas fa-download"></i> Install
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-terminal"></i> Custom Bench Command</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="benchCommand" class="form-label">Bench Command:</label>
+                    <input type="text" class="form-control" id="benchCommand" placeholder="e.g., bench --site all list-apps">
+                    <small class="form-text text-muted">Commands will be executed in /home/frappe/frappe-bench</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="commandTimeout" class="form-label">Timeout (seconds):</label>
+                    <input type="number" class="form-control" id="commandTimeout" value="60" min="10" max="600">
+                </div>
+                
+                <button class="btn btn-warning w-100" onclick="executeBenchCommand()">
+                    <i class="fas fa-play"></i> Execute Command
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cache Management -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-broom"></i> Cache Management</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-success w-100" onclick="clearCache('redis')">
+                            <i class="fas fa-database"></i><br>Clear Redis Cache
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-info w-100" onclick="clearCache('website')">
+                            <i class="fas fa-globe"></i><br>Clear Website Cache
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-warning w-100" onclick="clearCache('assets')">
+                            <i class="fas fa-file-code"></i><br>Rebuild Assets
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-danger w-100" onclick="clearCache('all')">
+                            <i class="fas fa-broom"></i><br>Clear All Cache
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Output Modal -->
+<div class="modal fade" id="outputModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Command Output</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre class="log-output" id="commandOutput"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p id="loadingText">Processing...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const containerName = '{{ container_name }}';
+
+function showLoading(text = 'Processing...') {
+    $('#loadingText').text(text);
+    $('#loadingModal').modal('show');
+}
+
+function hideLoading() {
+    $('#loadingModal').modal('hide');
+}
+
+function showOutput(title, output, error = null) {
+    $('.modal-title').text(title);
+    let content = output;
+    if (error) {
+        content = `ERROR: ${error}\n\nOUTPUT:\n${output}`;
+    }
+    $('#commandOutput').text(content);
+    $('#outputModal').modal('show');
+}
+
+function installApp(appName) {
+    if (!confirm(`Install ${appName} app? This may take several minutes.`)) return;
+    
+    showLoading(`Installing ${appName}...`);
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/install-app`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({app_name: appName}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput(`Install ${appName}`, response.output);
+                refreshApps();
+            } else {
+                showOutput(`Install ${appName} - ERROR`, response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to install app');
+        }
+    });
+}
+
+function installCustomApp() {
+    const appName = $('#customAppName').val().trim();
+    const appUrl = $('#customAppUrl').val().trim();
+    
+    if (!appName) {
+        alert('Please enter an app name');
+        return;
+    }
+    
+    if (!confirm(`Install ${appName}? This may take several minutes.`)) return;
+    
+    showLoading(`Installing ${appName}...`);
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/install-app`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({app_name: appName, app_url: appUrl || null}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput(`Install ${appName}`, response.output);
+                $('#customAppName').val('');
+                $('#customAppUrl').val('');
+                refreshApps();
+            } else {
+                showOutput(`Install ${appName} - ERROR`, response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to install app');
+        }
+    });
+}
+
+function removeApp(appName) {
+    if (!confirm(`Remove ${appName} app? This will uninstall it from all sites and remove the app files.`)) return;
+    
+    showLoading(`Removing ${appName}...`);
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/remove-app`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({app_name: appName}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput(`Remove ${appName}`, response.output);
+                refreshApps();
+            } else {
+                showOutput(`Remove ${appName} - ERROR`, response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to remove app');
+        }
+    });
+}
+
+function clearCache(cacheType) {
+    const cacheNames = {
+        'all': 'All Cache',
+        'redis': 'Redis Cache',
+        'website': 'Website Cache',
+        'assets': 'Assets (Rebuild)'
+    };
+    
+    showLoading(`Clearing ${cacheNames[cacheType]}...`);
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/clear-cache`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({cache_type: cacheType}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput(`Clear ${cacheNames[cacheType]}`, response.output);
+            } else {
+                showOutput(`Clear ${cacheNames[cacheType]} - ERROR`, response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to clear cache');
+        }
+    });
+}
+
+function createBackup() {
+    if (!confirm('Create backup of all sites? This may take several minutes.')) return;
+    
+    showLoading('Creating backup...');
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/backup`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({site_name: 'all'}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput('Create Backup', response.output);
+            } else {
+                showOutput('Create Backup - ERROR', response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to create backup');
+        }
+    });
+}
+
+function runMigration() {
+    if (!confirm('Run database migration for all sites? This may take several minutes.')) return;
+    
+    showLoading('Running migration...');
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/migrate`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({site_name: 'all'}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput('Run Migration', response.output);
+            } else {
+                showOutput('Run Migration - ERROR', response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to run migration');
+        }
+    });
+}
+
+function restartServices() {
+    if (!confirm('Restart all Frappe services?')) return;
+    
+    showLoading('Restarting services...');
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/restart-services`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput('Restart Services', response.output);
+            } else {
+                showOutput('Restart Services - ERROR', response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to restart services');
+        }
+    });
+}
+
+function installPackage(packageName) {
+    if (!confirm(`Install ${packageName}? This will install the package system-wide in the container.`)) return;
+    
+    showLoading(`Installing ${packageName}...`);
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/install-package`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({package_name: packageName}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput(`Install ${packageName}`, response.output);
+            } else {
+                showOutput(`Install ${packageName} - ERROR`, response.output, response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to install package');
+        }
+    });
+}
+
+function installCustomPackage() {
+    const packageName = $('#customPackage').val().trim();
+    
+    if (!packageName) {
+        alert('Please enter a package name');
+        return;
+    }
+    
+    installPackage(packageName);
+    $('#customPackage').val('');
+}
+
+function executeBenchCommand() {
+    const command = $('#benchCommand').val().trim();
+    const timeout = parseInt($('#commandTimeout').val()) || 60;
+    
+    if (!command) {
+        alert('Please enter a command');
+        return;
+    }
+    
+    if (!confirm(`Execute: ${command}?`)) return;
+    
+    showLoading('Executing command...');
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/bench-command`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({command: command, timeout: timeout}),
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput('Bench Command', response.output);
+            } else {
+                showOutput('Bench Command - ERROR', response.output, response.error);
+            }
+            $('#benchCommand').val('');
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to execute command');
+        }
+    });
+}
+
+function refreshApps() {
+    location.reload();
+}
+
+function showBenchInfo() {
+    showLoading('Getting bench info...');
+    
+    $.ajax({
+        url: `/api/frappe/${containerName}/status`,
+        method: 'GET',
+        success: function(response) {
+            hideLoading();
+            if (response.success) {
+                showOutput('Bench Information', response.status);
+            } else {
+                showOutput('Bench Information - ERROR', '', response.error);
+            }
+        },
+        error: function() {
+            hideLoading();
+            alert('Failed to get bench info');
+        }
+    });
+}
+</script>
+{% endblock %}

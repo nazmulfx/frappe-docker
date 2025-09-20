@@ -1,0 +1,260 @@
+/* WebTerminal CSS - AWS Console-like styling */
+
+/* Terminal container */
+#terminal-container {
+    width: 100%;
+    height: 600px;
+    border-radius: 0 0 4px 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+/* XTerm overrides */
+.xterm {
+    font-feature-settings: "liga" 0;
+    position: relative;
+    user-select: none;
+    -ms-user-select: none;
+    -webkit-user-select: none;
+}
+
+.xterm.focus,
+.xterm:focus {
+    outline: none;
+}
+
+.xterm .xterm-helpers {
+    position: absolute;
+    top: 0;
+    z-index: 5;
+}
+
+.xterm .xterm-helper-textarea {
+    position: absolute;
+    opacity: 0;
+    left: -9999em;
+    top: 0;
+    width: 0;
+    height: 0;
+    z-index: -5;
+    white-space: nowrap;
+    overflow: hidden;
+    resize: none;
+}
+
+.xterm .composition-view {
+    background: #000;
+    color: #FFF;
+    display: none;
+    position: absolute;
+    white-space: nowrap;
+    z-index: 1;
+}
+
+.xterm .composition-view.active {
+    display: block;
+}
+
+.xterm .xterm-viewport {
+    background-color: #300a24; /* Ubuntu terminal purple */
+    overflow-y: scroll;
+    cursor: default;
+    position: absolute;
+    right: 0;
+    left: 0;
+    top: 0;
+    bottom: 0;
+}
+
+.xterm .xterm-screen {
+    position: relative;
+}
+
+.xterm .xterm-screen canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.xterm .xterm-scroll-area {
+    visibility: hidden;
+}
+
+.xterm-char-measure-element {
+    display: inline-block;
+    visibility: hidden;
+    position: absolute;
+    top: 0;
+    left: -9999em;
+    line-height: normal;
+}
+
+.xterm.enable-mouse-events {
+    cursor: default;
+}
+
+.xterm.xterm-cursor-pointer {
+    cursor: pointer;
+}
+
+.xterm.column-select.focus {
+    cursor: crosshair;
+}
+
+.xterm .xterm-accessibility,
+.xterm .xterm-message {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 10;
+    color: transparent;
+}
+
+.xterm .live-region {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.xterm-dim {
+    opacity: 0.5;
+}
+
+.xterm-underline {
+    text-decoration: underline;
+}
+
+.xterm-strikethrough {
+    text-decoration: line-through;
+}
+
+.xterm-cursor {
+    position: absolute;
+    background-color: #fff;
+    border-left: 1px solid #fff;
+}
+
+.xterm-cursor.xterm-cursor-blink {
+    animation: xterm-cursor-blink 1.2s infinite step-end;
+}
+
+@keyframes xterm-cursor-blink {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.xterm-cursor.xterm-cursor-block {
+    width: 8px;
+    background-color: #fff;
+    border-left: 0;
+}
+
+.xterm-cursor.xterm-cursor-bar {
+    width: 1px;
+    background-color: #fff;
+}
+
+.xterm-cursor.xterm-cursor-underline {
+    border-left: 0;
+    border-bottom: 1px solid #fff;
+    height: 2px !important;
+}
+
+/* AWS Console-like styling */
+.aws-console-terminal {
+    border: 1px solid #232f3e;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+}
+
+.aws-console-terminal-header {
+    background: linear-gradient(to bottom, #232f3e 0%, #1a232e 100%);
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #151c25;
+}
+
+.aws-console-terminal-controls {
+    display: flex;
+    gap: 6px;
+}
+
+.aws-console-terminal-control {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.aws-console-terminal-control.close {
+    background-color: #ff5f57;
+}
+
+.aws-console-terminal-control.minimize {
+    background-color: #febc2e;
+}
+
+.aws-console-terminal-control.maximize {
+    background-color: #28c840;
+}
+
+/* Terminal toolbar */
+.terminal-toolbar {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.terminal-toolbar-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.terminal-toolbar-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.terminal-status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.terminal-status-indicator.connected {
+    background-color: #28a745;
+    box-shadow: 0 0 5px rgba(40, 167, 69, 0.5);
+}
+
+.terminal-status-indicator.disconnected {
+    background-color: #dc3545;
+    box-shadow: 0 0 5px rgba(220, 53, 69, 0.5);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    #terminal-container {
+        height: 400px;
+    }
+}
