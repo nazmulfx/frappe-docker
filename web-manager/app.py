@@ -187,6 +187,36 @@ class SecurityManager:
         """Validate CSRF token"""
         return token and token == session.get('csrf_token')
 
+def check_database_connectivity(container):
+    """Check if database is accessible for bench commands"""
+    try:
+        # Try to connect to database using TCP connection test
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", "timeout 5 bash -c '</dev/tcp/db/3306' && echo 'connected' || echo 'failed'"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return "connected" in result.stdout
+    except:
+        return False
+    
+def log_command_execution(command, container, success, error_message=None):
+    """Helper function to log command execution"""
+    username = session.get('username', 'unknown')
+    status = 'success' if success else 'failed'
+    message = f"Executed command '{command}' in container {container}"
+    if error_message:
+        message += f" - Error: {error_message}"
+    
+    log_entry = AuditLog(
+        user_id=session.get('user_id'),
+        username=username,
+        ip_address=request.remote_addr,
+        event_type='command_execution',
+        message=message,
+        status=status
+    )
+    db.session.add(log_entry)
+    db.session.commit()
+
+
 def require_auth(f):
     """Decorator to require authentication"""
     @wraps(f)
@@ -1195,27 +1225,10 @@ def frappe_install_app():
         logger.error(f"Error in frappe_install_app: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@require_auth
 @app.route('/api/frappe/execute-command', methods=['POST'])
 @require_auth
 def execute_command_api():
-    def log_command_execution(command, container, success, error_message=None):
-        """Helper function to log command execution"""
-        username = session.get('username', 'unknown')
-        status = 'success' if success else 'failed'
-        message = f"Executed command '{command}' in container {container}"
-        if error_message:
-            message += f" - Error: {error_message}"
-        
-        log_entry = AuditLog(
-            user_id=session.get('user_id'),
-            username=username,
-            ip_address=request.remote_addr,
-            event_type='command_execution',
-            message=message,
-            status=status
-        )
-        db.session.add(log_entry)
-        db.session.commit()
     """UNIVERSAL TERMINAL - Execute ANY command in ANY container"""
     try:
         # Initialize variables
@@ -1325,6 +1338,9 @@ def execute_command_api():
             try:
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
                 
+                # Set timeout for bench commands
+                timeout_seconds = 60
+                
                 # Read output line by line for streaming
                 output_lines = []
                 while True:
@@ -1362,7 +1378,7 @@ def execute_command_api():
                 })
         else:
             # For regular commands, use the original approach
-            timeout_seconds = 10
+            timeout_seconds = 30
             try:
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 stdout, stderr = process.communicate(timeout=timeout_seconds)
@@ -1383,17 +1399,7 @@ def execute_command_api():
                 })
         
         # Log the command execution
-        username = session.get('username', 'unknown')
-        log_entry = AuditLog(
-            user_id=session.get('user_id'),
-            username=username,
-            ip_address=request.remote_addr,
-            event_type='command_execution',
-            message=f"Executed command '{command}' in container {container}",
-            status='success'
-        )
-        db.session.add(log_entry)
-        db.session.commit()
+        log_command_execution(command, container, True, None)
         
         return jsonify({
             'output': output,
@@ -1404,9 +1410,6 @@ def execute_command_api():
         return jsonify({'error': str(e)})
 
 
-
-
-# Add these new API endpoints for terminal functionality
 
 @app.route('/api/frappe/validate-container', methods=['GET'])
 @require_auth
@@ -1642,8 +1645,8 @@ def get_terminal_logs():
             # Extract command and container from message
             if 'Executed command' in message and 'in container' in message:
                 try:
-                    # Format: "Executed command 'command' in container container_name"
-                    parts = message.split("\"")
+                    # Format: "Executed command 'command' in container container_name" or "Executed command "command" in container container_name"
+                    parts = message.split("'")
                     if len(parts) >= 2:
                         command = parts[1]
                     container_part = message.split("in container ")[-1].split(" - Error:")[0] if "in container " in message else "Unknown"
@@ -1711,4 +1714,638 @@ if __name__ == '__main__':
 
 
 
+
+
+# Additional API endpoints for enhanced app management
+@app.route('/api/frappe/list-apps', methods=['POST'])
+@require_auth
+def frappe_list_apps():
+    """API endpoint for 'bench list-apps' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        command = "bench list-apps"
+        
+        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_list_apps", username, client_ip, 
+                  f"List apps on container {container}", status, user_id)
+        
+        if result['success']:
+            formatted_output = TerminalFormatter.format_terminal_output(
+                result['stdout'], command, current_dir, container, True
+            )
+        else:
+            formatted_output = TerminalFormatter.format_error_output(
+                result['stderr'], command, current_dir, container
+            )
+        
+        return jsonify({
+            'success': result['success'],
+            'output': formatted_output,
+            'raw_output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_list_apps: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/list-sites', methods=['POST'])
+@require_auth
+def frappe_list_sites():
+    """API endpoint for 'bench list-sites' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        command = "bench list-sites"
+        
+        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_list_sites", username, client_ip, 
+                  f"List sites on container {container}", status, user_id)
+        
+        if result['success']:
+            formatted_output = TerminalFormatter.format_terminal_output(
+                result['stdout'], command, current_dir, container, True
+            )
+        else:
+            formatted_output = TerminalFormatter.format_error_output(
+                result['stderr'], command, current_dir, container
+            )
+        
+        return jsonify({
+            'success': result['success'],
+            'output': formatted_output,
+            'raw_output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_list_sites: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/bench-status', methods=['POST'])
+@require_auth
+def frappe_bench_status():
+    """API endpoint for 'bench status' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        command = "bench status"
+        
+        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_bench_status", username, client_ip, 
+                  f"Check bench status on container {container}", status, user_id)
+        
+        if result['success']:
+            formatted_output = TerminalFormatter.format_terminal_output(
+                result['stdout'], command, current_dir, container, True
+            )
+        else:
+            formatted_output = TerminalFormatter.format_error_output(
+                result['stderr'], command, current_dir, container
+            )
+        
+        return jsonify({
+            'success': result['success'],
+            'output': formatted_output,
+            'raw_output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_bench_status: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/clear-cache', methods=['POST'])
+@require_auth
+def frappe_clear_cache():
+    """API endpoint for 'bench clear-cache' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        command = "bench clear-cache"
+        
+        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_clear_cache", username, client_ip, 
+                  f"Clear cache on container {container}", status, user_id)
+        
+        if result['success']:
+            formatted_output = TerminalFormatter.format_terminal_output(
+                result['stdout'], command, current_dir, container, True
+            )
+        else:
+            formatted_output = TerminalFormatter.format_error_output(
+                result['stderr'], command, current_dir, container
+            )
+        
+        return jsonify({
+            'success': result['success'],
+            'output': formatted_output,
+            'raw_output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_clear_cache: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/migrate', methods=['POST'])
+@require_auth
+def frappe_migrate():
+    """API endpoint for 'bench migrate' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        command = "bench migrate"
+        
+        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=300)
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_migrate", username, client_ip, 
+                  f"Migrate on container {container}", status, user_id)
+        
+        if result['success']:
+            formatted_output = TerminalFormatter.format_terminal_output(
+                result['stdout'], command, current_dir, container, True
+            )
+        else:
+            formatted_output = TerminalFormatter.format_error_output(
+                result['stderr'], command, current_dir, container
+            )
+        
+        return jsonify({
+            'success': result['success'],
+            'output': formatted_output,
+            'raw_output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_migrate: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/restart-bench', methods=['POST'])
+@require_auth
+def frappe_restart_bench():
+    """API endpoint for 'bench restart' command"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        command = "bench restart"
+        
+        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=120)
+        
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_restart_bench", username, client_ip, 
+                  f"Restart bench on container {container}", status, user_id)
+        
+        if result['success']:
+            formatted_output = TerminalFormatter.format_terminal_output(
+                result['stdout'], command, current_dir, container, True
+            )
+        else:
+            formatted_output = TerminalFormatter.format_error_output(
+                result['stderr'], command, current_dir, container
+            )
+        
+        return jsonify({
+            'success': result['success'],
+            'output': formatted_output,
+            'raw_output': result['stdout'],
+            'current_dir': current_dir,
+            'error': result['stderr'] if not result['success'] else None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_restart_bench: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Enhanced API endpoints with better error handling and fallbacks
+@app.route('/api/frappe/bench-info-safe', methods=['POST'])
+@require_auth
+def frappe_bench_info_safe():
+    """Safe version of bench info with fallbacks"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Try multiple commands in order of preference
+        commands_to_try = [
+            "bench --version",
+            "bench list-apps",
+            "bench list-sites", 
+            "bench status",
+            "python3 -c 'import frappe; print(f\"Frappe version: {frappe.__version__}\")'",
+            "ls -la /home/frappe/frappe-bench/apps/",
+            "cat /home/frappe/frappe-bench/sites/apps.txt"
+        ]
+        
+        results = []
+        success_count = 0
+        
+        for command in commands_to_try:
+            try:
+                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
+                
+                if result['success']:
+                    success_count += 1
+                    results.append({
+                        'command': command,
+                        'output': result['stdout'],
+                        'success': True
+                    })
+                else:
+                    results.append({
+                        'command': command,
+                        'error': result['stderr'],
+                        'success': False
+                    })
+            except Exception as e:
+                results.append({
+                    'command': command,
+                    'error': str(e),
+                    'success': False
+                })
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if success_count > 0 else "failed"
+        
+        log_audit("frappe_bench_info_safe", username, client_ip, 
+                  f"Safe bench info on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
+        
+        # Format output
+        formatted_output = f"Bench Information for {container}:\n"
+        formatted_output += "=" * 50 + "\n\n"
+        
+        for result in results:
+            if result['success']:
+                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
+            else:
+                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
+        
+        return jsonify({
+            'success': success_count > 0,
+            'output': formatted_output,
+            'raw_output': results,
+            'current_dir': current_dir,
+            'success_count': success_count,
+            'total_commands': len(commands_to_try),
+            'error': None if success_count > 0 else 'All commands failed'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_bench_info_safe: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/bench-status-safe', methods=['POST'])
+@require_auth
+def frappe_bench_status_safe():
+    """Safe version of bench status with fallbacks"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Try multiple status checking commands
+        commands_to_try = [
+            "ps aux | grep -E '(redis|mariadb|nginx|supervisor)' | grep -v grep",
+            "supervisorctl status",
+            "bench --version",
+            "ls -la /home/frappe/frappe-bench/sites/",
+            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
+            "systemctl status redis-server mariadb nginx 2>/dev/null || echo 'Services not managed by systemctl'"
+        ]
+        
+        results = []
+        success_count = 0
+        
+        for command in commands_to_try:
+            try:
+                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
+                
+                if result['success']:
+                    success_count += 1
+                    results.append({
+                        'command': command,
+                        'output': result['stdout'],
+                        'success': True
+                    })
+                else:
+                    results.append({
+                        'command': command,
+                        'error': result['stderr'],
+                        'success': False
+                    })
+            except Exception as e:
+                results.append({
+                    'command': command,
+                    'error': str(e),
+                    'success': False
+                })
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if success_count > 0 else "failed"
+        
+        log_audit("frappe_bench_status_safe", username, client_ip, 
+                  f"Safe bench status on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
+        
+        # Format output
+        formatted_output = f"Bench Status for {container}:\n"
+        formatted_output += "=" * 50 + "\n\n"
+        
+        for result in results:
+            if result['success']:
+                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
+            else:
+                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
+        
+        return jsonify({
+            'success': success_count > 0,
+            'output': formatted_output,
+            'raw_output': results,
+            'current_dir': current_dir,
+            'success_count': success_count,
+            'total_commands': len(commands_to_try),
+            'error': None if success_count > 0 else 'All status commands failed'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_bench_status_safe: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/list-apps-safe', methods=['POST'])
+@require_auth
+def frappe_list_apps_safe():
+    """Safe version of list apps with fallbacks"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Try multiple ways to list apps
+        commands_to_try = [
+            "ls -la /home/frappe/frappe-bench/apps/",
+            "cat /home/frappe/frappe-bench/sites/apps.txt",
+            "cat /home/frappe/frappe-bench/sites/apps.json",
+            "bench list-apps",
+            "python3 -c 'import json; print(json.dumps([app for app in open(\"/home/frappe/frappe-bench/sites/apps.txt\").read().strip().split(\"\\n\") if app], indent=2))'"
+        ]
+        
+        results = []
+        success_count = 0
+        
+        for command in commands_to_try:
+            try:
+                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
+                
+                if result['success']:
+                    success_count += 1
+                    results.append({
+                        'command': command,
+                        'output': result['stdout'],
+                        'success': True
+                    })
+                else:
+                    results.append({
+                        'command': command,
+                        'error': result['stderr'],
+                        'success': False
+                    })
+            except Exception as e:
+                results.append({
+                    'command': command,
+                    'error': str(e),
+                    'success': False
+                })
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if success_count > 0 else "failed"
+        
+        log_audit("frappe_list_apps_safe", username, client_ip, 
+                  f"Safe list apps on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
+        
+        # Format output
+        formatted_output = f"Installed Apps in {container}:\n"
+        formatted_output += "=" * 50 + "\n\n"
+        
+        for result in results:
+            if result['success']:
+                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
+            else:
+                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
+        
+        return jsonify({
+            'success': success_count > 0,
+            'output': formatted_output,
+            'raw_output': results,
+            'current_dir': current_dir,
+            'success_count': success_count,
+            'total_commands': len(commands_to_try),
+            'error': None if success_count > 0 else 'All list apps commands failed'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_list_apps_safe: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frappe/list-sites-safe', methods=['POST'])
+@require_auth
+def frappe_list_sites_safe():
+    """Safe version of list sites with fallbacks"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        current_dir = container_working_dirs.get(container, "/home/frappe")
+        
+        # Try multiple ways to list sites
+        commands_to_try = [
+            "ls -la /home/frappe/frappe-bench/sites/",
+            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
+            "bench list-sites",
+            "find /home/frappe/frappe-bench/sites/ -maxdepth 1 -type d -name '*.local' -o -name '*.com' | sort"
+        ]
+        
+        results = []
+        success_count = 0
+        
+        for command in commands_to_try:
+            try:
+                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
+                
+                if result['success']:
+                    success_count += 1
+                    results.append({
+                        'command': command,
+                        'output': result['stdout'],
+                        'success': True
+                    })
+                else:
+                    results.append({
+                        'command': command,
+                        'error': result['stderr'],
+                        'success': False
+                    })
+            except Exception as e:
+                results.append({
+                    'command': command,
+                    'error': str(e),
+                    'success': False
+                })
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if success_count > 0 else "failed"
+        
+        log_audit("frappe_list_sites_safe", username, client_ip, 
+                  f"Safe list sites on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
+        
+        # Format output
+        formatted_output = f"Available Sites in {container}:\n"
+        formatted_output += "=" * 50 + "\n\n"
+        
+        for result in results:
+            if result['success']:
+                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
+            else:
+                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
+        
+        return jsonify({
+            'success': success_count > 0,
+            'output': formatted_output,
+            'raw_output': results,
+            'current_dir': current_dir,
+            'success_count': success_count,
+            'total_commands': len(commands_to_try),
+            'error': None if success_count > 0 else 'All list sites commands failed'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_list_sites_safe: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -1,0 +1,280 @@
+/* Frappe Cloud-like App Management Styling */
+
+.frappe-cloud-card {
+    border: 1px solid #e1e5e9;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+    margin-bottom: 1rem;
+}
+
+.frappe-cloud-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-color: #007bff;
+}
+
+.frappe-cloud-card .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+}
+
+.frappe-cloud-card .card-header.bg-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.frappe-cloud-card .card-header.bg-success {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+}
+
+.frappe-cloud-card .card-header.bg-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+    color: #212529;
+}
+
+.frappe-cloud-card .card-header.bg-dark {
+    background: linear-gradient(135deg, #343a40 0%, #23272b 100%);
+}
+
+.container-card {
+    border-left: 4px solid #007bff;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: #f8f9fa;
+    border-radius: 0 8px 8px 0;
+}
+
+.container-card.running {
+    border-left-color: #28a745;
+    background: #f8fff9;
+}
+
+.container-card.stopped {
+    border-left-color: #dc3545;
+    background: #fff8f8;
+}
+
+.app-operation-btn {
+    margin: 0.25rem;
+    min-width: 120px;
+    transition: all 0.2s ease;
+}
+
+.app-operation-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.app-operation-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+}
+
+.operation-log {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    max-height: 300px;
+    overflow-y: auto;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.log-entry {
+    margin-bottom: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border-left: 3px solid transparent;
+}
+
+.log-success {
+    color: #28a745;
+    background: rgba(40, 167, 69, 0.1);
+    border-left-color: #28a745;
+}
+
+.log-error {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+    border-left-color: #dc3545;
+}
+
+.log-warning {
+    color: #ffc107;
+    background: rgba(255, 193, 7, 0.1);
+    border-left-color: #ffc107;
+}
+
+.log-info {
+    color: #17a2b8;
+    background: rgba(23, 162, 184, 0.1);
+    border-left-color: #17a2b8;
+}
+
+/* Enhanced form styling */
+.form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.form-select:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+/* Button enhancements */
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    border: none;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+    border: none;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #e0a800 0%, #e55a00 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+}
+
+/* Loading states */
+.btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.btn.loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: button-loading-spinner 1s ease infinite;
+}
+
+@keyframes button-loading-spinner {
+    from {
+        transform: rotate(0turn);
+    }
+    to {
+        transform: rotate(1turn);
+    }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .app-operation-btn {
+        min-width: 100px;
+        margin: 0.125rem;
+    }
+    
+    .frappe-cloud-card {
+        margin-bottom: 0.5rem;
+    }
+    
+    .operation-log {
+        max-height: 200px;
+        font-size: 0.8rem;
+    }
+}
+
+/* Animation for smooth transitions */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Toast notifications */
+.toast-container {
+    z-index: 1055;
+}
+
+.toast {
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Enhanced table styling */
+.table-hover tbody tr:hover {
+    background-color: rgba(102, 126, 234, 0.1);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0,0,0,0.02);
+}
+
+/* Code blocks in logs */
+code {
+    background: rgba(0,0,0,0.05);
+    padding: 0.125rem 0.25rem;
+    border-radius: 3px;
+    font-size: 0.875em;
+    color: #e83e8c;
+}
+
+/* Scrollbar styling */
+.operation-log::-webkit-scrollbar {
+    width: 6px;
+}
+
+.operation-log::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.operation-log::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.operation-log::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
