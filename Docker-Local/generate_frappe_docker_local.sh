@@ -364,7 +364,7 @@ ${app_labels}
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-      - apps:/home/frappe/frappe-bench/apps
+      - ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -682,7 +682,7 @@ echo -e "${BLUE}🔧 Managing hosts file for local access...${NC}"
 if manage_hosts_entry "$site_name" "add"; then
     if [[ ! $site_name =~ \.localhost$ ]]; then
         # Get the correct port from local config
-        local display_port=""
+        display_port=""
         if [[ -f ".traefik-local-config" ]]; then
             source .traefik-local-config
             if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
@@ -699,7 +699,7 @@ echo ""
 echo -e "${GREEN}🚀 Your optimized site is being prepared and will be live in approximately 5 minutes...${NC}"
 
 # Determine the access URL based on configuration
-local access_url=""
+access_url=""
 if [[ -f ".traefik-local-config" ]]; then
     source .traefik-local-config
     if [[ "$USE_LOCALHOST" == "true" ]]; then
