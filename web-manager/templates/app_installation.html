@@ -27,17 +27,74 @@
     border: 1px solid #333;
 }
 
-/* XTerm.js styles */
-.xterm {
-    font-feature-settings: "liga" 0;
-    position: relative;
-    user-select: none;
-    -ms-user-select: none;
-    -webkit-user-select: none;
+/* Frappe Cloud-like styling */
+.frappe-cloud-card {
+    border: 1px solid #e1e5e9;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+}
+
+.frappe-cloud-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-color: #007bff;
+}
+
+.container-card {
+    border-left: 4px solid #007bff;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.container-card.running {
+    border-left-color: #28a745;
+}
+
+.container-card.stopped {
+    border-left-color: #dc3545;
+}
+
+.app-operation-btn {
+    margin: 0.25rem;
+    min-width: 120px;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.operation-log {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.log-success {
+    color: #28a745;
+}
+
+.log-error {
+    color: #dc3545;
+}
+
+.log-warning {
+    color: #ffc107;
+}
+
+.log-info {
+    color: #17a2b8;
 }
 
 /* Include xterm.js CSS */
 @import url('https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css');
+<link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-cloud.css') }}">
 {% endblock %}
 
 {% block custom_head %}
@@ -52,21 +109,32 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <h1 class="h3 mb-4">Frappe App Installation</h1>
+    <h1 class="h3 mb-4">
+        <i class="bi bi-cloud-arrow-up me-2"></i>Frappe App Management
+        <small class="text-muted">- Frappe Cloud-like Interface</small>
+    </h1>
 
     <div class="row">
         <div class="col-md-12">
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
-                        <i class="bi bi-tools me-2"></i> Installation Tools
+                        <i class="bi bi-tools me-2"></i> App Management Tools
                     </h5>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="refresh-containers">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm" id="bulk-operations">
+                            <i class="bi bi-layers"></i> Bulk Operations
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <ul class="nav nav-tabs" id="installTabs" role="tablist">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" id="ui-panel-tab" data-bs-toggle="tab" data-bs-target="#ui-panel" type="button" role="tab" aria-controls="ui-panel" aria-selected="true">
-                                <i class="bi bi-window"></i> Guided Installation
+                                <i class="bi bi-window"></i> App Management
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -82,11 +150,247 @@
                     </ul>
                     
                     <div class="tab-content mt-3" id="installTabsContent">
-                        <!-- UI Panel Tab -->
+                        <!-- UI Panel Tab - Frappe Cloud-like Interface -->
                         <div class="tab-pane fade show active" id="ui-panel" role="tabpanel">
-                            <!-- UI Panel Content -->
-                            <!-- ... existing UI Panel content ... -->
+                            <div class="row">
+                                <!-- Container Selection -->
+                                <div class="col-md-4">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-server"></i> Select Container
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="mb-3">
+                                                <label for="app-container-select" class="form-label fw-bold">
+                                                    <i class="bi bi-terminal"></i> App Server Container
+                                                </label>
+                                                <select class="form-select" id="app-container-select">
+                                                    <option value="">-- Choose a container --</option>
+                                                    {% for project_name, project_containers in container_groups.items() %}
+                                                        <optgroup label="{{ project_name }}">
+                                                            {% for container in project_containers %}
+                                                                {% if container.service_type == 'App Server' %}
+                                                                    <option value="{{ container.name }}" 
+                                                                            data-status="{{ container.status }}"
+                                                                            data-image="{{ container.image }}">
+                                                                        {{ container.name }}
+                                                                    </option>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </optgroup>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            
+                                            <!-- Container Info -->
+                                            <div id="container-info" class="mt-3" style="display: none;">
+                                                <div class="alert alert-info">
+                                                    <h6><i class="bi bi-info-circle"></i> Container Information</h6>
+                                                    <div id="container-details"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Quick Actions -->
+                                    <div class="frappe-cloud-card mt-3">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-lightning"></i> Quick Actions
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-primary app-operation-btn" id="bench-status">
+                                                    <i class="bi bi-check-circle"></i> Bench Status
+                                                </button>
+                                                <button class="btn btn-outline-info app-operation-btn" id="bench-info">
+                                                    <i class="bi bi-info-square"></i> Bench Info
+                                                </button>
+                                                <button class="btn btn-outline-warning app-operation-btn" id="bench-clear-cache">
+                                                    <i class="bi bi-trash"></i> Clear Cache
+                                                </button>
+                                                <button class="btn btn-outline-secondary app-operation-btn" id="bench-migrate">
+                                                    <i class="bi bi-arrow-up-circle"></i> Migrate
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- App Operations -->
+                                <div class="col-md-8">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-warning text-dark">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-gear"></i> App Operations
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <!-- Get App Section -->
+                                            <div class="mb-4">
+                                                <h6 class="text-primary">
+                                                    <i class="bi bi-download"></i> Get App
+                                                </h6>
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <div class="mb-3">
+                                                            <label for="app-repo-url" class="form-label">Repository URL</label>
+                                                            <input type="url" class="form-control" id="app-repo-url" 
+                                                                   placeholder="https://github.com/frappe/app-name">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <div class="mb-3">
+                                                            <label for="app-branch" class="form-label">Branch (Optional)</label>
+                                                            <input type="text" class="form-control" id="app-branch" 
+                                                                   placeholder="main, develop, etc.">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <button class="btn btn-primary w-100" id="get-app-btn">
+                                                                <i class="bi bi-download"></i> Get App
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Install App Section -->
+                                            <div class="mb-4">
+                                                <h6 class="text-success">
+                                                    <i class="bi bi-install"></i> Install App
+                                                </h6>
+                                                <div class="row">
+                                                    <div class="col-md-4">
+                                                        <div class="mb-3">
+                                                            <label for="install-app-name" class="form-label">App Name</label>
+                                                            <input type="text" class="form-control" id="install-app-name" 
+                                                                   placeholder="app_name">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <div class="mb-3">
+                                                            <label for="install-site-name" class="form-label">Site Name</label>
+                                                            <input type="text" class="form-control" id="install-site-name" 
+                                                                   placeholder="site1.local">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <button class="btn btn-success w-100" id="install-app-btn">
+                                                                <i class="bi bi-install"></i> Install App
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- App Management Section -->
+                                            <div class="mb-4">
+                                                <h6 class="text-info">
+                                                    <i class="bi bi-gear-fill"></i> App Management
+                                                </h6>
+                                                <div class="row">
+                                                    <div class="col-md-3">
+                                                        <button class="btn btn-outline-primary w-100 app-operation-btn" id="uninstall-app-btn">
+                                                            <i class="bi bi-trash"></i> Uninstall App
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <button class="btn btn-outline-warning w-100 app-operation-btn" id="update-app-btn">
+                                                            <i class="bi bi-arrow-up"></i> Update App
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <button class="btn btn-outline-info w-100 app-operation-btn" id="list-apps-btn">
+                                                            <i class="bi bi-list"></i> List Apps
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <button class="btn btn-outline-secondary w-100 app-operation-btn" id="bench-restart-btn">
+                                                            <i class="bi bi-arrow-clockwise"></i> Restart Bench
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Site Management Section -->
+                                            <div class="mb-4">
+                                                <h6 class="text-warning">
+                                                    <i class="bi bi-globe"></i> Site Management
+                                                </h6>
+                                                <div class="row">
+                                                    <div class="col-md-4">
+                                                        <div class="mb-3">
+                                                            <label for="site-name" class="form-label">Site Name</label>
+                                                            <input type="text" class="form-control" id="site-name" 
+                                                                   placeholder="site1.local">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <button class="btn btn-outline-primary w-100" id="create-site-btn">
+                                                                <i class="bi bi-plus-circle"></i> Create Site
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <button class="btn btn-outline-danger w-100" id="drop-site-btn">
+                                                                <i class="bi bi-trash"></i> Drop Site
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <button class="btn btn-outline-info w-100" id="list-sites-btn">
+                                                                <i class="bi bi-list"></i> List Sites
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <button class="btn btn-outline-warning w-100" id="backup-site-btn">
+                                                                <i class="bi bi-archive"></i> Backup
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Operation Log -->
+                                    <div class="frappe-cloud-card mt-3">
+                                        <div class="card-header bg-dark text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-terminal"></i> Operation Log
+                                                <button class="btn btn-sm btn-outline-light float-end" id="clear-log-btn">
+                                                    <i class="bi bi-trash"></i> Clear
+                                                </button>
+                                            </h6>
+                                        </div>
+                                        <div class="card-body p-0">
+                                            <div id="operation-log" class="operation-log">
+                                                <div class="text-muted text-center py-3">
+                                                    <i class="bi bi-info-circle"></i> Select a container and perform operations to see logs here
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
+                        </div>
 
                         <!-- Console Panel Tab -->
                         <div class="tab-pane fade" id="console-panel" role="tabpanel">
@@ -238,28 +542,28 @@
                                                 <div class="mb-3">
                                                     <label for="temp-container-select" class="form-label">
                                                         <i class="bi bi-terminal"></i> Select Container
-                                </label>
+                                                    </label>
                                                     <select class="form-select" id="temp-container-select">
-                                    <option value="">-- Choose a container --</option>
-                                    {% for project_name, project_containers in container_groups.items() %}
-                                        <optgroup label="{{ project_name }}">
-                                            {% for container in project_containers %}
-                                                {% if container.service_type == 'App Server' %}
-                                                    <option value="{{ container.name }}">{{ container.name }}</option>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </optgroup>
-                                    {% endfor %}
-                                </select>
-                                </div>
+                                                        <option value="">-- Choose a container --</option>
+                                                        {% for project_name, project_containers in container_groups.items() %}
+                                                            <optgroup label="{{ project_name }}">
+                                                                {% for container in project_containers %}
+                                                                    {% if container.service_type == 'App Server' %}
+                                                                        <option value="{{ container.name }}">{{ container.name }}</option>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </optgroup>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
                                                 
                                                 <div class="mb-3">
                                                     <label for="temp-username" class="form-label">
                                                         <i class="bi bi-person"></i> SSH Username
                                                     </label>
                                                     <input type="text" class="form-control" id="temp-username" value="frappe" placeholder="e.g., frappe, root, ubuntu">
-                            </div>
-                            
+                                                </div>
+                                                
                                                 <div class="mb-3">
                                                     <label for="temp-duration" class="form-label">
                                                         <i class="bi bi-clock"></i> Access Duration
@@ -271,7 +575,7 @@
                                                         <option value="72">3 Days</option>
                                                         <option value="168">1 Week</option>
                                                     </select>
-                                </div>
+                                                </div>
                                                 
                                                 <div class="mb-3">
                                                     <label for="temp-port" class="form-label">
@@ -279,7 +583,7 @@
                                                     </label>
                                                     <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
                                                     <div class="form-text">Leave empty for auto-assignment</div>
-                            </div>
+                                                </div>
                                                 
                                                 <div class="mb-3">
                                                     <label for="temp-description" class="form-label">
@@ -298,9 +602,9 @@
                                                 </div>
                                             </form>
                                         </div>
-                            </div>
-                        </div>
-                            
+                                    </div>
+                                </div>
+                                
                                 <div class="col-md-6">
                                     <div class="card">
                                         <div class="card-header">
@@ -323,13 +627,13 @@
                                                 </div>
                                                 
                                                 <h6><i class="bi bi-download"></i> Download SSH Key:</h6>
-                                            <div class="d-grid gap-2">
+                                                <div class="d-grid gap-2">
                                                     <button class="btn btn-outline-primary" id="download-private-key">
                                                         <i class="bi bi-download"></i> Download Private Key (.pem)
-                                                </button>
+                                                    </button>
                                                     <button class="btn btn-outline-secondary" id="copy-ssh-command">
                                                         <i class="bi bi-clipboard"></i> Copy SSH Command
-                                                </button>
+                                                    </button>
                                                 </div>
                                             </div>
                                             
@@ -374,7 +678,6 @@
                                                         </tr>
                                                     </tbody>
                                                 </table>
-                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -412,281 +715,512 @@
 {% block custom_js %}
 <script src="{{ url_for('static', filename='js/ssh-manager.js') }}"></script>
 <script>
-// Initialize UI
+// Frappe Cloud-like App Management JavaScript
+class FrappeAppManager {
+    constructor() {
+        this.selectedContainer = null;
+        this.operationLog = [];
+        this.init();
+    }
+    
+    init() {
+        this.initializeEventListeners();
+        this.initializeTerminal();
+        this.initializeSSH();
+        this.initializeTerminalLogs();
+    }
+    
+    initializeEventListeners() {
+        // Container selection
+        const containerSelect = document.getElementById('app-container-select');
+        if (containerSelect) {
+            containerSelect.addEventListener('change', (e) => {
+                this.selectedContainer = e.target.value;
+                this.updateContainerInfo();
+                this.updateOperationButtons();
+            });
+        }
+        
+        // App operations
+        document.getElementById('get-app-btn')?.addEventListener('click', () => this.getApp());
+        document.getElementById('install-app-btn')?.addEventListener('click', () => this.installApp());
+        document.getElementById('uninstall-app-btn')?.addEventListener('click', () => this.uninstallApp());
+        document.getElementById('update-app-btn')?.addEventListener('click', () => this.updateApp());
+        document.getElementById('list-apps-btn')?.addEventListener('click', () => this.listApps());
+        document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
+        
+        // Site operations
+        document.getElementById('create-site-btn')?.addEventListener('click', () => this.createSite());
+        document.getElementById('drop-site-btn')?.addEventListener('click', () => this.dropSite());
+        document.getElementById('list-sites-btn')?.addEventListener('click', () => this.listSites());
+        document.getElementById('backup-site-btn')?.addEventListener('click', () => this.backupSite());
+        
+        // Quick actions
+        document.getElementById('bench-status')?.addEventListener('click', () => this.benchStatus());
+        document.getElementById('bench-info')?.addEventListener('click', () => this.benchInfo());
+        document.getElementById('bench-clear-cache')?.addEventListener('click', () => this.clearCache());
+        document.getElementById('bench-migrate')?.addEventListener('click', () => this.migrate());
+        
+        // Log management
+        document.getElementById('clear-log-btn')?.addEventListener('click', () => this.clearOperationLog());
+        document.getElementById('refresh-containers')?.addEventListener('click', () => this.refreshContainers());
+        
+        // Terminal operations
+        const terminalContainerSelect = document.getElementById('container-select');
+        if (terminalContainerSelect) {
+            terminalContainerSelect.addEventListener('change', function() {
+                const selectedContainer = this.value;
+                if (selectedContainer && window.terminal) {
+                    console.log('Connecting to container from dropdown:', selectedContainer);
+                    window.terminal.connectToContainer(selectedContainer);
+                    
+                    const terminalTitle = document.getElementById('terminal-title');
+                    if (terminalTitle) {
+                        terminalTitle.textContent = `Terminal: ${selectedContainer}`;
+                    }
+                }
+            });
+        }
+        
+        const clearButton = document.getElementById('terminal-clear-btn');
+        if (clearButton) {
+            clearButton.addEventListener('click', function() {
+                if (window.terminal) {
+                    window.terminal.clear();
+                }
+            });
+        }
+    }
+    
+    updateContainerInfo() {
+        const containerInfo = document.getElementById('container-info');
+        const containerDetails = document.getElementById('container-details');
+        
+        if (!this.selectedContainer) {
+            containerInfo.style.display = 'none';
+            return;
+        }
+        
+        const option = document.querySelector(`#app-container-select option[value="${this.selectedContainer}"]`);
+        if (option) {
+            const status = option.dataset.status || 'Unknown';
+            const image = option.dataset.image || 'Unknown';
+            const isRunning = status.includes('Up');
+            
+            containerDetails.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Container:</strong> ${this.selectedContainer}<br>
+                        <strong>Status:</strong> 
+                        <span class="badge ${isRunning ? 'bg-success' : 'bg-danger'} status-badge">
+                            ${isRunning ? 'Running' : 'Stopped'}
+                        </span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Image:</strong> ${image}<br>
+                        <strong>Type:</strong> App Server
+                    </div>
+                </div>
+            `;
+            containerInfo.style.display = 'block';
+        }
+    }
+    
+    updateOperationButtons() {
+        const buttons = document.querySelectorAll('.app-operation-btn');
+        const isEnabled = !!this.selectedContainer;
+        
+        buttons.forEach(btn => {
+            btn.disabled = !isEnabled;
+            if (isEnabled) {
+                btn.classList.remove('disabled');
+            } else {
+                btn.classList.add('disabled');
+            }
+        });
+    }
+    
+    async executeCommand(command, description) {
+        if (!this.selectedContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
+        }
+        
+        this.addToLog('info', `Executing: ${description}`);
+        
+        try {
+            const response = await fetch('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: command
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                this.addToLog('error', `Error: ${data.error}`);
+            } else {
+                this.addToLog('success', `Success: ${description}`);
+                if (data.output) {
+                    this.addToLog('info', data.output);
+                }
+            }
+        } catch (error) {
+            this.addToLog('error', `Network error: ${error.message}`);
+        }
+    }
+    
+    addToLog(type, message) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = {
+            timestamp,
+            type,
+            message
+        };
+        
+        this.operationLog.unshift(logEntry);
+        if (this.operationLog.length > 100) {
+            this.operationLog = this.operationLog.slice(0, 100);
+        }
+        
+        this.updateOperationLogDisplay();
+    }
+    
+    updateOperationLogDisplay() {
+        const logContainer = document.getElementById('operation-log');
+        
+        if (this.operationLog.length === 0) {
+            logContainer.innerHTML = `
+                <div class="text-muted text-center py-3">
+                    <i class="bi bi-info-circle"></i> Select a container and perform operations to see logs here
+                </div>
+            `;
+            return;
+        }
+        
+        const logHTML = this.operationLog.map(entry => {
+            const typeClass = `log-${entry.type}`;
+            const icon = this.getLogIcon(entry.type);
+            
+            return `
+                <div class="log-entry ${typeClass}">
+                    <span class="text-muted">[${entry.timestamp}]</span>
+                    <i class="${icon}"></i>
+                    ${entry.message}
+                </div>
+            `;
+        }).join('');
+        
+        logContainer.innerHTML = logHTML;
+        logContainer.scrollTop = 0;
+    }
+    
+    getLogIcon(type) {
+        const icons = {
+            'success': 'bi bi-check-circle-fill',
+            'error': 'bi bi-x-circle-fill',
+            'warning': 'bi bi-exclamation-triangle-fill',
+            'info': 'bi bi-info-circle-fill'
+        };
+        return icons[type] || 'bi bi-info-circle-fill';
+    }
+    
+    clearOperationLog() {
+        this.operationLog = [];
+        this.updateOperationLogDisplay();
+    }
+    
+    getCSRFToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || 
+               document.querySelector('input[name="csrf_token"]')?.value || '';
+    }
+    
+    // App Operations
+    async getApp() {
+        const repoUrl = document.getElementById('app-repo-url').value;
+        const branch = document.getElementById('app-branch').value;
+        
+        if (!repoUrl) {
+            this.addToLog('error', 'Repository URL is required');
+            return;
+        }
+        
+        let command = `bench get-app ${repoUrl}`;
+        if (branch) {
+            command += ` --branch ${branch}`;
+        }
+        
+        await this.executeCommand(command, `Getting app from ${repoUrl}`);
+    }
+    
+    async installApp() {
+        const appName = document.getElementById('install-app-name').value;
+        const siteName = document.getElementById('install-site-name').value;
+        
+        if (!appName || !siteName) {
+            this.addToLog('error', 'App name and site name are required');
+            return;
+        }
+        
+        const command = `bench --site ${siteName} install-app ${appName}`;
+        await this.executeCommand(command, `Installing app ${appName} on site ${siteName}`);
+    }
+    
+    async uninstallApp() {
+        const appName = prompt('Enter app name to uninstall:');
+        if (!appName) return;
+        
+        const siteName = prompt('Enter site name:');
+        if (!siteName) return;
+        
+        if (confirm(`Are you sure you want to uninstall ${appName} from ${siteName}?`)) {
+            const command = `bench --site ${siteName} uninstall-app ${appName}`;
+            await this.executeCommand(command, `Uninstalling app ${appName} from site ${siteName}`);
+        }
+    }
+    
+    async updateApp() {
+        const appName = prompt('Enter app name to update:');
+        if (!appName) return;
+        
+        const command = `bench update --patch`;
+        await this.executeCommand(command, `Updating app ${appName}`);
+    }
+    
+    async listApps() {
+        // Use safe commands to list apps
+        const commands = [
+            "cat /home/frappe/frappe-bench/sites/apps.txt",
+            "ls -la /home/frappe/frappe-bench/apps/",
+            "cat /home/frappe/frappe-bench/sites/apps.json"
+        ];
+        
+        for (const cmd of commands) {
+            await this.executeCommand(cmd, `Listing apps: ${cmd}`);
+        }
+        const command = 'bench list-apps';
+        await this.executeCommand(command, 'Listing installed apps');
+    }
+    
+    async restartBench() {
+        if (confirm('Are you sure you want to restart the bench? This will restart all services.')) {
+            const command = 'bench restart';
+            await this.executeCommand(command, 'Restarting bench');
+        }
+    }
+    
+    // Site Operations
+    async createSite() {
+        const siteName = document.getElementById('site-name').value;
+        if (!siteName) {
+            this.addToLog('error', 'Site name is required');
+            return;
+        }
+        
+        const command = `bench new-site ${siteName}`;
+        await this.executeCommand(command, `Creating new site ${siteName}`);
+    }
+    
+    async dropSite() {
+        const siteName = document.getElementById('site-name').value;
+        if (!siteName) {
+            this.addToLog('error', 'Site name is required');
+            return;
+        }
+        
+        if (confirm(`Are you sure you want to drop site ${siteName}? This action cannot be undone.`)) {
+            const command = `bench drop-site ${siteName}`;
+            await this.executeCommand(command, `Dropping site ${siteName}`);
+        }
+    }
+    
+    async listSites() {
+        // Use safe commands to list sites
+        const commands = [
+            "ls -la /home/frappe/frappe-bench/sites/",
+            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
+            "find /home/frappe/frappe-bench/sites/ -maxdepth 1 -type d -name '*.local' -o -name '*.com' | sort"
+        ];
+        
+        for (const cmd of commands) {
+            await this.executeCommand(cmd, `Listing sites: ${cmd}`);
+        }
+        const command = 'bench list-sites';
+        await this.executeCommand(command, 'Listing sites');
+    }
+    
+    async backupSite() {
+        const siteName = document.getElementById('site-name').value;
+        if (!siteName) {
+            this.addToLog('error', 'Site name is required');
+            return;
+        }
+        
+        const command = `bench --site ${siteName} backup`;
+        await this.executeCommand(command, `Backing up site ${siteName}`);
+    }
+    
+    // Quick Actions
+    async benchStatus() {
+        // Use safe version of bench status
+        const benchVersionCommand = "bench --version";
+        await this.executeCommand(benchVersionCommand, "Checking bench version");
+        
+        // Also try to get basic info
+        const infoCommand = "ls -la /home/frappe/frappe-bench/apps/";
+        await this.executeCommand(infoCommand, "Listing installed apps directory");
+        
+        const sitesCommand = "ls -la /home/frappe/frappe-bench/sites/";
+        await this.executeCommand(sitesCommand, "Listing sites directory");
+        const benchStatusCommand = 'bench status';
+        await this.executeCommand(benchStatusCommand, 'Checking bench status');
+    }
+    
+    async benchInfo() {
+        // Use safe commands instead of bench info
+        const commands = [
+            "bench --version",
+            "cat /home/frappe/frappe-bench/sites/apps.txt",
+            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
+            "ls -la /home/frappe/frappe-bench/apps/"
+        ];
+        
+        for (const cmd of commands) {
+            await this.executeCommand(cmd, `Getting bench info: ${cmd}`);
+        }
+        const command = 'bench info';
+        await this.executeCommand(command, 'Getting bench information');
+    }
+    
+    async clearCache() {
+        const commands = [
+            'bench clear-cache',
+            'bench clear-website-cache',
+        ];
+        for (const cmd of commands) {
+            await this.executeCommand(cmd, `Clearing cache with website`);
+        }
+    }
+    
+    async migrate() {
+        const command = 'bench migrate';
+        await this.executeCommand(command, 'Running migrations');
+    }
+    
+    async refreshContainers() {
+        this.addToLog('info', 'Refreshing container list...');
+        window.location.reload();
+    }
+    
+    initializeTerminal() {
+        const terminalContainer = document.getElementById('terminal-container');
+        if (terminalContainer) {
+            try {
+                console.log('Creating terminal instance...');
+                window.terminal = new XTermWS(terminalContainer, {
+                    theme: {
+                        background: '#1a1a1a',
+                        foreground: '#ffffff',
+                        cursor: '#ffffff',
+                        selection: 'rgba(255, 255, 255, 0.3)',
+                        black: '#000000',
+                        red: '#cc0000',
+                        green: '#4e9a06',
+                        yellow: '#c4a000',
+                        blue: '#3465a4',
+                        magenta: '#75507b',
+                        cyan: '#06989a',
+                        white: '#d3d7cf',
+                        brightBlack: '#555753',
+                        brightRed: '#ef2929',
+                        brightGreen: '#8ae234',
+                        brightYellow: '#fce94f',
+                        brightBlue: '#729fcf',
+                        brightMagenta: '#ad7fa8',
+                        brightCyan: '#34e2e2',
+                        brightWhite: '#eeeeec'
+                    }
+                });
+                
+                const containerSelect = document.getElementById('container-select');
+                if (containerSelect && containerSelect.value) {
+                    setTimeout(() => {
+                        if (window.terminal) {
+                            console.log('Auto-connecting to container:', containerSelect.value);
+                            window.terminal.connectToContainer(containerSelect.value);
+                            
+                            const terminalTitle = document.getElementById('terminal-title');
+                            if (terminalTitle) {
+                                terminalTitle.textContent = `Terminal: ${containerSelect.value}`;
+                            }
+                        }
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error initializing terminal:', error);
+            }
+        }
+    }
+    
+    initializeSSH() {
+        if (window.SSHManager) {
+            window.SSHManager.initializeSSHEventListeners();
+        } else {
+            console.error('SSHManager not loaded');
+        }
+    }
+    
+    initializeTerminalLogs() {
+        const refreshBtn = document.getElementById('refresh-logs-btn');
+        const clearBtn = document.getElementById('clear-logs-btn');
+        
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', loadTerminalLogs);
+        }
+        
+        if (clearBtn) {
+            clearBtn.addEventListener('click', clearTerminalLogs);
+        }
+        
+        const terminalLogsTab = document.getElementById('terminal-logs-tab');
+        if (terminalLogsTab) {
+            terminalLogsTab.addEventListener('shown.bs.tab', function() {
+                loadTerminalLogs();
+                startPeriodicRefresh();
+            });
+            
+            terminalLogsTab.addEventListener('hidden.bs.tab', function() {
+                stopPeriodicRefresh();
+            });
+        }
+        
+        loadTerminalLogs();
+        setupRealTimeErrorTracking();
+    }
+}
+
+// Global variables for terminal logs
+let lastErrorCount = 0;
+let logsRefreshInterval = null;
+
+// Initialize the app manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Check if we're in a browser environment with required objects
     if (typeof window === 'undefined' || typeof document === 'undefined') {
         console.error('Not in a browser environment');
         return;
     }
     
-    // Initialize event listeners
-    initializeEventListeners();
-    
-    // Initialize terminal
-    initializeTerminal();
-    
-    // Initialize SSH using the SSHManager module
-    if (window.SSHManager) {
-        window.SSHManager.initializeSSHEventListeners();
-    
-    // Initialize Terminal Logs
-    initializeTerminalLogs();
-    } else {
-        console.error('SSHManager not loaded');
-    }
+    // Initialize Frappe App Manager
+    window.frappeAppManager = new FrappeAppManager();
 });
-// Global variables for terminal logs
-let lastErrorCount = 0;
-let logsRefreshInterval = null;
 
-
-
-function initializeEventListeners() {
-    // Container selection for terminal access
-    const containerSelect = document.getElementById('container-select');
-    if (containerSelect) {
-        containerSelect.addEventListener('change', function() {
-            const selectedContainer = this.value;
-            if (selectedContainer && window.terminal) {
-                console.log('Connecting to container from dropdown:', selectedContainer);
-                window.terminal.connectToContainer(selectedContainer);
-                
-                // Update terminal title
-                const terminalTitle = document.getElementById('terminal-title');
-                if (terminalTitle) {
-                    terminalTitle.textContent = `Terminal: ${selectedContainer}`;
-                }
-            }
-        });
-    }
-    
-    // Terminal clear button
-    const clearButton = document.getElementById('terminal-clear-btn');
-    if (clearButton) {
-        clearButton.addEventListener('click', function() {
-            if (window.terminal) {
-                window.terminal.clear();
-            }
-        });
-    }
-}
-
-function initializeTerminal() {
-    // Initialize terminal
-    const terminalContainer = document.getElementById('terminal-container');
-    if (terminalContainer) {
-        try {
-            console.log('Creating terminal instance...');
-            window.terminal = new XTermWS(terminalContainer, {
-                theme: {
-                    background: '#1a1a1a',
-                    foreground: '#ffffff',
-                    cursor: '#ffffff',
-                    selection: 'rgba(255, 255, 255, 0.3)',
-                    black: '#000000',
-                    red: '#cc0000',
-                    green: '#4e9a06',
-                    yellow: '#c4a000',
-                    blue: '#3465a4',
-                    magenta: '#75507b',
-                    cyan: '#06989a',
-                    white: '#d3d7cf',
-                    brightBlack: '#555753',
-                    brightRed: '#ef2929',
-                    brightGreen: '#8ae234',
-                    brightYellow: '#fce94f',
-                    brightBlue: '#729fcf',
-                    brightMagenta: '#ad7fa8',
-                    brightCyan: '#34e2e2',
-                    brightWhite: '#eeeeec'
-                }
-            });
-            
-            // Auto-connect if container is already selected
-            const containerSelect = document.getElementById('container-select');
-            if (containerSelect && containerSelect.value) {
-                setTimeout(() => {
-                    if (window.terminal) {
-                        console.log('Auto-connecting to container:', containerSelect.value);
-                        window.terminal.connectToContainer(containerSelect.value);
-                        
-                        // Update terminal title
-                        const terminalTitle = document.getElementById('terminal-title');
-                        if (terminalTitle) {
-                            terminalTitle.textContent = `Terminal: ${containerSelect.value}`;
-                        }
-                    }
-                }, 1000);
-            }
-        } catch (error) {
-            console.error('Error initializing terminal:', error);
-        }
-    }
-}
-
-// Show toast notification
-function showToast(message, type = 'info') {
-    const toastContainer = document.getElementById('toastContainer') || createToastContainer();
-    
-    const toast = document.createElement('div');
-    toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'primary'} border-0`;
-    toast.setAttribute('role', 'alert');
-    toast.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">${message}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-        </div>
-    `;
-    
-    toastContainer.appendChild(toast);
-    
-    const bsToast = new bootstrap.Toast(toast);
-    bsToast.show();
-    
-    toast.addEventListener('hidden.bs.toast', () => {
-        toast.remove();
-    });
-}
-
-// Create toast container
-function createToastContainer() {
-    const container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-    container.style.zIndex = '11';
-    document.body.appendChild(container);
-    
-}
-
-// Terminal Logs functionality with real-time tracking
-function initializeTerminalLogs() {
-    const refreshBtn = document.getElementById('refresh-logs-btn');
-    const clearBtn = document.getElementById('clear-logs-btn');
-    
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', loadTerminalLogs);
-    }
-    
-    if (clearBtn) {
-        clearBtn.addEventListener('click', clearTerminalLogs);
-    }
-    
-    // Load logs on sub-tab activation
-    const terminalLogsTab = document.getElementById('terminal-logs-tab');
-    if (terminalLogsTab) {
-        terminalLogsTab.addEventListener('shown.bs.tab', function() {
-            loadTerminalLogs();
-            startPeriodicRefresh();
-        });
-        
-        terminalLogsTab.addEventListener('hidden.bs.tab', function() {
-            stopPeriodicRefresh();
-        });
-    }
-    
-    // Initial load
-    loadTerminalLogs();
-    
-    // Setup real-time error tracking
-    setupRealTimeErrorTracking();
-}
-
-// Real-time error tracking
-
-function setupRealTimeErrorTracking() {
-    console.log('Setting up real-time error tracking...');
-    
-    // Monitor terminal for errors via API calls
-    const originalFetch = window.fetch;
-    window.fetch = function(...args) {
-        return originalFetch.apply(this, args).then(response => {
-            // If this is a terminal command execution
-            if (args[0] && args[0].includes('/api/frappe/execute-command')) {
-                return response.clone().json().then(data => {
-                    console.log('Command execution response:', data);
-                    
-                    // Check if command failed
-                    if (data && (data.success === false || data.error || data.exit_code > 0)) {
-                        console.log('Command failed, refreshing logs...');
-                        loadTerminalLogs();
-                    }
-                    return response;
-                }).catch(() => response);
-            }
-            return response;
-        });
-    };
-}
-
-function checkForNewErrors(currentCount) {
-    console.log('Checking for new errors. Current:', currentCount, 'Last:', lastErrorCount);
-    
-    if (currentCount > lastErrorCount && lastErrorCount > 0) {
-        // New error detected
-        const newErrors = currentCount - lastErrorCount;
-        console.log('New errors detected:', newErrors);
-        
-        showErrorNotification(newErrors);
-        
-        // Switch to Terminal Logs tab if user is on Terminal Console
-        const terminalLogsTab = document.getElementById('terminal-logs-tab');
-        const terminalConsoleTab = document.getElementById('terminal-console-tab');
-        
-        if (terminalConsoleTab && terminalConsoleTab.classList.contains('active')) {
-            // User is on Terminal Console, suggest switching to logs
-            showToast('⚠️ ' + newErrors + ' new error(s) detected! Click Terminal Logs tab to view.', 'warning');
-        }
-    }
-    lastErrorCount = currentCount;
-}
-
-function showErrorNotification(errorCount) {
-    console.log('Showing error notification for', errorCount, 'errors');
-    
-    // Add a badge to the Terminal Logs tab
-    const terminalLogsTab = document.getElementById('terminal-logs-tab');
-    if (terminalLogsTab) {
-        // Remove existing badge
-        const existingBadge = terminalLogsTab.querySelector('.badge');
-        if (existingBadge) {
-            existingBadge.remove();
-        }
-        
-        // Add new badge
-        const badge = document.createElement('span');
-        badge.className = 'badge bg-danger ms-2';
-        badge.textContent = errorCount;
-        badge.style.fontSize = '0.7em';
-        terminalLogsTab.appendChild(badge);
-        
-        // Remove badge when user clicks on the tab
-        terminalLogsTab.addEventListener('click', function() {
-            setTimeout(() => {
-                if (badge.parentNode) {
-                    badge.remove();
-                }
-            }, 100);
-        });
-    }
-}
-
-function startPeriodicRefresh() {
-    console.log('Starting periodic refresh...');
-    // Refresh logs every 5 seconds
-    logsRefreshInterval = setInterval(() => {
-        loadTerminalLogs();
-    }, 50000);
-}
-
-function stopPeriodicRefresh() {
-    console.log('Stopping periodic refresh...');
-    if (logsRefreshInterval) {
-        clearInterval(logsRefreshInterval);
-        logsRefreshInterval = null;
-    }
-}
-
+// Terminal logs functions (keeping existing functionality)
 function loadTerminalLogs() {
     console.log('Loading terminal logs...');
     fetch('/api/frappe/terminal-logs')
@@ -696,8 +1230,6 @@ function loadTerminalLogs() {
             const logs = data.logs || [];
             updateTerminalLogsTable(logs);
             updateLogsCount(logs.length);
-            
-            // Check for new errors
             checkForNewErrors(logs.length);
         })
         .catch(error => {
@@ -715,7 +1247,6 @@ function updateTerminalLogsTable(logs) {
         return;
     }
     
-    // Build table rows
     tbody.innerHTML = logs.map((log, index) => `
         <tr>
             <td>${index + 1}</td>
@@ -732,7 +1263,6 @@ function updateTerminalLogsTable(logs) {
             </td>
         </tr>
     `).join("");
-
 }
 
 function updateLogsCount(count) {
@@ -764,18 +1294,119 @@ function clearTerminalLogs() {
             showToast('Failed to clear terminal logs', 'error');
         });
     }
-
-
 }
 
-// Terminal Logs functionality with real-time tracking
+function startPeriodicRefresh() {
+    console.log('Starting periodic refresh...');
+    logsRefreshInterval = setInterval(() => {
+        loadTerminalLogs();
+    }, 50000);
+}
 
+function stopPeriodicRefresh() {
+    console.log('Stopping periodic refresh...');
+    if (logsRefreshInterval) {
+        clearInterval(logsRefreshInterval);
+        logsRefreshInterval = null;
+    }
+}
 
-// Real-time error tracking
+function setupRealTimeErrorTracking() {
+    console.log('Setting up real-time error tracking...');
+    
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        return originalFetch.apply(this, args).then(response => {
+            if (args[0] && args[0].includes('/api/frappe/execute-command')) {
+                return response.clone().json().then(data => {
+                    console.log('Command execution response:', data);
+                    
+                    if (data && (data.success === false || data.error || data.exit_code > 0)) {
+                        console.log('Command failed, refreshing logs...');
+                        loadTerminalLogs();
+                    }
+                    return response;
+                }).catch(() => response);
+            }
+            return response;
+        });
+    };
+}
 
+function checkForNewErrors(currentCount) {
+    console.log('Checking for new errors. Current:', currentCount, 'Last:', lastErrorCount);
+    
+    if (currentCount > lastErrorCount && lastErrorCount > 0) {
+        const newErrors = currentCount - lastErrorCount;
+        console.log('New errors detected:', newErrors);
+        showErrorNotification(newErrors);
+        
+        const terminalLogsTab = document.getElementById('terminal-logs-tab');
+        const terminalConsoleTab = document.getElementById('terminal-console-tab');
+        
+        if (terminalConsoleTab && terminalConsoleTab.classList.contains('active')) {
+            showToast('⚠️ ' + newErrors + ' new error(s) detected! Click Terminal Logs tab to view.', 'warning');
+        }
+    }
+    lastErrorCount = currentCount;
+}
 
+function showErrorNotification(errorCount) {
+    console.log('Showing error notification for', errorCount, 'errors');
+    
+    const terminalLogsTab = document.getElementById('terminal-logs-tab');
+    if (terminalLogsTab) {
+        const existingBadge = terminalLogsTab.querySelector('.badge');
+        if (existingBadge) {
+            existingBadge.remove();
+        }
+        
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-danger ms-2';
+        badge.textContent = errorCount;
+        badge.style.fontSize = '0.7em';
+        terminalLogsTab.appendChild(badge);
+        
+        terminalLogsTab.addEventListener('click', function() {
+            setTimeout(() => {
+                if (badge.parentNode) {
+                    badge.remove();
+                }
+            }, 100);
+        });
+    }
+}
 
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'primary'} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+    });
+}
 
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+    container.style.zIndex = '11';
+    document.body.appendChild(container);
+    return container;
+}
 </script>
-
 {% endblock %}
