@@ -157,7 +157,7 @@ run_migration() {
     
     # Create migration script
     # Create migration script with variable substitution
-    cat > temp_migration.py << EOF
+    cat > "$SCRIPT_DIR/temp_migration.py" << EOF
 #!/usr/bin/env python3
 import sys
 import os
@@ -206,12 +206,14 @@ if __name__ == "__main__":
     migrate()
 EOF
     
-    # Run migration
+    # Ensure virtual environment is activated and run migration
+    source "$VENV_DIR/bin/activate"
+    cd "$SCRIPT_DIR"
     python3 temp_migration.py "${ADMIN_PASSWORD}"
     local migration_result=$?
     
     # Clean up
-    rm -f temp_migration.py
+    rm -f "$SCRIPT_DIR/temp_migration.py"
     
     if [ $migration_result -eq 0 ]; then
         print_success "Migration completed successfully"
@@ -226,7 +228,10 @@ EOF
 install_packages() {
     print_step "Installing Python packages..."
     
-    pip install --upgrade pip &>/dev/null
+    # Ensure virtual environment is activated
+    source "$VENV_DIR/bin/activate"
+    
+    pip install --upgrade pip
     
     local packages=(
         "flask>=2.3.0"
@@ -236,10 +241,12 @@ install_packages() {
         "qrcode>=8.2.0"
         "pillow>=11.0.0"
         "werkzeug>=2.3.0"
+        "paramiko>=2.12.0"
     )
     
     for package in "${packages[@]}"; do
-        pip install "$package" &>/dev/null
+        print_info "Installing $package..."
+        pip install "$package"
     done
     
     print_success "All packages installed"
@@ -269,6 +276,9 @@ start_app() {
         print_error "Application file not found: $APP_FILE"
         exit 1
     fi
+    
+    # Ensure virtual environment is activated
+    source "$VENV_DIR/bin/activate"
     
     print_info "Starting web server on http://localhost:5000"
     print_info "Press Ctrl+C to stop the server"
