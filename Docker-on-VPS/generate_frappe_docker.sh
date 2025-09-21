@@ -130,11 +130,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      create-site:
+        condition: service_completed_successfully
     labels:
 ${app_labels}
     deploy:
       restart_policy:
         condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           memory: 2G
@@ -149,11 +154,13 @@ ${app_labels}
       - /tmp
       - /var/tmp
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/method/ping"]
+      test: |
+        /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status | grep -q "RUNNING" && 
+        curl -f http://localhost:8000/api/method/ping || exit 1
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 120s
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
@@ -173,21 +180,34 @@ ${app_labels}
       - bash
       - -c
       - |
-        echo "Waiting for site to be ready...";
+        echo "🚀 Starting Frappe application container...";
+        echo "⏳ Waiting for site to be ready...";
+        
+        # Wait for site creation to complete
         while [ ! -f sites/${site_name}/site_config.json ]; do
           echo "Site not ready yet, waiting...";
-          sleep 5;
+          sleep 10;
         done;
-        echo "Site is ready, installing supervisor...";
         
-        # Install supervisor using pip (works with frappe user)
-        pip3 install supervisor;
+        # Additional wait for site to be fully configured
+        echo "Waiting for site configuration to complete...";
+        sleep 30;
+        
+        # Check if supervisor is already installed
+        if ! command -v supervisord >/dev/null 2>&1; then
+          echo "Installing supervisor...";
+          pip3 install supervisor;
+        else
+          echo "Supervisor already installed";
+        fi;
         
         # Create supervisor directories in user's home
         mkdir -p /home/frappe/supervisor/conf.d /home/frappe/supervisor/logs;
         
-        # Create supervisor config in user's home directory
-        cat > /home/frappe/supervisor/supervisord.conf << 'SUPERVISOR_EOF'
+        # Only create config if it doesn't exist
+        if [ ! -f /home/frappe/supervisor/supervisord.conf ]; then
+          echo "Creating supervisor configuration...";
+          cat > /home/frappe/supervisor/supervisord.conf << 'SUPERVISOR_EOF'
         [unix_http_server]
         file=/home/frappe/supervisor/supervisor.sock
         chmod=0777
@@ -276,18 +296,21 @@ ${app_labels}
         stderr_logfile=/home/frappe/supervisor/logs/frappe-websocket-error.log
         FRAPPE_CONF_EOF
 
-        echo "Supervisor installed and configured. Starting Frappe processes...";
+        fi;
         
-        # Start supervisor using full path
+        echo "🚀 Starting supervisor...";
         /home/frappe/.local/bin/supervisord -c /home/frappe/supervisor/supervisord.conf;
         
-        # Wait a moment for processes to start
-        sleep 5;
+        # Wait for supervisor to start
+        sleep 10;
         
-        # Show status using full path
+        echo "✅ Supervisor started, showing status:";
         /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status;
         
-        # Keep container running and show logs
+        echo "🎉 Frappe application container is ready!";
+        echo "📝 Monitoring supervisor logs...";
+        
+        # Keep container running
         tail -f /home/frappe/supervisor/logs/supervisord.log
 
   create-site:
@@ -339,6 +362,14 @@ ${app_labels}
         # Preserve existing apps.txt if it exists, otherwise create new one
         if [ -f sites/apps.txt ]; then
           echo "Preserving existing apps.txt with custom apps...";
+          # Merge with current apps if there are new ones
+          ls -1 apps > /tmp/current_apps.txt 2>/dev/null || true;
+          if [ -f /tmp/current_apps.txt ]; then
+            echo "Merging current apps with existing apps.txt...";
+            cat sites/apps.txt /tmp/current_apps.txt | sort -u > /tmp/merged_apps.txt;
+            mv /tmp/merged_apps.txt sites/apps.txt;
+            rm -f /tmp/current_apps.txt;
+          fi;
         else
           ls -1 apps > sites/apps.txt || true;
         fi;
@@ -608,6 +639,60 @@ echo -e "${GREEN}✅ apps.txt updated with all installed apps${NC}"
 echo -e "${BLUE}🔧 Ensuring currentsite.txt is set correctly...${NC}"
 docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && echo '${site_name}' > sites/currentsite.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, currentsite.txt will be set automatically${NC}"
 echo -e "${GREEN}✅ currentsite.txt set to ${site_name}${NC}"
+
+# Wait 3 minutes for everything to initialize, then restart containers
+echo -e "${BLUE}⏳ Waiting 3 minutes for containers to initialize...${NC}"
+echo -e "${YELLOW}💡 This allows the site to be fully created and configured${NC}"
+sleep 180
+
+echo -e "${BLUE}🔄 Restarting all containers for proper initialization...${NC}"
+
+# Stop all containers first using explicit container names
+echo -e "${YELLOW}⏹️  Stopping all containers...${NC}"
+
+# Check which containers are running and stop them
+for container in ${safe_site_name}-app ${safe_site_name}-db ${safe_site_name}-redis ${safe_site_name}-create-site; do
+    if docker ps --filter "name=$container" --format "{{.Names}}" | grep -F "$container" >/dev/null 2>&1; then
+        echo -e "${BLUE}   Stopping $container...${NC}"
+        docker stop "$container" 2>/dev/null || echo -e "${YELLOW}   Warning: Could not stop $container${NC}"
+    else
+        echo -e "${BLUE}   $container is not running${NC}"
+    fi
+done
+
+# Wait a moment
+sleep 5
+
+# Start all containers using the full path to docker-compose file
+echo -e "${YELLOW}▶️  Starting all containers...${NC}"
+if ! $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
+    echo -e "${YELLOW}⚠️  Docker Compose up failed, trying alternative method...${NC}"
+    # Try starting containers individually as fallback
+    $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
+fi
+
+# Wait a bit and check if containers are running
+sleep 10
+echo -e "${BLUE}🔍 Checking container status after restart...${NC}"
+$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
+
+echo -e "${GREEN}✅ Containers restarted successfully!${NC}"
+echo -e "${BLUE}⏳ Waiting 30 seconds for containers to be ready...${NC}"
+sleep 30
+
+# Final status check
+echo -e "${BLUE}📊 Final container status:${NC}"
+$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
+
+# Test if the site is accessible
+echo -e "${BLUE}🔍 Testing site accessibility...${NC}"
+sleep 10
+if curl -f -s http://localhost:8000/api/method/ping >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Site is accessible after restart!${NC}"
+else
+    echo -e "${YELLOW}⚠️  Site may still be starting up...${NC}"
+    echo -e "${BLUE}💡 You can check the status with: docker logs ${safe_site_name}-app${NC}"
+fi
 
 # Final messages
 echo ""
