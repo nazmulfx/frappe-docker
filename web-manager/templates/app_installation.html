@@ -1,3 +1,27 @@
+
+    <script>
+        // Show/hide GitHub token field based on selected method
+        document.addEventListener('DOMContentLoaded', function() {
+            const authMethodSelect = document.getElementById('auth-method');
+            const githubTokenRow = document.getElementById('github-token-row');
+            
+            function toggleAuthFields() {
+                const method = authMethodSelect.value;
+                
+                if (method === 'token') {
+                    githubTokenRow.style.display = 'block';
+                } else {
+                    githubTokenRow.style.display = 'none';
+                }
+            }
+            
+            // Initial toggle
+            toggleAuthFields();
+            
+            // Add event listener
+            authMethodSelect.addEventListener('change', toggleAuthFields);
+        });
+    </script>
 {% extends "base.html" %}
 
 {% block title %}App Installation - Web Docker Manager{% endblock %}
@@ -235,18 +259,27 @@
                                                     <i class="bi bi-download"></i> Get App
                                                 </h6>
                                                 <div class="row">
-                                                    <div class="col-md-6">
+                                                    <div class="col-md-12">
                                                         <div class="mb-3">
                                                             <label for="app-repo-url" class="form-label">Repository URL</label>
                                                             <input type="url" class="form-control" id="app-repo-url" 
                                                                    placeholder="https://github.com/frappe/app-name">
                                                         </div>
                                                     </div>
-                                                    <div class="col-md-4">
+                                                    <div class="col-md-3">
                                                         <div class="mb-3">
                                                             <label for="app-branch" class="form-label">Branch (Optional)</label>
                                                             <input type="text" class="form-control" id="app-branch" 
                                                                    placeholder="main, develop, etc.">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <div class="mb-3">
+                                                            <label for="auth-method" class="form-label">Auth Method</label>
+                                                            <select class="form-select" id="auth-method">
+                                                                <option value="none">Public</option>
+                                                                <option value="token">Private (Token)</option>
+                                                            </select>
                                                         </div>
                                                     </div>
                                                     <div class="col-md-2">
@@ -258,7 +291,20 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                                
+                                                <!-- GitHub Token Field (shown only when Private is selected) -->
+                                                <div class="row" id="github-token-row" style="display: none;">
+                                                    <div class="col-md-6">
+                                                        <div class="mb-3">
+                                                            <label for="github-token" class="form-label">GitHub Personal Access Token</label>
+                                                            <input type="password" class="form-control" id="github-token" 
+                                                                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                                                            <div class="form-text">Required for private GitHub repositories</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
+                                            <hr>
                                             
                                             <!-- Install App Section -->
                                             <div class="mb-4">
@@ -269,8 +315,10 @@
                                                     <div class="col-md-4">
                                                         <div class="mb-3">
                                                             <label for="install-app-name" class="form-label">App Name</label>
-                                                            <input type="text" class="form-control" id="install-app-name" 
-                                                                   placeholder="app_name">
+                                                            <select class="form-select" id="install-app-name">
+                                                                <option value="">Select an app...</option>
+                                                            </select>
+                                                            <div class="form-text">Apps will be loaded when you select a container</div>
                                                         </div>
                                                     </div>
                                                     <div class="col-md-4">
@@ -743,7 +791,17 @@ class FrappeAppManager {
         
         // App operations
         document.getElementById('get-app-btn')?.addEventListener('click', () => this.getApp());
-        document.getElementById('install-app-btn')?.addEventListener('click', () => this.installApp());
+        const installBtn = document.getElementById('install-app-btn');
+        console.log('Install button element:', installBtn);
+        if (installBtn) {
+            console.log('Adding event listener to install button');
+            installBtn.addEventListener('click', () => {
+                console.log('Install App button clicked');
+                this.installApp();
+            });
+        } else {
+            console.error('Install button not found!');
+        }
         document.getElementById('uninstall-app-btn')?.addEventListener('click', () => this.uninstallApp());
         document.getElementById('update-app-btn')?.addEventListener('click', () => this.updateApp());
         document.getElementById('list-apps-btn')?.addEventListener('click', () => this.listApps());
@@ -945,18 +1003,62 @@ class FrappeAppManager {
     async getApp() {
         const repoUrl = document.getElementById('app-repo-url').value;
         const branch = document.getElementById('app-branch').value;
+        const authMethod = document.getElementById('auth-method').value;
+        const githubToken = document.getElementById('github-token').value;
         
         if (!repoUrl) {
             this.addToLog('error', 'Repository URL is required');
             return;
         }
         
-        let command = `bench get-app ${repoUrl}`;
-        if (branch) {
-            command += ` --branch ${branch}`;
+        if (!this.selectedContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
         }
         
-        await this.executeCommand(command, `Getting app from ${repoUrl}`);
+        // Validate authentication for private repositories
+        if (authMethod === 'token' && !githubToken) {
+            this.addToLog('error', 'GitHub Personal Access Token is required for private repositories');
+            return;
+        }
+        
+        // Prepare data for API call
+        const requestData = {
+            container: this.selectedContainer,
+            repo_url: repoUrl,
+            branch: branch,
+            auth_method: authMethod,
+            github_token: githubToken
+        };
+        
+        try {
+            this.addToLog('info', `Getting app from ${repoUrl} (auth: ${authMethod})...`);
+            
+            const response = await fetch('/api/frappe/get-app', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.addToLog('success', `Successfully got app from ${repoUrl}`);
+                if (result.output) {
+                    this.addToLog('info', result.output);
+                }
+            } else {
+                this.addToLog('error', `Failed to get app: ${result.error || 'Unknown error'}`);
+                if (result.error) {
+                    this.addToLog('error', result.error);
+                }
+            }
+        } catch (error) {
+            this.addToLog('error', `Error getting app: ${error.message}`);
+        }
     }
     
     async installApp() {
@@ -1117,7 +1219,62 @@ class FrappeAppManager {
         this.addToLog('info', 'Refreshing container list...');
         window.location.reload();
     }
-    
+    async installApp() {
+        console.log('installApp function called');
+        const appName = document.getElementById('install-app-name').value;
+        const siteName = document.getElementById('install-site-name').value;
+        
+        console.log('App name:', appName);
+        console.log('Site name:', siteName);
+        console.log('Selected container:', this.selectedContainer);
+        
+        if (!appName || !siteName) {
+            this.addToLog('error', 'Please select an app and enter site name');
+            return;
+        }
+        
+        if (!this.selectedContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
+        }
+        
+        // Prepare data for API call
+        const requestData = {
+            container: this.selectedContainer,
+            app_name: appName,
+            site_name: siteName
+        };
+        
+        try {
+            this.addToLog('info', `Installing app ${appName} on site ${siteName}...`);
+            
+            const response = await fetch('/api/frappe/install-app', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
+                if (result.output) {
+                    this.addToLog('info', result.output);
+                }
+            } else {
+                this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
+                if (result.error) {
+                    this.addToLog('error', result.error);
+                }
+            }
+        } catch (error) {
+            this.addToLog('error', `Error installing app: ${error.message}`);
+        }
+    }
+
     initializeTerminal() {
         const terminalContainer = document.getElementById('terminal-container');
         if (terminalContainer) {

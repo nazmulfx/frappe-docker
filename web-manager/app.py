@@ -1093,7 +1093,7 @@ def app_installation():
 @app.route('/api/frappe/get-app', methods=['POST'])
 @require_auth
 def frappe_get_app():
-    """API endpoint for 'bench get-app' command"""
+    """API endpoint for 'bench get-app' command with GitHub token support"""
     try:
         # Initialize variables
         output = ''
@@ -1103,6 +1103,8 @@ def frappe_get_app():
         container = data.get('container')
         repo_url = data.get('repo_url')
         branch = data.get('branch')
+        auth_method = data.get('auth_method', 'none')
+        github_token = data.get('github_token', '')
         
         if not container or not repo_url:
             return jsonify({'success': False, 'error': 'Container and repository URL are required'}), 400
@@ -1114,8 +1116,20 @@ def frappe_get_app():
         # Get current working directory for this container
         current_dir = container_working_dirs.get(container, "/home/frappe")
         
+        # Handle private repository authentication
+        authenticated_repo_url = repo_url
+        
+        if auth_method == 'token':
+            # Handle GitHub personal access token
+            if 'github.com' in repo_url and github_token:
+                # Replace https://github.com with token authentication
+                repo_name = repo_url.replace('https://github.com/', '').replace('.git', '')
+                authenticated_repo_url = f"https://{github_token}@github.com/{repo_name}.git"
+            else:
+                return jsonify({'success': False, 'error': 'GitHub Personal Access Token required for private repositories'}), 400
+        
         # Build command
-        cmd = f"sudo docker exec -u frappe {container} bench get-app {repo_url}"
+        cmd = f"sudo docker exec -u frappe {container} bench get-app {authenticated_repo_url}"
         if branch:
             cmd += f" --branch {branch}"
         
@@ -1129,13 +1143,13 @@ def frappe_get_app():
         status = "success" if result['success'] else "failed"
         
         log_audit("frappe_get_app", username, client_ip, 
-                  f"Get app {repo_url} on container {container}", status, user_id)
+                  f"Get app {repo_url} on container {container} (auth: {auth_method})", status, user_id)
         
         # Format output for terminal display
         if result['success']:
             formatted_output = TerminalFormatter.format_terminal_output(
                 result['stdout'], 
-                command, 
+                cmd, 
                 current_dir, 
                 container, 
                 True
@@ -1143,7 +1157,7 @@ def frappe_get_app():
         else:
             formatted_output = TerminalFormatter.format_error_output(
                 result['stderr'], 
-                command, 
+                cmd, 
                 current_dir, 
                 container
             )
@@ -1159,6 +1173,70 @@ def frappe_get_app():
     except Exception as e:
         logger.error(f"Error in frappe_get_app: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/frappe/get-app-list', methods=['POST'])
+@require_auth
+def frappe_get_app_list():
+    """API endpoint to get list of apps from a container"""
+    try:
+        data = request.json
+        container = data.get('container')
+        
+        if not container:
+            return jsonify({'success': False, 'error': 'Container is required'}), 400
+        
+        # Validate container name
+        if not SecurityManager.validate_container_name(container):
+            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
+        
+        # Get app list using bench command
+        cmd = f"sudo docker exec -u frappe {container} bench --site all list-apps"
+        
+        # Execute command
+        result = SecureDockerManager.run_command(cmd, timeout=60)
+        
+        # Log the action
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        username = session.get('username', 'unknown')
+        user_id = session.get('user_id')
+        status = "success" if result['success'] else "failed"
+        
+        log_audit("frappe_get_app_list", username, client_ip, 
+                  f"Get app list from container {container}", status, user_id)
+        
+        if result['success']:
+            # Parse the output to extract app names
+            output = result['stdout']
+            apps = []
+            
+            # Look for app names in the output
+            lines = output.split('\n')
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and headers
+                if line and not line.startswith('Apps') and not line.startswith('---'):
+                    # Extract app name (usually the first word)
+                    app_name = line.split()[0] if line.split() else ''
+                    if app_name and app_name not in apps:
+                        apps.append(app_name)
+            
+            return jsonify({
+                'success': True,
+                'apps': apps,
+                'raw_output': output
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result['stderr'],
+                'apps': []
+            })
+        
+    except Exception as e:
+        logger.error(f"Error in frappe_get_app_list: {str(e)}")
+        return jsonify({'success': False, 'error': str(e), 'apps': []}), 500
 
 @app.route('/api/frappe/install-app', methods=['POST'])
 @require_auth
