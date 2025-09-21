@@ -21,12 +21,13 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/web-docker-manager-env"
 APP_FILE="$SCRIPT_DIR/app.py"
+CONFIG_FILE="$SCRIPT_DIR/.docker-manager-config"
 
-# Database config
-DB_HOST="localhost"
+# Database config - will be prompted for
+DB_HOST=""
 DB_NAME="docker_manager"
-DB_USER="docker_user"
-DB_PASS="docker_password"
+DB_USER=""
+DB_PASS=""
 
 # Functions
 print_header() {
@@ -59,6 +60,65 @@ print_prompt() {
     echo -e "${YELLOW}❓ $1${NC}"
 }
 
+# Load configuration from file
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        source "$CONFIG_FILE"
+        return 0
+    fi
+    return 1
+}
+
+# Save configuration to file
+save_config() {
+    cat > "$CONFIG_FILE" << EOF
+# Docker Manager Configuration
+# Generated on $(date)
+
+DB_HOST="$DB_HOST"
+DB_NAME="$DB_NAME"
+DB_USER="$DB_USER"
+DB_PASS="$DB_PASS"
+EOF
+    chmod 600 "$CONFIG_FILE"
+    print_success "Configuration saved to $CONFIG_FILE"
+}
+
+# Prompt for MySQL credentials
+prompt_mysql_credentials() {
+    echo ""
+    print_step "MySQL Database Configuration"
+    echo ""
+    
+    # MySQL Host
+    read -p "Enter MySQL host [localhost]: " input_host
+    DB_HOST="${input_host:-localhost}"
+    
+    # MySQL Username
+    read -p "Enter MySQL username [root]: " input_user
+    DB_USER="${input_user:-root}"
+    
+    # MySQL Password
+    while true; do
+        read -s -p "Enter MySQL password: " input_pass
+        echo ""
+        if [ -n "$input_pass" ]; then
+            DB_PASS="$input_pass"
+            break
+        else
+            print_error "Password cannot be empty"
+        fi
+    done
+    
+    print_success "MySQL credentials configured"
+    echo "  Host: $DB_HOST"
+    echo "  Username: $DB_USER"
+    echo "  Database: $DB_NAME"
+    
+    # Save configuration
+    save_config
+}
+
 # Prompt for admin password
 prompt_admin_password() {
     echo ""
@@ -89,14 +149,30 @@ prompt_admin_password() {
     fi
 }
 
+# Check if MySQL client is installed
+check_mysql_client() {
+    if ! command -v mysql &> /dev/null; then
+        print_error "MySQL client is not installed"
+        echo ""
+        print_info "To install MySQL client on Ubuntu/Debian:"
+        echo "  sudo apt update && sudo apt install mysql-client"
+        echo ""
+        print_info "To install MySQL client on CentOS/RHEL:"
+        echo "  sudo yum install mysql"
+        echo ""
+        return 1
+    fi
+    return 0
+}
+
 # Check database connection
 check_database_connection() {
-    if command -v mysql &> /dev/null; then
-        if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" -e "SELECT 1;" &>/dev/null; then
-            return 0
-        else
-            return 1
-        fi
+    if ! check_mysql_client; then
+        return 1
+    fi
+    
+    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" -e "SELECT 1;" &>/dev/null; then
+        return 0
     else
         return 1
     fi
@@ -126,10 +202,10 @@ create_database() {
     
     print_info "Creating database and user..."
     
-    mysql -u root -p << 'MYSQL_EOF'
-CREATE DATABASE IF NOT EXISTS docker_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'docker_user'@'localhost' IDENTIFIED BY 'docker_password';
-GRANT ALL PRIVILEGES ON docker_manager.* TO 'docker_user'@'localhost';
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" << MYSQL_EOF
+CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${DB_USER}'@'${DB_HOST}' IDENTIFIED BY '${DB_PASS}';
+GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'${DB_HOST}';
 FLUSH PRIVILEGES;
 MYSQL_EOF
     
@@ -229,9 +305,16 @@ install_packages() {
     print_step "Installing Python packages..."
     
     # Ensure virtual environment is activated
-    source "$VENV_DIR/bin/activate"
+    if [[ -f "$VENV_DIR/bin/activate" ]]; then
+        source "$VENV_DIR/bin/activate"
+    else
+        print_error "Virtual environment not found at $VENV_DIR"
+        return 1
+    fi
     
-    pip install --upgrade pip
+    # Upgrade pip first
+    print_info "Upgrading pip..."
+    pip install --upgrade pip --force-reinstall
     
     local packages=(
         "flask>=2.3.0"
@@ -246,26 +329,64 @@ install_packages() {
     
     for package in "${packages[@]}"; do
         print_info "Installing $package..."
-        pip install "$package"
+        # Use --ignore-installed to avoid conflicts with system packages
+        pip install "$package" --ignore-installed --force-reinstall
     done
     
     print_success "All packages installed"
+}
+
+# Check if Python3 is installed
+check_python3() {
+    if ! command -v python3 &> /dev/null; then
+        print_error "Python3 is not installed"
+        echo ""
+        print_info "To install Python3 on Ubuntu/Debian:"
+        echo "  sudo apt update && sudo apt install python3 python3-pip python3-venv"
+        echo ""
+        print_info "To install Python3 on CentOS/RHEL:"
+        echo "  sudo yum install python3 python3-pip"
+        echo ""
+        return 1
+    fi
+    return 0
 }
 
 # Create virtual environment
 create_venv() {
     print_step "Setting up virtual environment..."
     
-    if [ -d "$VENV_DIR" ]; then
+    if ! check_python3; then
+        exit 1
+    fi
+    
+    # Remove existing venv if it's corrupted
+    if [ -d "$VENV_DIR" ] && [ ! -f "$VENV_DIR/bin/activate" ]; then
+        print_warning "Corrupted virtual environment found, removing..."
+        rm -rf "$VENV_DIR"
+    fi
+    
+    if [ -d "$VENV_DIR" ] && [ -f "$VENV_DIR/bin/activate" ]; then
         print_info "Virtual environment already exists"
     else
         print_info "Creating virtual environment..."
         python3 -m venv "$VENV_DIR"
-        print_success "Virtual environment created"
+        if [ $? -eq 0 ]; then
+            print_success "Virtual environment created"
+        else
+            print_error "Failed to create virtual environment"
+            exit 1
+        fi
     fi
     
-    source "$VENV_DIR/bin/activate"
-    print_success "Virtual environment activated"
+    # Verify activation script exists
+    if [[ -f "$VENV_DIR/bin/activate" ]]; then
+        source "$VENV_DIR/bin/activate"
+        print_success "Virtual environment activated"
+    else
+        print_error "Virtual environment activation script not found"
+        exit 1
+    fi
 }
 
 # Start application
@@ -278,13 +399,20 @@ start_app() {
     fi
     
     # Ensure virtual environment is activated
-    source "$VENV_DIR/bin/activate"
+    if [[ -f "$VENV_DIR/bin/activate" ]]; then
+        source "$VENV_DIR/bin/activate"
+        print_info "Virtual environment activated"
+    else
+        print_error "Virtual environment not found. Please run install first."
+        exit 1
+    fi
     
     print_info "Starting web server on http://localhost:5000"
     print_info "Press Ctrl+C to stop the server"
     echo ""
     
-    python3 "$APP_FILE"
+    # Use the python from the virtual environment
+    "$VENV_DIR/bin/python" "$APP_FILE"
 }
 
 # Show help
@@ -296,6 +424,7 @@ show_help() {
     echo "  start      Start the application (default)"
     echo "  migrate    Run database migration only"
     echo "  status     Show application status"
+    echo "  clean      Remove virtual environment and config files"
     echo "  help       Show this help message"
     echo ""
 }
@@ -346,14 +475,20 @@ show_status() {
 main() {
     print_header
     
+    # Try to load existing configuration
+    if load_config; then
+        print_info "Loaded existing configuration"
+    fi
+    
     case "${1:-start}" in
         "install")
+            prompt_mysql_credentials
             prompt_admin_password
             create_venv
             install_packages
             
             if ! check_database_connection; then
-                print_error "Cannot connect to database. Please check MySQL service."
+                print_error "Cannot connect to database. Please check MySQL service and credentials."
                 exit 1
             fi
             
@@ -365,11 +500,16 @@ main() {
             print_success "Installation completed successfully!"
             ;;
         "start")
+            # Check if credentials are already set (from config file or previous run)
+            if [[ -z "$DB_HOST" || -z "$DB_USER" || -z "$DB_PASS" ]]; then
+                prompt_mysql_credentials
+            fi
+            
             create_venv
             install_packages
             
             if ! check_database_connection; then
-                print_error "Cannot connect to database. Please check MySQL service."
+                print_error "Cannot connect to database. Please check MySQL service and credentials."
                 exit 1
             fi
             
@@ -385,6 +525,10 @@ main() {
             start_app
             ;;
         "migrate")
+            if [[ -z "$DB_HOST" || -z "$DB_USER" || -z "$DB_PASS" ]]; then
+                prompt_mysql_credentials
+            fi
+            
             create_venv
             install_packages
             
@@ -403,6 +547,22 @@ main() {
             ;;
         "status")
             show_status
+            ;;
+        "clean")
+            print_step "Cleaning virtual environment..."
+            if [ -d "$VENV_DIR" ]; then
+                rm -rf "$VENV_DIR"
+                print_success "Virtual environment removed"
+            else
+                print_info "No virtual environment found"
+            fi
+            if [ -f "$CONFIG_FILE" ]; then
+                rm -f "$CONFIG_FILE"
+                print_success "Configuration file removed"
+            else
+                print_info "No configuration file found"
+            fi
+            print_success "Clean completed"
             ;;
         "help"|"-h"|"--help")
             show_help

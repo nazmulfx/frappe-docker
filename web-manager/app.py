@@ -17,6 +17,7 @@ import pyotp
 import base64
 import qrcode
 import io
+import os
 from datetime import datetime, timedelta
 from config import Config
 from models import db, User, AuditLog, create_default_admin
