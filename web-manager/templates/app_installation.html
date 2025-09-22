@@ -777,6 +777,7 @@ class FrappeAppManager {
         }
         
         // App operations
+        document.getElementById('get-app-btn')?.addEventListener('click', () => this.getApp());
         const installBtn = document.getElementById('install-app-btn');
         
         if (installBtn) {
@@ -1011,39 +1012,58 @@ class FrappeAppManager {
             return;
         }
         
-        // Prepare data for API call
-        const requestData = {
-            container: this.selectedContainer,
-            repo_url: repoUrl,
-            branch: branch,
-            auth_method: authMethod,
-            github_token: githubToken
-        };
-        
         try {
             this.addToLog('info', `Getting app from ${repoUrl} (auth: ${authMethod})...`);
             
-            const response = await fetch('/api/frappe/get-app', {
+            let command;
+            
+            if (authMethod === 'token' && githubToken) {
+                // For private repos, modify the URL to include the token
+                const repoPath = repoUrl.replace('https://github.com/', '').replace('.git', '');
+                const authenticatedUrl = `https://${githubToken}@github.com/${repoPath}.git`;
+                command = `bench get-app ${authenticatedUrl}`;
+            } else {
+                // For public repos, use bench get-app
+                command = `bench get-app ${repoUrl}`;
+            }
+            
+            if (branch) {
+                command += ` --branch ${branch}`;
+            }
+            
+            this.addToLog('info', `Executing command: ${command}`);
+            
+            const response = await fetch('/api/frappe/execute-command', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': this.getCSRFToken()
                 },
-                body: JSON.stringify(requestData)
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: command
+                })
             });
             
             const result = await response.json();
             
-            if (result.success) {
+            this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
+            
+            // Check if we have output and no error (streaming responses don't have success field)
+            if (result.output && !result.error) {
                 this.addToLog('success', `Successfully got app from ${repoUrl}`);
                 if (result.output) {
                     this.addToLog('info', result.output);
                 }
+                // Refresh the apps list to show the newly installed app
+                await this.loadAppsForContainer();
             } else {
                 this.addToLog('error', `Failed to get app: ${result.error || 'Unknown error'}`);
                 if (result.error) {
                     this.addToLog('error', result.error);
                 }
+                // Also log the raw result for debugging
+                this.addToLog('error', `Raw result: ${JSON.stringify(result)}`);
             }
         } catch (error) {
             this.addToLog('error', `Error getting app: ${error.message}`);
@@ -1303,7 +1323,7 @@ class FrappeAppManager {
                 },
                 body: JSON.stringify({
                     container: this.selectedContainer,
-                    command: 'bench list-apps'
+                    command: 'cat ~/frappe-bench/sites/apps.txt'
                 })
             });
             
@@ -1339,20 +1359,28 @@ class FrappeAppManager {
             return;
         }
         
-        // Parse the apps output - remove leading/trailing whitespace and split by newlines
-        const apps = appsOutput.trim().split('\n').filter(app => app.trim() !== '');
+        // Parse the apps output - bench list-apps shows: "appname version status"
+        const lines = appsOutput.trim().split('\n').filter(line => line.trim() !== '');
         
+        const apps = [];
         
-        apps.forEach(app => {
-            const appName = app.trim();
-            if (appName) {
-                const option = document.createElement('option');
-                option.value = appName;
-                option.textContent = appName;
-                appsSelect.appendChild(option);
+        lines.forEach(line => {
+            const trimmed = line.trim();
+            if (trimmed) {
+                // Extract just the app name (first word before spaces)
+                const appName = trimmed.split(/\s+/)[0];
+                if (appName && !apps.includes(appName)) {
+                    apps.push(appName);
+                }
             }
         });
         
+        apps.forEach(app => {
+            const option = document.createElement('option');
+            option.value = app;
+            option.textContent = app;
+            appsSelect.appendChild(option);
+        });
     }
 
     // Method to clear the apps dropdown
