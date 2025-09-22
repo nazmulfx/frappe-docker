@@ -122,6 +122,7 @@ services:
   app:
     image: frappe/erpnext:v15.63.0
     container_name: ${safe_site_name}-app
+    restart: unless-stopped
     networks:
       - frappe_network
       - traefik_proxy
@@ -316,6 +317,7 @@ ${app_labels}
   create-site:
     image: frappe/erpnext:v15.63.0
     container_name: ${safe_site_name}-create-site
+    restart: "no"
     networks:
       - frappe_network
     depends_on:
@@ -391,6 +393,7 @@ ${app_labels}
   db:
     image: mariadb:10.6
     container_name: ${safe_site_name}-db
+    restart: unless-stopped
     networks:
       - frappe_network
     healthcheck:
@@ -429,6 +432,7 @@ ${app_labels}
   redis:
     image: redis:6.2-alpine
     container_name: ${safe_site_name}-redis
+    restart: unless-stopped
     networks:
       - frappe_network
     healthcheck:
