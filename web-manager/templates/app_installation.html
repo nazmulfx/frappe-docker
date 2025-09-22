@@ -116,6 +116,17 @@
     color: #17a2b8;
 }
 
+.log-message {
+    white-space: pre-wrap; /* Preserve whitespace and line breaks */
+    font-family: monospace; /* Use monospace font for better readability */
+    margin-top: 2px;
+}
+
+.log-entry {
+    margin-bottom: 8px;
+    padding: 4px 0;
+}
+
 /* Include xterm.js CSS */
 @import url('https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css');
 <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-cloud.css') }}">
@@ -315,17 +326,29 @@
                                                     <div class="col-md-4">
                                                         <div class="mb-3">
                                                             <label for="install-app-name" class="form-label">App Name</label>
-                                                            <select class="form-select" id="install-app-name">
-                                                                <option value="">Select an app...</option>
-                                                            </select>
+                                                            <div class="input-group">
+                                                                <select class="form-select" id="install-app-name">
+                                                                    <option value="">Select an app...</option>
+                                                                </select>
+                                                                <button class="btn btn-outline-secondary" type="button" id="refresh-apps-btn" title="Refresh Apps">
+                                                                    <i class="bi bi-bootstrap-reboot"></i>
+                                                                </button>
+                                                            </div>
                                                             <div class="form-text">Apps will be loaded when you select a container</div>
                                                         </div>
                                                     </div>
                                                     <div class="col-md-4">
                                                         <div class="mb-3">
                                                             <label for="install-site-name" class="form-label">Site Name</label>
-                                                            <input type="text" class="form-control" id="install-site-name" 
-                                                                   placeholder="site1.local">
+                                                            <div class="input-group">
+                                                                <select class="form-select" id="install-site-name">
+                                                                    <option value="">Select a site...</option>
+                                                                </select>
+                                                                <button class="btn btn-outline-secondary" type="button" id="refresh-sites-btn" title="Refresh Sites">
+                                                                    <i class="bi bi-bootstrap-reboot"></i>
+                                                                </button>
+                                                            </div>
+                                                            <div class="form-text">Sites will be loaded when you select a container</div>
                                                         </div>
                                                     </div>
                                                     <div class="col-md-4">
@@ -368,56 +391,11 @@
                                                 </div>
                                             </div>
                                             
-                                            <!-- Site Management Section -->
-                                            <div class="mb-4">
-                                                <h6 class="text-warning">
-                                                    <i class="bi bi-globe"></i> Site Management
-                                                </h6>
-                                                <div class="row">
-                                                    <div class="col-md-4">
-                                                        <div class="mb-3">
-                                                            <label for="site-name" class="form-label">Site Name</label>
-                                                            <input type="text" class="form-control" id="site-name" 
-                                                                   placeholder="site1.local">
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <div class="mb-3">
-                                                            <label class="form-label">&nbsp;</label>
-                                                            <button class="btn btn-outline-primary w-100" id="create-site-btn">
-                                                                <i class="bi bi-plus-circle"></i> Create Site
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <div class="mb-3">
-                                                            <label class="form-label">&nbsp;</label>
-                                                            <button class="btn btn-outline-danger w-100" id="drop-site-btn">
-                                                                <i class="bi bi-trash"></i> Drop Site
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <div class="mb-3">
-                                                            <label class="form-label">&nbsp;</label>
-                                                            <button class="btn btn-outline-info w-100" id="list-sites-btn">
-                                                                <i class="bi bi-list"></i> List Sites
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <div class="mb-3">
-                                                            <label class="form-label">&nbsp;</label>
-                                                            <button class="btn btn-outline-warning w-100" id="backup-site-btn">
-                                                                <i class="bi bi-archive"></i> Backup
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
                                     
+                                </div>
+                                <div class="col-md-12">
                                     <!-- Operation Log -->
                                     <div class="frappe-cloud-card mt-3">
                                         <div class="card-header bg-dark text-white">
@@ -779,6 +757,7 @@ class FrappeAppManager {
     }
     
     initializeEventListeners() {
+        
         // Container selection
         const containerSelect = document.getElementById('app-container-select');
         if (containerSelect) {
@@ -786,32 +765,32 @@ class FrappeAppManager {
                 this.selectedContainer = e.target.value;
                 this.updateContainerInfo();
                 this.updateOperationButtons();
+                
+                if (this.selectedContainer) {
+                    this.loadAppsForContainer();
+                    this.loadSitesForContainer(); // Add this line
+                } else {
+                    this.clearAppsDropdown();
+                    this.clearSitesDropdown(); // Add this line
+                }
             });
         }
         
         // App operations
-        document.getElementById('get-app-btn')?.addEventListener('click', () => this.getApp());
         const installBtn = document.getElementById('install-app-btn');
-        console.log('Install button element:', installBtn);
+        
         if (installBtn) {
-            console.log('Adding event listener to install button');
             installBtn.addEventListener('click', () => {
-                console.log('Install App button clicked');
+                alert('Button clicked!');
                 this.installApp();
             });
-        } else {
-            console.error('Install button not found!');
         }
+        
         document.getElementById('uninstall-app-btn')?.addEventListener('click', () => this.uninstallApp());
         document.getElementById('update-app-btn')?.addEventListener('click', () => this.updateApp());
         document.getElementById('list-apps-btn')?.addEventListener('click', () => this.listApps());
         document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
         
-        // Site operations
-        document.getElementById('create-site-btn')?.addEventListener('click', () => this.createSite());
-        document.getElementById('drop-site-btn')?.addEventListener('click', () => this.dropSite());
-        document.getElementById('list-sites-btn')?.addEventListener('click', () => this.listSites());
-        document.getElementById('backup-site-btn')?.addEventListener('click', () => this.backupSite());
         
         // Quick actions
         document.getElementById('bench-status')?.addEventListener('click', () => this.benchStatus());
@@ -848,6 +827,10 @@ class FrappeAppManager {
                 }
             });
         }
+
+        // Add a refresh apps button or method
+        document.getElementById('refresh-apps-btn')?.addEventListener('click', () => this.refreshApps());
+        document.getElementById('refresh-sites-btn')?.addEventListener('click', () => this.refreshSites());
     }
     
     updateContainerInfo() {
@@ -966,11 +949,17 @@ class FrappeAppManager {
             const typeClass = `log-${entry.type}`;
             const icon = this.getLogIcon(entry.type);
             
+            // Convert line breaks and preserve formatting
+            const formattedMessage = entry.message
+                .replace(/\r\n/g, '<br>')
+                .replace(/\n/g, '<br>')
+                .replace(/\r/g, '<br>');
+            
             return `
                 <div class="log-entry ${typeClass}">
                     <span class="text-muted">[${entry.timestamp}]</span>
                     <i class="${icon}"></i>
-                    ${entry.message}
+                    <div class="log-message">${formattedMessage}</div>
                 </div>
             `;
         }).join('');
@@ -1062,16 +1051,54 @@ class FrappeAppManager {
     }
     
     async installApp() {
-        const appName = document.getElementById('install-app-name').value;
-        const siteName = document.getElementById('install-site-name').value;
-        
-        if (!appName || !siteName) {
-            this.addToLog('error', 'App name and site name are required');
-            return;
+        try {
+            const appName = document.getElementById('install-app-name').value;
+            const siteName = document.getElementById('install-site-name').value;
+            
+            if (!appName || !siteName) {
+                this.addToLog('error', 'Please select an app and a site');
+                return;
+            }
+            
+            if (!this.selectedContainer) {
+                this.addToLog('error', 'Please select a container first');
+                return;
+            }
+            
+            // Prepare data for API call
+            const requestData = {
+                container: this.selectedContainer,
+                app_name: appName,
+                site_name: siteName
+            };
+            
+            this.addToLog('info', `Installing app ${appName} on site ${siteName}...`);
+            
+            const response = await fetch('/api/frappe/install-app', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
+                if (result.output) {
+                    this.addToLog('info', result.output);
+                }
+            } else {
+                this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
+                if (result.error) {
+                    this.addToLog('error', result.error);
+                }
+            }
+        } catch (error) {
+            this.addToLog('error', `Error installing app: ${error.message}`);
         }
-        
-        const command = `bench --site ${siteName} install-app ${appName}`;
-        await this.executeCommand(command, `Installing app ${appName} on site ${siteName}`);
     }
     
     async uninstallApp() {
@@ -1117,56 +1144,6 @@ class FrappeAppManager {
         }
     }
     
-    // Site Operations
-    async createSite() {
-        const siteName = document.getElementById('site-name').value;
-        if (!siteName) {
-            this.addToLog('error', 'Site name is required');
-            return;
-        }
-        
-        const command = `bench new-site ${siteName}`;
-        await this.executeCommand(command, `Creating new site ${siteName}`);
-    }
-    
-    async dropSite() {
-        const siteName = document.getElementById('site-name').value;
-        if (!siteName) {
-            this.addToLog('error', 'Site name is required');
-            return;
-        }
-        
-        if (confirm(`Are you sure you want to drop site ${siteName}? This action cannot be undone.`)) {
-            const command = `bench drop-site ${siteName}`;
-            await this.executeCommand(command, `Dropping site ${siteName}`);
-        }
-    }
-    
-    async listSites() {
-        // Use safe commands to list sites
-        const commands = [
-            "ls -la /home/frappe/frappe-bench/sites/",
-            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
-            "find /home/frappe/frappe-bench/sites/ -maxdepth 1 -type d -name '*.local' -o -name '*.com' | sort"
-        ];
-        
-        for (const cmd of commands) {
-            await this.executeCommand(cmd, `Listing sites: ${cmd}`);
-        }
-        const command = 'bench list-sites';
-        await this.executeCommand(command, 'Listing sites');
-    }
-    
-    async backupSite() {
-        const siteName = document.getElementById('site-name').value;
-        if (!siteName) {
-            this.addToLog('error', 'Site name is required');
-            return;
-        }
-        
-        const command = `bench --site ${siteName} backup`;
-        await this.executeCommand(command, `Backing up site ${siteName}`);
-    }
     
     // Quick Actions
     async benchStatus() {
@@ -1180,7 +1157,7 @@ class FrappeAppManager {
         
         const sitesCommand = "ls -la /home/frappe/frappe-bench/sites/";
         await this.executeCommand(sitesCommand, "Listing sites directory");
-        const benchStatusCommand = 'bench status';
+        const benchStatusCommand = 'bench doctor';
         await this.executeCommand(benchStatusCommand, 'Checking bench status');
     }
     
@@ -1196,7 +1173,7 @@ class FrappeAppManager {
         for (const cmd of commands) {
             await this.executeCommand(cmd, `Getting bench info: ${cmd}`);
         }
-        const command = 'bench info';
+        const command = 'bench version';
         await this.executeCommand(command, 'Getting bench information');
     }
     
@@ -1219,62 +1196,7 @@ class FrappeAppManager {
         this.addToLog('info', 'Refreshing container list...');
         window.location.reload();
     }
-    async installApp() {
-        console.log('installApp function called');
-        const appName = document.getElementById('install-app-name').value;
-        const siteName = document.getElementById('install-site-name').value;
-        
-        console.log('App name:', appName);
-        console.log('Site name:', siteName);
-        console.log('Selected container:', this.selectedContainer);
-        
-        if (!appName || !siteName) {
-            this.addToLog('error', 'Please select an app and enter site name');
-            return;
-        }
-        
-        if (!this.selectedContainer) {
-            this.addToLog('error', 'Please select a container first');
-            return;
-        }
-        
-        // Prepare data for API call
-        const requestData = {
-            container: this.selectedContainer,
-            app_name: appName,
-            site_name: siteName
-        };
-        
-        try {
-            this.addToLog('info', `Installing app ${appName} on site ${siteName}...`);
-            
-            const response = await fetch('/api/frappe/install-app', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                },
-                body: JSON.stringify(requestData)
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
-                if (result.output) {
-                    this.addToLog('info', result.output);
-                }
-            } else {
-                this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
-                if (result.error) {
-                    this.addToLog('error', result.error);
-                }
-            }
-        } catch (error) {
-            this.addToLog('error', `Error installing app: ${error.message}`);
-        }
-    }
-
+    
     initializeTerminal() {
         const terminalContainer = document.getElementById('terminal-container');
         if (terminalContainer) {
@@ -1360,6 +1282,252 @@ class FrappeAppManager {
         loadTerminalLogs();
         setupRealTimeErrorTracking();
     }
+
+    // Updated loadAppsForContainer method:
+    async loadAppsForContainer() {
+        if (!this.selectedContainer) {
+            this.clearAppsDropdown();
+            return;
+        }
+        
+        
+        try {
+            // Show loading state
+            this.setAppsDropdownLoading(true);
+            
+            const response = await fetch('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: 'bench list-apps'
+                })
+            });
+            
+            const result = await response.json();
+            
+            // Check if we have output and no error (streaming responses don't have success field)
+            if (result.output && !result.error) {
+                // Use the raw output directly since it's already in the correct format
+                this.populateAppsDropdown(result.output);
+            } else {
+                this.addToLog('error', `Failed to load apps: ${result.error || 'Unknown error'}`);
+                this.clearAppsDropdown();
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading apps: ${error.message}`);
+            this.clearAppsDropdown();
+        } finally {
+            this.setAppsDropdownLoading(false);
+        }
+    }
+
+    // Updated populateAppsDropdown method:
+    populateAppsDropdown(appsOutput) {
+        const appsSelect = document.getElementById('install-app-name');
+        if (!appsSelect) {
+            return;
+        }
+        
+        // Clear existing options except the first one
+        appsSelect.innerHTML = '<option value="">Select an app...</option>';
+        
+        if (!appsOutput || appsOutput.trim() === '') {
+            return;
+        }
+        
+        // Parse the apps output - remove leading/trailing whitespace and split by newlines
+        const apps = appsOutput.trim().split('\n').filter(app => app.trim() !== '');
+        
+        
+        apps.forEach(app => {
+            const appName = app.trim();
+            if (appName) {
+                const option = document.createElement('option');
+                option.value = appName;
+                option.textContent = appName;
+                appsSelect.appendChild(option);
+            }
+        });
+        
+    }
+
+    // Method to clear the apps dropdown
+    clearAppsDropdown() {
+        const appsSelect = document.getElementById('install-app-name');
+        if (appsSelect) {
+            appsSelect.innerHTML = '<option value="">Select an app...</option>';
+        }
+    }
+
+    // Method to set loading state for apps dropdown
+    setAppsDropdownLoading(isLoading) {
+        const appsSelect = document.getElementById('install-app-name');
+        if (!appsSelect) return;
+        
+        if (isLoading) {
+            appsSelect.innerHTML = '<option value="">Loading apps...</option>';
+            appsSelect.disabled = true;
+        } else {
+            appsSelect.disabled = false;
+        }
+    }
+
+    // Add a refresh apps button or method
+    async refreshApps() {
+        if (!this.selectedContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
+        }
+        
+        await this.loadAppsForContainer();
+        await this.loadSitesForContainer(); // Also refresh sites
+        this.addToLog('info', 'Apps and sites list refreshed');
+    }
+
+    // Add method to load sites for the selected container
+    async loadSitesForContainer() {
+        if (!this.selectedContainer) {
+            this.clearSitesDropdown();
+            return;
+        }
+        
+        try {
+            // Show loading state
+            this.setSitesDropdownLoading(true);
+            
+            const response = await fetch('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: 'cat ~/frappe-bench/sites/currentsite.txt'
+                })
+            });
+            
+            const result = await response.json();
+            
+            // Check if we have output and no error (streaming responses don't have success field)
+            if (result.output && !result.error) {
+                // Use the raw output directly since it's already in the correct format
+                this.populateSitesDropdown(result.output);
+            } else {
+                this.addToLog('error', `Failed to load sites: ${result.error || 'Unknown error'}`);
+                this.clearSitesDropdown();
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading sites: ${error.message}`);
+            this.clearSitesDropdown();
+        } finally {
+            this.setSitesDropdownLoading(false);
+        }
+    }
+
+    // Method to populate the sites dropdown
+    populateSitesDropdown(sitesOutput) {
+        const sitesSelect = document.getElementById('install-site-name');
+        if (!sitesSelect) {
+            return;
+        }
+        
+        // Clear existing options except the first one
+        sitesSelect.innerHTML = '<option value="">Select a site...</option>';
+        
+        if (!sitesOutput || sitesOutput.trim() === '') {
+            return;
+        }
+        
+        // Parse the sites output - remove leading/trailing whitespace and split by newlines
+        const allItems = sitesOutput.trim().split('\n').filter(item => item.trim() !== '');
+        
+        // Filter out non-site files and directories
+        const sites = allItems.filter(item => {
+            const trimmed = item.trim();
+            // Include files that look like site names (contain dots or are typical site names)
+            return trimmed && 
+                   !trimmed.includes('common_site_config.json') && 
+                   !trimmed.includes('currentsite.txt') &&
+                   !trimmed.startsWith('.') &&
+                   (trimmed.includes('.') || trimmed.match(/^[a-zA-Z0-9_-]+$/));
+        });
+        
+        sites.forEach(site => {
+            const siteName = site.trim();
+            if (siteName) {
+                const option = document.createElement('option');
+                option.value = siteName;
+                option.textContent = siteName;
+                sitesSelect.appendChild(option);
+            }
+        });
+    }
+
+    // Method to clear the sites dropdown
+    clearSitesDropdown() {
+        const sitesSelect = document.getElementById('install-site-name');
+        if (sitesSelect) {
+            sitesSelect.innerHTML = '<option value="">Select a site...</option>';
+        }
+    }
+
+    // Method to set loading state for sites dropdown
+    setSitesDropdownLoading(isLoading) {
+        const sitesSelect = document.getElementById('install-site-name');
+        if (!sitesSelect) return;
+        
+        if (isLoading) {
+            sitesSelect.innerHTML = '<option value="">Loading sites...</option>';
+            sitesSelect.disabled = true;
+        } else {
+            sitesSelect.disabled = false;
+        }
+    }
+
+    // Method to refresh sites
+    async refreshSites() {
+        if (!this.selectedContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
+        }
+        
+        await this.loadSitesForContainer();
+        this.addToLog('info', 'Sites list refreshed');
+    }
+
+    // Add this debug method to test the endpoint:
+    async testListAppsEndpoint() {
+        
+        try {
+            const response = await fetch('/api/frappe/list-apps', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer
+                })
+            });
+            
+            if (response.status === 404) {
+                this.addToLog('error', 'API endpoint /api/frappe/list-apps not found');
+                return false;
+            }
+            
+            const result = await response.json();
+            
+            return result;
+        } catch (error) {
+            this.addToLog('error', `Error testing endpoint: ${error.message}`);
+            return false;
+        }
+    }
 }
 
 // Global variables for terminal logs
@@ -1373,8 +1541,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Initialize Frappe App Manager
-    window.frappeAppManager = new FrappeAppManager();
+    
+    // Wait a bit to ensure all DOM elements are ready
+    setTimeout(() => {
+        try {
+            window.frappeAppManager = new FrappeAppManager();
+        } catch (error) {
+            console.error('Error initializing FrappeAppManager:', error);
+        }
+    }, 100);
 });
 
 // Terminal logs functions (keeping existing functionality)

@@ -71,6 +71,284 @@ handler.setFormatter(logging.Formatter(
 ))
 app.logger.addHandler(handler)
 
+def format_command_output(output, error="", command_type="general"):
+    """
+    Universal function to format command output in a professional and pretty way
+    
+    Args:
+        output (str): The command output
+        error (str): Any error messages
+        command_type (str): Type of command (bench, docker, general, etc.)
+    
+    Returns:
+        dict: Formatted output with professional styling
+    """
+    
+    def format_ls_output(text):
+        """Format ls command output with beautiful styling"""
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                formatted_lines.append("")
+                continue
+            
+            # Handle total line
+            if line.startswith('total '):
+                formatted_lines.append(f"📊 <strong style='color: #6c757d;'>{line}</strong>")
+                formatted_lines.append("")  # Add blank line after total
+            
+            # Handle directory entries (lines with permissions)
+            elif len(line) > 10 and line[0] in 'd' and line[1:10].replace('-', '').replace('r', '').replace('w', '').replace('x', '') == '':
+                parts = line.split()
+                if len(parts) >= 9:
+                    permissions = parts[0]
+                    links = parts[1]
+                    owner = parts[2]
+                    group = parts[3]
+                    size = parts[4]
+                    date_parts = parts[5:8]
+                    name = ' '.join(parts[8:])
+                    
+                    # Format permissions with colors
+                    perm_colors = ""
+                    if permissions.startswith('d'):
+                        perm_colors = "color: #007bff;"  # Blue for directories
+                        icon = "📁"
+                    elif permissions.startswith('l'):
+                        perm_colors = "color: #28a745;"  # Green for links
+                        icon = "🔗"
+                    elif permissions[3] == 'x' or permissions[6] == 'x' or permissions[9] == 'x':
+                        perm_colors = "color: #dc3545;"  # Red for executables
+                        icon = "⚡"
+                    else:
+                        perm_colors = "color: #6c757d;"  # Gray for files
+                        icon = "📄"
+                    
+                    # Format date
+                    date_str = ' '.join(date_parts)
+                    
+                    # Create formatted line
+                    formatted_line = f"{icon} <span style='{perm_colors}'>{permissions}</span> {links:>3} {owner:<8} {group:<8} {size:>8} {date_str} <strong>{name}</strong>"
+                    formatted_lines.append(formatted_line)
+                else:
+                    formatted_lines.append(line)
+            
+            # Handle other lines
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def format_help_text(text):
+        """Format help text with proper indentation and styling"""
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                formatted_lines.append("")
+                continue
+                
+            # Format usage lines
+            if line.startswith('Usage:'):
+                formatted_lines.append(f"📋 <strong>{line}</strong>")
+            
+            # Format error lines
+            elif line.startswith('Error:'):
+                formatted_lines.append(f"❌ <span style='color: #dc3545;'>{line}</span>")
+            
+            # Format warning lines
+            elif line.startswith('Warning:') or line.startswith('WARNING:'):
+                formatted_lines.append(f"⚠️ <span style='color: #ffc107;'>{line}</span>")
+            
+            # Format success lines
+            elif line.startswith('Success:') or line.startswith('SUCCESS:'):
+                formatted_lines.append(f"✅ <span style='color: #28a745;'>{line}</span>")
+            
+            # Format info lines
+            elif line.startswith('Info:') or line.startswith('INFO:'):
+                formatted_lines.append(f"ℹ️ <span style='color: #17a2b8;'>{line}</span>")
+            
+            # Format command options (lines starting with spaces or dashes)
+            elif line.startswith('  ') or line.startswith('-') or line.startswith('--'):
+                formatted_lines.append(f"<span style='color: #6c757d; font-family: monospace;'>{line}</span>")
+            
+            # Format section headers (lines in caps or with colons)
+            elif line.isupper() or line.endswith(':'):
+                formatted_lines.append(f"<strong style='color: #495057;'>{line}</strong>")
+            
+            # Format regular lines
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def format_bench_output(text):
+        """Format bench command output specifically"""
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                formatted_lines.append("")
+                continue
+            
+            # Format site information
+            if 'site:' in line.lower() or 'sites:' in line.lower():
+                formatted_lines.append(f"🏢 {line}")
+            
+            # Format app information
+            elif 'app:' in line.lower() or 'apps:' in line.lower():
+                formatted_lines.append(f"📦 {line}")
+            
+            # Format status information
+            elif 'status:' in line.lower() or 'running' in line.lower():
+                formatted_lines.append(f"🔄 {line}")
+            
+            # Format version information
+            elif 'version:' in line.lower():
+                formatted_lines.append(f"🔢 {line}")
+            
+            # Format path information
+            elif 'path:' in line.lower() or 'directory:' in line.lower():
+                formatted_lines.append(f"📁 {line}")
+            
+            # Format error messages
+            elif 'error:' in line.lower() or 'failed' in line.lower():
+                formatted_lines.append(f"❌ <span style='color: #dc3545;'>{line}</span>")
+            
+            # Format success messages
+            elif 'success' in line.lower() or 'completed' in line.lower():
+                formatted_lines.append(f"✅ <span style='color: #28a745;'>{line}</span>")
+            
+            # Format regular lines
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def format_docker_output(text):
+        """Format docker command output specifically"""
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                formatted_lines.append("")
+                continue
+            
+            # Format container information
+            if 'container' in line.lower() and ('running' in line.lower() or 'stopped' in line.lower()):
+                formatted_lines.append(f"🐳 {line}")
+            
+            # Format image information
+            elif 'image' in line.lower():
+                formatted_lines.append(f"📦 {line}")
+            
+            # Format network information
+            elif 'network' in line.lower():
+                formatted_lines.append(f"🌐 {line}")
+            
+            # Format volume information
+            elif 'volume' in line.lower():
+                formatted_lines.append(f"💾 {line}")
+            
+            # Format regular lines
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def format_filesystem_output(text):
+        """Format filesystem commands (ls, find, etc.) with beautiful styling"""
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                formatted_lines.append("")
+                continue
+            
+            # Handle total line
+            if line.startswith('total '):
+                formatted_lines.append(f"📊 <strong style='color: #6c757d;'>{line}</strong>")
+                formatted_lines.append("")  # Add blank line after total
+            
+            # Handle directory entries (lines with permissions)
+            elif len(line) > 10 and line[0] in 'd' and line[1:10].replace('-', '').replace('r', '').replace('w', '').replace('x', '') == '':
+                parts = line.split()
+                if len(parts) >= 9:
+                    permissions = parts[0]
+                    links = parts[1]
+                    owner = parts[2]
+                    group = parts[3]
+                    size = parts[4]
+                    date_parts = parts[5:8]
+                    name = ' '.join(parts[8:])
+                    
+                    # Format permissions with colors
+                    perm_colors = ""
+                    if permissions.startswith('d'):
+                        perm_colors = "color: #007bff;"  # Blue for directories
+                        icon = "📁"
+                    elif permissions.startswith('l'):
+                        perm_colors = "color: #28a745;"  # Green for links
+                        icon = "🔗"
+                    elif permissions[3] == 'x' or permissions[6] == 'x' or permissions[9] == 'x':
+                        perm_colors = "color: #dc3545;"  # Red for executables
+                        icon = "⚡"
+                    else:
+                        perm_colors = "color: #6c757d;"  # Gray for files
+                        icon = "📄"
+                    
+                    # Format date
+                    date_str = ' '.join(date_parts)
+                    
+                    # Create formatted line with proper spacing
+                    formatted_line = f"{icon} <span style='{perm_colors}'>{permissions}</span> {links:>3} {owner:<8} {group:<8} {size:>8} {date_str} <strong>{name}</strong>"
+                    formatted_lines.append(formatted_line)
+                else:
+                    formatted_lines.append(line)
+            
+            # Handle other lines
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    # Format the output based on command type
+    if command_type.lower() == 'bench':
+        formatted_output = format_bench_output(output)
+    elif command_type.lower() == 'docker':
+        formatted_output = format_docker_output(output)
+    elif command_type.lower() in ['ls', 'filesystem', 'find']:
+        formatted_output = format_filesystem_output(output)
+    else:
+        formatted_output = format_help_text(output)
+    
+    # Format error messages
+    formatted_error = ""
+    if error:
+        formatted_error = format_help_text(error)
+    
+    # Create the final formatted response
+    result = {
+        'formatted_output': formatted_output,
+        'formatted_error': formatted_error,
+        'raw_output': output,
+        'raw_error': error,
+        'command_type': command_type
+    }
+    
+    return result
+
 def log_audit(event_type, username, ip, message, status="success", user_id=None):
     """Log security event to audit log"""
     if Config.ENABLE_AUDIT_LOG:
@@ -1175,77 +1453,11 @@ def frappe_get_app():
         return jsonify({'success': False, 'error': str(e)}), 500
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@app.route('/api/frappe/get-app-list', methods=['POST'])
-@require_auth
-def frappe_get_app_list():
-    """API endpoint to get list of apps from a container"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        # Validate container name
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        # Get app list using bench command
-        cmd = f"sudo docker exec -u frappe {container} bench --site all list-apps"
-        
-        # Execute command
-        result = SecureDockerManager.run_command(cmd, timeout=60)
-        
-        # Log the action
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_get_app_list", username, client_ip, 
-                  f"Get app list from container {container}", status, user_id)
-        
-        if result['success']:
-            # Parse the output to extract app names
-            output = result['stdout']
-            apps = []
-            
-            # Look for app names in the output
-            lines = output.split('\n')
-            for line in lines:
-                line = line.strip()
-                # Skip empty lines and headers
-                if line and not line.startswith('Apps') and not line.startswith('---'):
-                    # Extract app name (usually the first word)
-                    app_name = line.split()[0] if line.split() else ''
-                    if app_name and app_name not in apps:
-                        apps.append(app_name)
-            
-            return jsonify({
-                'success': True,
-                'apps': apps,
-                'raw_output': output
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result['stderr'],
-                'apps': []
-            })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_get_app_list: {str(e)}")
-        return jsonify({'success': False, 'error': str(e), 'apps': []}), 500
-
 @app.route('/api/frappe/install-app', methods=['POST'])
 @require_auth
 def frappe_install_app():
     """API endpoint for 'bench install-app' command"""
     try:
-        # Initialize variables
-        output = ''
-        error = ''
         
         data = request.json
         container = data.get('container')
@@ -1264,7 +1476,8 @@ def frappe_install_app():
         current_dir = container_working_dirs.get(container, "/home/frappe")
         
         # Build command
-        cmd = f"sudo docker exec -u frappe {container} bench --site {site_name} install-app {app_name}"
+        command = f"bench --site {site_name} install-app {app_name}"
+        cmd = f"sudo docker exec -u frappe {container} {command}"
         
         # Execute command
         result = SecureDockerManager.run_command(cmd, timeout=300)  # Longer timeout for app installation
@@ -1278,29 +1491,19 @@ def frappe_install_app():
         log_audit("frappe_install_app", username, client_ip, 
                   f"Install app {app_name} on site {site_name} in container {container}", status, user_id)
         
-        # Format output for terminal display
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], 
-                command, 
-                current_dir, 
-                container, 
-                True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], 
-                command, 
-                current_dir, 
-                container
-            )
+        # Format output using the universal formatter
+        formatted_output = format_command_output(
+            result['stdout'], 
+            result['stderr'] if not result['success'] else "", 
+            "bench"
+        )
         
         return jsonify({
             'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],  # Keep raw output for processing
+            'output': formatted_output['formatted_output'],
+            'raw_output': result['stdout'],
             'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
+            'error': formatted_output['formatted_error'] if not result['success'] else None
         })
         
     except Exception as e:
@@ -1423,31 +1626,112 @@ def execute_command_api():
                 # Set timeout for bench commands
                 timeout_seconds = 60
                 
-                # Read output line by line for streaming
-                output_lines = []
-                while True:
-                    line = process.stdout.readline()
-                    if not line:
-                        break
-                    output_lines.append(line.rstrip())
+                # Special handling for bench migrate command
+                if command.lower().strip() == 'bench migrate':
+                    output_lines = []
+                    current_app = None
+                    last_progress = 0
+                    
+                    while True:
+                        line = process.stdout.readline()
+                        if not line:
+                            break
+                        
+                        line = line.rstrip()
+                        
+                        # Extract meaningful information from migrate output
+                        if 'Migrating' in line and 'local' in line:
+                            # Extract site name
+                            site_name = line.split('Migrating ')[1].split('\n')[0]
+                            output_lines.append(f"🔄 Starting migration for site: {site_name}")
+                        
+                        elif 'Updating DocTypes for' in line and '%' in line:
+                            # Extract app name and progress
+                            parts = line.split('Updating DocTypes for ')
+                            if len(parts) > 1:
+                                app_part = parts[1].split(' : ')[0]
+                                progress_part = parts[1].split(' : ')[1] if ' : ' in parts[1] else ''
+                                
+                                # Extract percentage
+                                if '%' in progress_part:
+                                    percent = progress_part.split('%')[0].split()[-1]
+                                    try:
+                                        percent_int = int(percent)
+                                        # Only show progress every 10% to reduce noise
+                                        if percent_int >= last_progress + 10:
+                                            output_lines.append(f"📊 Updating DocTypes for {app_part}: {percent_int}%")
+                                            last_progress = percent_int
+                                    except ValueError:
+                                        pass
+                        
+                        elif 'Updating Dashboard for' in line:
+                            app_name = line.split('Updating Dashboard for ')[1]
+                            output_lines.append(f"📈 Updating Dashboard for {app_name}")
+                        
+                        elif 'Updating customizations for' in line:
+                            doctype = line.split('Updating customizations for ')[1]
+                            output_lines.append(f"🔧 Updating customizations for {doctype}")
+                        
+                        elif 'Executing `after_migrate` hooks' in line:
+                            output_lines.append("⚡ Executing post-migration hooks...")
+                        
+                        elif 'Queued rebuilding of search index' in line:
+                            site_name = line.split('Queued rebuilding of search index for ')[1]
+                            output_lines.append(f"🔍 Queued search index rebuild for {site_name}")
+                        
+                        elif line.strip() and not any(x in line for x in ['[', ']', '=']):
+                            # Include other important lines that aren't progress bars
+                            output_lines.append(line)
+                    
+                    # Get final output
+                    output = '\n'.join(output_lines)
+                    error = ""
+                    
+                    # Check if process completed successfully
+                    process.wait()
+                    if process.returncode != 0:
+                        error = f"Migration failed with exit code {process.returncode}"
+                    else:
+                        # Add success message
+                        output += "\n\n✅ Migration completed successfully!"
                 
-                # Get final output
-                output = '\n'.join(output_lines)
-                error = ""
-                
-                # Check if process completed successfully
-                process.wait()
-                if process.returncode != 0:
-                    error = f"Command failed with exit code {process.returncode}"
-                    if 'bench get-app' in command and 'Aborted' in output:
-                        error = error + "\n💡 Tip: Use 'bench get-app app_name --overwrite' to overwrite existing apps"
-                
+                else:
+                    # For other bench commands, use the original approach
+                    output_lines = []
+                    while True:
+                        line = process.stdout.readline()
+                        if not line:
+                            break
+                        output_lines.append(line.rstrip())
+                    
+                    # Get final output
+                    output = '\n'.join(output_lines)
+                    error = ""
+                    
+                    # Check if process completed successfully
+                    process.wait()
+                    if process.returncode != 0:
+                        error = f"Command failed with exit code {process.returncode}"
+                        if 'bench get-app' in command and 'Aborted' in output:
+                            error = error + "\n💡 Tip: Use 'bench get-app app_name --overwrite' to overwrite existing apps"
                 
                 # Log command execution
                 log_command_execution(command, container, process.returncode == 0, error if process.returncode != 0 else None)
+                
+                # Detect command type for better formatting
+                command_type = "general"
+                if command.lower().startswith('bench '):
+                    command_type = "bench"
+                elif command.lower().startswith('docker '):
+                    command_type = "docker"
+                elif command.lower().startswith('ls ') or command.lower() == 'ls' or command.lower().startswith('find '):
+                    command_type = "filesystem"
+                
+                formatted_output = format_command_output(output, error, command_type)
+                
                 return jsonify({
-                    'output': output,
-                    'error': error,
+                    'output': formatted_output['formatted_output'],
+                    'error': formatted_output['formatted_error'],
                     'current_dir': current_dir,
                     'is_streaming': True,
                     'stream_command': command
@@ -1483,8 +1767,19 @@ def execute_command_api():
         # Log the command execution
         log_command_execution(command, container, True, None)
         
+        # Detect command type for better formatting
+        command_type = "general"
+        if command.lower().startswith('bench '):
+            command_type = "bench"
+        elif command.lower().startswith('docker '):
+            command_type = "docker"
+        elif command.lower().startswith('ls ') or command.lower() == 'ls' or command.lower().startswith('find '):
+            command_type = "filesystem"
+        
+        formatted_output = format_command_output(output, error, command_type)
+        
         return jsonify({
-            'output': output,
+            'output': formatted_output['formatted_output'],
             'current_dir': current_dir
         })
     except Exception as e:
@@ -1799,635 +2094,52 @@ if __name__ == '__main__':
 
 
 # Additional API endpoints for enhanced app management
-@app.route('/api/frappe/list-apps', methods=['POST'])
-@require_auth
-def frappe_list_apps():
-    """API endpoint for 'bench list-apps' command"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        command = "bench list-apps"
-        
-        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
-        
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_list_apps", username, client_ip, 
-                  f"List apps on container {container}", status, user_id)
-        
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], command, current_dir, container, True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], command, current_dir, container
-            )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_list_apps: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/list-sites', methods=['POST'])
-@require_auth
-def frappe_list_sites():
-    """API endpoint for 'bench list-sites' command"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        command = "bench list-sites"
-        
-        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
-        
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_list_sites", username, client_ip, 
-                  f"List sites on container {container}", status, user_id)
-        
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], command, current_dir, container, True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], command, current_dir, container
-            )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_list_sites: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/bench-status', methods=['POST'])
-@require_auth
-def frappe_bench_status():
-    """API endpoint for 'bench status' command"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        command = "bench status"
-        
-        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
-        
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_bench_status", username, client_ip, 
-                  f"Check bench status on container {container}", status, user_id)
-        
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], command, current_dir, container, True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], command, current_dir, container
-            )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_bench_status: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/clear-cache', methods=['POST'])
-@require_auth
-def frappe_clear_cache():
-    """API endpoint for 'bench clear-cache' command"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        command = "bench clear-cache"
-        
-        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=60)
-        
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_clear_cache", username, client_ip, 
-                  f"Clear cache on container {container}", status, user_id)
-        
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], command, current_dir, container, True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], command, current_dir, container
-            )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_clear_cache: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/migrate', methods=['POST'])
-@require_auth
-def frappe_migrate():
-    """API endpoint for 'bench migrate' command"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        command = "bench migrate"
-        
-        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=300)
-        
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_migrate", username, client_ip, 
-                  f"Migrate on container {container}", status, user_id)
-        
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], command, current_dir, container, True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], command, current_dir, container
-            )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_migrate: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/restart-bench', methods=['POST'])
-@require_auth
-def frappe_restart_bench():
-    """API endpoint for 'bench restart' command"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        command = "bench restart"
-        
-        result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=120)
-        
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_restart_bench", username, client_ip, 
-                  f"Restart bench on container {container}", status, user_id)
-        
-        if result['success']:
-            formatted_output = TerminalFormatter.format_terminal_output(
-                result['stdout'], command, current_dir, container, True
-            )
-        else:
-            formatted_output = TerminalFormatter.format_error_output(
-                result['stderr'], command, current_dir, container
-            )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output,
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': result['stderr'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_restart_bench: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# Enhanced API endpoints with better error handling and fallbacks
-@app.route('/api/frappe/bench-info-safe', methods=['POST'])
-@require_auth
-def frappe_bench_info_safe():
-    """Safe version of bench info with fallbacks"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        
-        # Try multiple commands in order of preference
-        commands_to_try = [
-            "bench --version",
-            "bench list-apps",
-            "bench list-sites", 
-            "bench status",
-            "python3 -c 'import frappe; print(f\"Frappe version: {frappe.__version__}\")'",
-            "ls -la /home/frappe/frappe-bench/apps/",
-            "cat /home/frappe/frappe-bench/sites/apps.txt"
-        ]
-        
-        results = []
-        success_count = 0
-        
-        for command in commands_to_try:
-            try:
-                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
-                
-                if result['success']:
-                    success_count += 1
-                    results.append({
-                        'command': command,
-                        'output': result['stdout'],
-                        'success': True
-                    })
-                else:
-                    results.append({
-                        'command': command,
-                        'error': result['stderr'],
-                        'success': False
-                    })
-            except Exception as e:
-                results.append({
-                    'command': command,
-                    'error': str(e),
-                    'success': False
-                })
-        
-        # Log the action
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if success_count > 0 else "failed"
-        
-        log_audit("frappe_bench_info_safe", username, client_ip, 
-                  f"Safe bench info on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
-        
-        # Format output
-        formatted_output = f"Bench Information for {container}:\n"
-        formatted_output += "=" * 50 + "\n\n"
-        
-        for result in results:
-            if result['success']:
-                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
-            else:
-                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
-        
-        return jsonify({
-            'success': success_count > 0,
-            'output': formatted_output,
-            'raw_output': results,
-            'current_dir': current_dir,
-            'success_count': success_count,
-            'total_commands': len(commands_to_try),
-            'error': None if success_count > 0 else 'All commands failed'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_bench_info_safe: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/bench-status-safe', methods=['POST'])
-@require_auth
-def frappe_bench_status_safe():
-    """Safe version of bench status with fallbacks"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        
-        # Try multiple status checking commands
-        commands_to_try = [
-            "ps aux | grep -E '(redis|mariadb|nginx|supervisor)' | grep -v grep",
-            "supervisorctl status",
-            "bench --version",
-            "ls -la /home/frappe/frappe-bench/sites/",
-            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
-            "systemctl status redis-server mariadb nginx 2>/dev/null || echo 'Services not managed by systemctl'"
-        ]
-        
-        results = []
-        success_count = 0
-        
-        for command in commands_to_try:
-            try:
-                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
-                
-                if result['success']:
-                    success_count += 1
-                    results.append({
-                        'command': command,
-                        'output': result['stdout'],
-                        'success': True
-                    })
-                else:
-                    results.append({
-                        'command': command,
-                        'error': result['stderr'],
-                        'success': False
-                    })
-            except Exception as e:
-                results.append({
-                    'command': command,
-                    'error': str(e),
-                    'success': False
-                })
-        
-        # Log the action
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if success_count > 0 else "failed"
-        
-        log_audit("frappe_bench_status_safe", username, client_ip, 
-                  f"Safe bench status on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
-        
-        # Format output
-        formatted_output = f"Bench Status for {container}:\n"
-        formatted_output += "=" * 50 + "\n\n"
-        
-        for result in results:
-            if result['success']:
-                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
-            else:
-                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
-        
-        return jsonify({
-            'success': success_count > 0,
-            'output': formatted_output,
-            'raw_output': results,
-            'current_dir': current_dir,
-            'success_count': success_count,
-            'total_commands': len(commands_to_try),
-            'error': None if success_count > 0 else 'All status commands failed'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_bench_status_safe: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/list-apps-safe', methods=['POST'])
-@require_auth
-def frappe_list_apps_safe():
-    """Safe version of list apps with fallbacks"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        
-        # Try multiple ways to list apps
-        commands_to_try = [
-            "ls -la /home/frappe/frappe-bench/apps/",
-            "cat /home/frappe/frappe-bench/sites/apps.txt",
-            "cat /home/frappe/frappe-bench/sites/apps.json",
-            "bench list-apps",
-            "python3 -c 'import json; print(json.dumps([app for app in open(\"/home/frappe/frappe-bench/sites/apps.txt\").read().strip().split(\"\\n\") if app], indent=2))'"
-        ]
-        
-        results = []
-        success_count = 0
-        
-        for command in commands_to_try:
-            try:
-                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
-                
-                if result['success']:
-                    success_count += 1
-                    results.append({
-                        'command': command,
-                        'output': result['stdout'],
-                        'success': True
-                    })
-                else:
-                    results.append({
-                        'command': command,
-                        'error': result['stderr'],
-                        'success': False
-                    })
-            except Exception as e:
-                results.append({
-                    'command': command,
-                    'error': str(e),
-                    'success': False
-                })
-        
-        # Log the action
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if success_count > 0 else "failed"
-        
-        log_audit("frappe_list_apps_safe", username, client_ip, 
-                  f"Safe list apps on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
-        
-        # Format output
-        formatted_output = f"Installed Apps in {container}:\n"
-        formatted_output += "=" * 50 + "\n\n"
-        
-        for result in results:
-            if result['success']:
-                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
-            else:
-                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
-        
-        return jsonify({
-            'success': success_count > 0,
-            'output': formatted_output,
-            'raw_output': results,
-            'current_dir': current_dir,
-            'success_count': success_count,
-            'total_commands': len(commands_to_try),
-            'error': None if success_count > 0 else 'All list apps commands failed'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_list_apps_safe: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/frappe/list-sites-safe', methods=['POST'])
-@require_auth
-def frappe_list_sites_safe():
-    """Safe version of list sites with fallbacks"""
-    try:
-        data = request.json
-        container = data.get('container')
-        
-        if not container:
-            return jsonify({'success': False, 'error': 'Container is required'}), 400
-        
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        
-        # Try multiple ways to list sites
-        commands_to_try = [
-            "ls -la /home/frappe/frappe-bench/sites/",
-            "cat /home/frappe/frappe-bench/sites/currentsite.txt",
-            "bench list-sites",
-            "find /home/frappe/frappe-bench/sites/ -maxdepth 1 -type d -name '*.local' -o -name '*.com' | sort"
-        ]
-        
-        results = []
-        success_count = 0
-        
-        for command in commands_to_try:
-            try:
-                result = SecureDockerManager.run_command(f"sudo docker exec -u frappe {container} {command}", timeout=30)
-                
-                if result['success']:
-                    success_count += 1
-                    results.append({
-                        'command': command,
-                        'output': result['stdout'],
-                        'success': True
-                    })
-                else:
-                    results.append({
-                        'command': command,
-                        'error': result['stderr'],
-                        'success': False
-                    })
-            except Exception as e:
-                results.append({
-                    'command': command,
-                    'error': str(e),
-                    'success': False
-                })
-        
-        # Log the action
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if success_count > 0 else "failed"
-        
-        log_audit("frappe_list_sites_safe", username, client_ip, 
-                  f"Safe list sites on container {container} - {success_count}/{len(commands_to_try)} commands successful", status, user_id)
-        
-        # Format output
-        formatted_output = f"Available Sites in {container}:\n"
-        formatted_output += "=" * 50 + "\n\n"
-        
-        for result in results:
-            if result['success']:
-                formatted_output += f"✅ {result['command']}:\n{result['output']}\n\n"
-            else:
-                formatted_output += f"❌ {result['command']}: {result['error']}\n\n"
-        
-        return jsonify({
-            'success': success_count > 0,
-            'output': formatted_output,
-            'raw_output': results,
-            'current_dir': current_dir,
-            'success_count': success_count,
-            'total_commands': len(commands_to_try),
-            'error': None if success_count > 0 else 'All list sites commands failed'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_list_sites_safe: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+def format_terminal_response(output, error="", command=""):
+    """
+    Format terminal response for web display with professional styling
+    
+    Args:
+        output (str): Command output
+        error (str): Error messages
+        command (str): The command that was executed
+    
+    Returns:
+        str: HTML formatted response
+    """
+    
+    # Determine command type for better formatting
+    command_type = "general"
+    if command.lower().startswith('bench '):
+        command_type = "bench"
+    elif command.lower().startswith('docker '):
+        command_type = "docker"
+    
+    # Get formatted output
+    formatted = format_command_output(output, error, command_type)
+    
+    # Create HTML response
+    html_response = f"""
+    <div class="terminal-response">
+        <div class="command-executed">
+            <span class="prompt">$</span> <span class="command">{command}</span>
+        </div>
+    """
+    
+    if formatted['formatted_output']:
+        html_response += f"""
+        <div class="output-section">
+            <pre class="output">{formatted['formatted_output']}</pre>
+        </div>
+        """
+    
+    if formatted['formatted_error']:
+        html_response += f"""
+        <div class="error-section">
+            <pre class="error">{formatted['formatted_error']}</pre>
+        </div>
+        """
+    
+    html_response += "</div>"
+    
+    return html_response
 

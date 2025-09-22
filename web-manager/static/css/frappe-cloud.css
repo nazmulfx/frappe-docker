@@ -86,7 +86,7 @@
     padding: 1rem;
     font-family: 'Courier New', monospace;
     font-size: 0.875rem;
-    max-height: 300px;
+    max-height: 1000px;
     overflow-y: auto;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
 }
