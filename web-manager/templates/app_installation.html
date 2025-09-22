@@ -1085,36 +1085,46 @@ class FrappeAppManager {
                 return;
             }
             
-            // Prepare data for API call
-            const requestData = {
-                container: this.selectedContainer,
-                app_name: appName,
-                site_name: siteName
-            };
-            
-            this.addToLog('info', `Installing app ${appName} on site ${siteName}...`);
-            
-            const response = await fetch('/api/frappe/install-app', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                },
-                body: JSON.stringify(requestData)
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
-                if (result.output) {
-                    this.addToLog('info', result.output);
+            try {
+                this.addToLog('info', `Installing app ${appName} on site ${siteName}...`);
+                
+                // Build the bench install-app command
+                const command = `bench --site ${siteName} install-app ${appName}`;
+                
+                this.addToLog('info', `Executing command: ${command}`);
+                
+                const response = await fetch('/api/frappe/execute-command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCSRFToken()
+                    },
+                    body: JSON.stringify({
+                        container: this.selectedContainer,
+                        command: command
+                    })
+                });
+                
+                const result = await response.json();
+                
+                this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
+                
+                // Check if we have output and no error (streaming responses don't have success field)
+                if (result.output && !result.error) {
+                    this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
+                    if (result.output) {
+                        this.addToLog('info', result.output);
+                    }
+                } else {
+                    this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
+                    if (result.error) {
+                        this.addToLog('error', result.error);
+                    }
+                    // Also log the raw result for debugging
+                    this.addToLog('error', `Raw result: ${JSON.stringify(result)}`);
                 }
-            } else {
-                this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
-                if (result.error) {
-                    this.addToLog('error', result.error);
-                }
+            } catch (error) {
+                this.addToLog('error', `Error installing app: ${error.message}`);
             }
         } catch (error) {
             this.addToLog('error', `Error installing app: ${error.message}`);

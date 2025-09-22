@@ -1368,63 +1368,6 @@ def app_installation():
     
     return render_template('app_installation.html', container_groups=formatted_container_groups)
 
-@app.route('/api/frappe/install-app', methods=['POST'])
-@require_auth
-def frappe_install_app():
-    """API endpoint for 'bench install-app' command"""
-    try:
-        
-        data = request.json
-        container = data.get('container')
-        app_name = data.get('app_name')
-        site_name = data.get('site_name')
-        repo_url = data.get('repo_url')
-        
-        if not container or not app_name or not site_name:
-            return jsonify({'success': False, 'error': 'Container, app name, and site name are required'}), 400
-        
-        # Validate container name and other inputs
-        if not SecurityManager.validate_container_name(container):
-            return jsonify({'success': False, 'error': 'Invalid container name'}), 400
-        
-        # Get current working directory for this container
-        current_dir = container_working_dirs.get(container, "/home/frappe")
-        
-        # Build command
-        command = f"bench --site {site_name} install-app {app_name}"
-        cmd = f"sudo docker exec -u frappe {container} {command}"
-        
-        # Execute command
-        result = SecureDockerManager.run_command(cmd, timeout=300)  # Longer timeout for app installation
-        
-        # Log the action
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        username = session.get('username', 'unknown')
-        user_id = session.get('user_id')
-        status = "success" if result['success'] else "failed"
-        
-        log_audit("frappe_install_app", username, client_ip, 
-                  f"Install app {app_name} on site {site_name} in container {container}", status, user_id)
-        
-        # Format output using the universal formatter
-        formatted_output = format_command_output(
-            result['stdout'], 
-            result['stderr'] if not result['success'] else "", 
-            "bench"
-        )
-        
-        return jsonify({
-            'success': result['success'],
-            'output': formatted_output['formatted_output'],
-            'raw_output': result['stdout'],
-            'current_dir': current_dir,
-            'error': formatted_output['formatted_error'] if not result['success'] else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in frappe_install_app: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 @require_auth
 @app.route('/api/frappe/execute-command', methods=['POST'])
 @require_auth
