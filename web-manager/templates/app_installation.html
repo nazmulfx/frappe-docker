@@ -303,6 +303,17 @@
                                                     </div>
                                                 </div>
                                                 
+                                                    <div class="col-md-2">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">&nbsp;</label>
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="checkbox" id="get-app-overwrite">
+                                                                <label class="form-check-label" for="get-app-overwrite">
+                                                                    Overwrite
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 <!-- GitHub Token Field (shown only when Private is selected) -->
                                                 <div class="row" id="github-token-row" style="display: none;">
                                                     <div class="col-md-6">
@@ -362,6 +373,18 @@
                                                 </div>
                                             </div>
                                             
+                                                <div class="row mt-2">
+                                                    <div class="col-md-4">
+                                                        <div class="mb-3">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="checkbox" id="install-app-force">
+                                                                <label class="form-check-label" for="install-app-force">
+                                                                    Force Install (--force)
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             <!-- App Management Section -->
                                             <div class="mb-4">
                                                 <h6 class="text-info">
@@ -378,6 +401,8 @@
                                                             <i class="bi bi-arrow-up"></i> Update App
                                                         </button>
                                                     </div>
+                                                </div>
+                                                <div class="row">
                                                     <div class="col-md-3">
                                                         <button class="btn btn-outline-info w-100 app-operation-btn" id="list-apps-btn">
                                                             <i class="bi bi-list"></i> List Apps
@@ -385,7 +410,12 @@
                                                     </div>
                                                     <div class="col-md-3">
                                                         <button class="btn btn-outline-secondary w-100 app-operation-btn" id="bench-restart-btn">
-                                                            <i class="bi bi-arrow-clockwise"></i> Restart Bench
+                                                            <i class="bi bi-arrow-clockwise"></i> Supervisor Bench
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <button class="btn btn-outline-success w-100 app-operation-btn" id="supervisor-status-btn">
+                                                            <i class="bi bi-activity"></i> Supervisor Status
                                                         </button>
                                                     </div>
                                                 </div>
@@ -396,6 +426,54 @@
                                     
                                 </div>
                                 <div class="col-md-12">
+                                <!-- Bench Build Card -->
+                                <div class="col-md-8">
+                                    <div class="frappe-cloud-card mt-3">
+                                        <div class="card-header bg-secondary text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-hammer"></i> Bench Build
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="build-app-name" class="form-label">App Name (Optional)</label>
+                                                        <div class="input-group">
+                                                            <select class="form-select" id="build-app-name">
+                                                                <option value="">Build All Apps</option>
+                                                            </select>
+                                                            <button class="btn btn-outline-secondary" type="button" id="refresh-build-apps-btn" title="Refresh Apps">
+                                                                <i class="bi bi-bootstrap-reboot"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div class="form-text">Leave empty to build all apps, or select specific app</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">&nbsp;</label>
+                                                        <button class="btn btn-secondary w-100" id="bench-build-btn">
+                                                            <i class="bi bi-hammer"></i> Build
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">&nbsp;</label>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="build-force">
+                                                            <label class="form-check-label" for="build-force">
+                                                                Force Build
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                     <!-- Operation Log -->
                                     <div class="frappe-cloud-card mt-3">
                                         <div class="card-header bg-dark text-white">
@@ -782,7 +860,6 @@ class FrappeAppManager {
         
         if (installBtn) {
             installBtn.addEventListener('click', () => {
-                alert('Button clicked!');
                 this.installApp();
             });
         }
@@ -791,6 +868,8 @@ class FrappeAppManager {
         document.getElementById('update-app-btn')?.addEventListener('click', () => this.updateApp());
         document.getElementById('list-apps-btn')?.addEventListener('click', () => this.listApps());
         document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
+        document.getElementById('supervisor-status-btn')?.addEventListener('click', () => this.supervisorStatus());
+        document.getElementById('bench-build-btn')?.addEventListener('click', () => this.benchBuild());
         
         
         // Quick actions
@@ -995,6 +1074,7 @@ class FrappeAppManager {
         const branch = document.getElementById('app-branch').value;
         const authMethod = document.getElementById('auth-method').value;
         const githubToken = document.getElementById('github-token').value;
+        const overwrite = document.getElementById('get-app-overwrite').checked;
         
         if (!repoUrl) {
             this.addToLog('error', 'Repository URL is required');
@@ -1026,9 +1106,12 @@ class FrappeAppManager {
                 // For public repos, use bench get-app
                 command = `bench get-app ${repoUrl}`;
             }
-            
             if (branch) {
                 command += ` --branch ${branch}`;
+            }
+            
+            if (overwrite) {
+                command += ` --overwrite`;
             }
             
             this.addToLog('info', `Executing command: ${command}`);
@@ -1074,6 +1157,7 @@ class FrappeAppManager {
         try {
             const appName = document.getElementById('install-app-name').value;
             const siteName = document.getElementById('install-site-name').value;
+            const force = document.getElementById('install-app-force').checked;
             
             if (!appName || !siteName) {
                 this.addToLog('error', 'Please select an app and a site');
@@ -1090,6 +1174,10 @@ class FrappeAppManager {
                 
                 // Build the bench install-app command
                 const command = `bench --site ${siteName} install-app ${appName}`;
+                
+                if (force) {
+                    command += ` --force`;
+                }
                 
                 this.addToLog('info', `Executing command: ${command}`);
                 
@@ -1160,6 +1248,7 @@ class FrappeAppManager {
             "cat /home/frappe/frappe-bench/sites/apps.json"
         ];
         
+        
         for (const cmd of commands) {
             await this.executeCommand(cmd, `Listing apps: ${cmd}`);
         }
@@ -1168,10 +1257,47 @@ class FrappeAppManager {
     }
     
     async restartBench() {
-        if (confirm('Are you sure you want to restart the bench? This will restart all services.')) {
-            const command = 'bench restart';
-            await this.executeCommand(command, 'Restarting bench');
+        if (!this.selectedContainer) {
+            this.showError('Please select a container first');
+            return;
         }
+        if (confirm('Are you sure you want to restart the bench? This will restart all services.')) {
+            const command = '/home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all';
+            await this.executeCommand(command, 'Restarting bench services via Supervisor');
+        }
+    }
+    
+    async supervisorStatus() {
+        if (!this.selectedContainer) {
+            this.showError('Please select a container first');
+            return;
+        }
+        const command = '/home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status';
+        await this.executeCommand(command, 'Checking Supervisor status');
+    }
+    
+    async benchBuild() {
+        if (!this.selectedContainer) {
+            this.showError('Please select a container first');
+            return;
+        }
+        
+        const appName = document.getElementById('build-app-name').value;
+        const force = document.getElementById('build-force').checked;
+        
+        let command;
+        if (appName) {
+            command = `bench build --app ${appName}`;
+        } else {
+            command = 'bench build';
+        }
+        
+        if (force) {
+            command += ` --force`;
+        }
+        
+        const description = appName ? `Building app: ${appName}` : 'Building all apps';
+        await this.executeCommand(command, description);
     }
     
     
@@ -1358,12 +1484,16 @@ class FrappeAppManager {
     // Updated populateAppsDropdown method:
     populateAppsDropdown(appsOutput) {
         const appsSelect = document.getElementById('install-app-name');
+        const buildAppsSelect = document.getElementById('build-app-name');
         if (!appsSelect) {
             return;
         }
         
         // Clear existing options except the first one
         appsSelect.innerHTML = '<option value="">Select an app...</option>';
+        if (buildAppsSelect) {
+            buildAppsSelect.innerHTML = '<option value="">Build All Apps</option>';
+        }
         
         if (!appsOutput || appsOutput.trim() === '') {
             return;
@@ -1390,27 +1520,44 @@ class FrappeAppManager {
             option.value = app;
             option.textContent = app;
             appsSelect.appendChild(option);
+            
+            // Also add to build apps dropdown
+            const buildAppsSelect = document.getElementById('build-app-name');
+            if (buildAppsSelect) {
+                const buildOption = document.createElement('option');
+                buildOption.value = app;
+                buildOption.textContent = app;
+                buildAppsSelect.appendChild(buildOption);
+            }
         });
     }
 
     // Method to clear the apps dropdown
     clearAppsDropdown() {
         const appsSelect = document.getElementById('install-app-name');
+        const buildAppsSelect = document.getElementById('build-app-name');
         if (appsSelect) {
             appsSelect.innerHTML = '<option value="">Select an app...</option>';
+        if (buildAppsSelect) {
+            buildAppsSelect.innerHTML = '<option value="">Build All Apps</option>';
+        }
         }
     }
 
     // Method to set loading state for apps dropdown
     setAppsDropdownLoading(isLoading) {
         const appsSelect = document.getElementById('install-app-name');
+        const buildAppsSelect = document.getElementById('build-app-name');
         if (!appsSelect) return;
         
         if (isLoading) {
             appsSelect.innerHTML = '<option value="">Loading apps...</option>';
+            if (buildAppsSelect) buildAppsSelect.innerHTML = '<option value="">Loading apps...</option>';
+            if (buildAppsSelect) buildAppsSelect.disabled = true;
             appsSelect.disabled = true;
         } else {
             appsSelect.disabled = false;
+            if (buildAppsSelect) buildAppsSelect.disabled = false;
         }
     }
 
