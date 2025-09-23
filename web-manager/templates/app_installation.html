@@ -160,9 +160,6 @@
                         <button type="button" class="btn btn-outline-primary btn-sm" id="refresh-containers">
                             <i class="bi bi-arrow-clockwise"></i> Refresh
                         </button>
-                        <button type="button" class="btn btn-outline-success btn-sm" id="bulk-operations">
-                            <i class="bi bi-layers"></i> Bulk Operations
-                        </button>
                     </div>
                 </div>
                 <div class="card-body">
@@ -253,226 +250,261 @@
                                             </div>
                                         </div>
                                     </div>
+
+
+                                    <div class="frappe-cloud-card mt-3">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-lightning"></i> App Management
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-primary w-100 app-operation-btn" id="uninstall-app-btn">
+                                                    <i class="bi bi-trash"></i> Uninstall App
+                                                </button>
+                                            </div>
+
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-warning w-100 app-operation-btn" id="update-app-btn">
+                                                    <i class="bi bi-arrow-up"></i> Update App
+                                                </button>
+                                            </div>
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-info w-100 app-operation-btn" id="list-apps-btn">
+                                                    <i class="bi bi-list"></i> List Apps
+                                                </button>
+                                            </div>
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-secondary w-100 app-operation-btn" id="bench-restart-btn">
+                                                    <i class="bi bi-arrow-clockwise"></i> Supervisor Bench Restart
+                                                </button>
+                                            </div>
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-success w-100 app-operation-btn" id="supervisor-status-btn">
+                                                    <i class="bi bi-activity"></i> Supervisor Status
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                 </div>
                                 
                                 <!-- App Operations -->
                                 <div class="col-md-8">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-warning text-dark">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-gear"></i> App Operations
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <!-- Get App Section -->
-                                            <div class="mb-4">
-                                                <h6 class="text-primary">
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="col-md-12">
+                                            <!-- Card Header -->
+                                            <div class="card-header bg-warning text-dark">
+                                                <h6 class="mb-0">
                                                     <i class="bi bi-download"></i> Get App
                                                 </h6>
-                                                <div class="row">
-                                                    <div class="col-md-12">
-                                                        <div class="mb-3">
-                                                            <label for="app-repo-url" class="form-label">Repository URL</label>
-                                                            <input type="url" class="form-control" id="app-repo-url" 
-                                                                   placeholder="https://github.com/frappe/app-name">
+                                            </div>
+                                        
+                                            <!-- Card Body -->
+                                            <div class="card-body">
+                                                <div class="mb-4">
+                                        
+                                                    <div class="row">
+                                                        <!-- Repository URL -->
+                                                        <div class="col-md-12">
+                                                            <div class="mb-3">
+                                                                <label for="app-repo-url" class="form-label">Repository URL</label>
+                                                                <input type="url" class="form-control" id="app-repo-url"
+                                                                    placeholder="https://github.com/frappe/app-name">
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <div class="mb-3">
-                                                            <label for="app-branch" class="form-label">Branch (Optional)</label>
-                                                            <input type="text" class="form-control" id="app-branch" 
-                                                                   placeholder="main, develop, etc.">
+                                        
+                                                        <!-- Branch -->
+                                                        <div class="col-md-3">
+                                                            <div class="mb-3">
+                                                                <label for="app-branch" class="form-label">Branch (Optional)</label>
+                                                                <input type="text" class="form-control" id="app-branch"
+                                                                    placeholder="main, develop, etc.">
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <div class="mb-3">
-                                                            <label for="auth-method" class="form-label">Auth Method</label>
-                                                            <select class="form-select" id="auth-method">
-                                                                <option value="none">Public</option>
-                                                                <option value="token">Private (Token)</option>
-                                                            </select>
+                                        
+                                                        <!-- Auth Method -->
+                                                        <div class="col-md-3">
+                                                            <div class="mb-3">
+                                                                <label for="auth-method" class="form-label">Auth Method</label>
+                                                                <select class="form-select" id="auth-method">
+                                                                    <option value="none">Public</option>
+                                                                    <option value="token">Private (Token)</option>
+                                                                </select>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div class="col-md-2">
-                                                        <div class="mb-3">
-                                                            <label class="form-label">&nbsp;</label>
-                                                            <button class="btn btn-primary w-100" id="get-app-btn">
-                                                                <i class="bi bi-download"></i> Get App
-                                                            </button>
+                                        
+                                                        <!-- Overwrite Checkbox -->
+                                                        <div class="col-md-2">
+                                                            <div class="mb-3">
+                                                                <label class="form-label">&nbsp;</label>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" id="get-app-overwrite">
+                                                                    <label class="form-check-label" for="get-app-overwrite">
+                                                                        Overwrite
+                                                                    </label>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                    <div class="col-md-2">
-                                                        <div class="mb-3">
-                                                            <label class="form-label">&nbsp;</label>
-                                                            <div class="form-check">
-                                                                <input class="form-check-input" type="checkbox" id="get-app-overwrite">
-                                                                <label class="form-check-label" for="get-app-overwrite">
-                                                                    Overwrite
-                                                                </label>
+                                        
+                                                        <!-- GitHub Token (Only for private repos) -->
+                                                        <div id="github-token-row" style="display: none;">
+                                                            <div class="col-md-6">
+                                                                <div class="mb-3">
+                                                                    <label for="github-token" class="form-label">GitHub Personal Access Token</label>
+                                                                    <input type="password" class="form-control" id="github-token"
+                                                                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                                                                    <div class="form-text">Required for private GitHub repositories</div>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                <!-- GitHub Token Field (shown only when Private is selected) -->
-                                                <div class="row" id="github-token-row" style="display: none;">
+                                        
+                                                </div>
+                                            </div>
+
+                                            <!-- Get App Button -->
+                                            <div class="card-footer">
+                                                <div class="col-md-2 ms-auto"> <!-- ms-auto pushes it to the right -->
+                                                    <button class="btn btn-primary w-100" id="get-app-btn">
+                                                        <i class="bi bi-download"></i> Get App
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="col-md-12">
+                                            <!-- Card Header -->
+                                            <div class="card-header bg-success text-dark">
+                                                <h6 class="mb-0">
+                                                    <i class="bi bi-box-arrow-in-down"></i> Install App
+                                                </h6>
+                                            </div>
+
+                                            <div class="card-body">
+                                                <div class="mb-4">
+                                                    <div class="row">
+                                                        <div class="col-md-4">
+                                                            <div class="mb-3">
+                                                                <label for="install-app-name" class="form-label">App Name</label>
+                                                                <div class="input-group">
+                                                                    <select class="form-select" id="install-app-name">
+                                                                        <option value="">Select an app...</option>
+                                                                    </select>
+                                                                    <button class="btn btn-outline-secondary" type="button" id="refresh-apps-btn" title="Refresh Apps">
+                                                                        <i class="bi bi-bootstrap-reboot"></i>
+                                                                    </button>
+                                                                </div>
+                                                                <div class="form-text">Apps will be loaded when you select a container</div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <div class="mb-3">
+                                                                <label for="install-site-name" class="form-label">Site Name</label>
+                                                                <div class="input-group">
+                                                                    <select class="form-select" id="install-site-name">
+                                                                        <option value="">Select a site...</option>
+                                                                    </select>
+                                                                    <button class="btn btn-outline-secondary" type="button" id="refresh-sites-btn" title="Refresh Sites">
+                                                                        <i class="bi bi-bootstrap-reboot"></i>
+                                                                    </button>
+                                                                </div>
+                                                                <div class="form-text">Sites will be loaded when you select a container</div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <div class="mb-3">
+                                                                <label class="form-label">&nbsp;</label>
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" id="install-app-force">
+                                                                    <label class="form-check-label" for="install-app-force">
+                                                                        Force Install (--force)
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="card-footer">
+
+
+                                                <div class="col-md-2 ms-auto"> 
+
+                                                    <button class="btn btn-success w-100" id="install-app-btn">
+                                                        <i class="bi bi-box-arrow-in-down"></i> Install App
+                                                    </button>
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>       
+
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="col-md-12">
+                                            <!-- Card Header -->
+                                            <div class="card-header bg-info text-dark">
+                                                <h6 class="mb-0">
+                                                    <i class="bi bi-hammer"></i> Bench Build
+                                                </h6>
+                                            </div>
+
+                                            <div class="card-body">
+                                            <!-- App Management Section -->
+                                                
+                                                <div class="row">
                                                     <div class="col-md-6">
                                                         <div class="mb-3">
-                                                            <label for="github-token" class="form-label">GitHub Personal Access Token</label>
-                                                            <input type="password" class="form-control" id="github-token" 
-                                                                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
-                                                            <div class="form-text">Required for private GitHub repositories</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <hr>
-                                            
-                                            <!-- Install App Section -->
-                                            <div class="mb-4">
-                                                <h6 class="text-success">
-                                                    <i class="bi bi-install"></i> Install App
-                                                </h6>
-                                                <div class="row">
-                                                    <div class="col-md-4">
-                                                        <div class="mb-3">
-                                                            <label for="install-app-name" class="form-label">App Name</label>
+                                                            <label for="build-app-name" class="form-label">App Name (Optional)</label>
                                                             <div class="input-group">
-                                                                <select class="form-select" id="install-app-name">
-                                                                    <option value="">Select an app...</option>
+                                                                <select class="form-select" id="build-app-name">
+                                                                    <option value="">Build All Apps</option>
                                                                 </select>
-                                                                <button class="btn btn-outline-secondary" type="button" id="refresh-apps-btn" title="Refresh Apps">
+                                                                <button class="btn btn-outline-secondary" type="button" id="refresh-build-apps-btn" title="Refresh Apps">
                                                                     <i class="bi bi-bootstrap-reboot"></i>
                                                                 </button>
                                                             </div>
-                                                            <div class="form-text">Apps will be loaded when you select a container</div>
+                                                            <div class="form-text">Leave empty to build all apps, or select specific app</div>
                                                         </div>
                                                     </div>
-                                                    <div class="col-md-4">
-                                                        <div class="mb-3">
-                                                            <label for="install-site-name" class="form-label">Site Name</label>
-                                                            <div class="input-group">
-                                                                <select class="form-select" id="install-site-name">
-                                                                    <option value="">Select a site...</option>
-                                                                </select>
-                                                                <button class="btn btn-outline-secondary" type="button" id="refresh-sites-btn" title="Refresh Sites">
-                                                                    <i class="bi bi-bootstrap-reboot"></i>
-                                                                </button>
-                                                            </div>
-                                                            <div class="form-text">Sites will be loaded when you select a container</div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-4">
+                                                    <div class="col-md-3">
                                                         <div class="mb-3">
                                                             <label class="form-label">&nbsp;</label>
-                                                            <button class="btn btn-success w-100" id="install-app-btn">
-                                                                <i class="bi bi-install"></i> Install App
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                                <div class="row mt-2">
-                                                    <div class="col-md-4">
-                                                        <div class="mb-3">
                                                             <div class="form-check">
-                                                                <input class="form-check-input" type="checkbox" id="install-app-force">
-                                                                <label class="form-check-label" for="install-app-force">
-                                                                    Force Install (--force)
+                                                                <input class="form-check-input" type="checkbox" id="build-force">
+                                                                <label class="form-check-label" for="build-force">
+                                                                    Force Build
                                                                 </label>
                                                             </div>
                                                         </div>
                                                     </div>
+
+
+                                                </div>                                      
+                                            </div>  
+                                            <div class="card-footer">
+
+                                                <div class="col-md-2 ms-auto"> 
+
+                                                    <button class="btn btn-secondary w-100" id="install-app-btn">
+                                                        <i class="bi bi-hammer"></i> Build
+                                                    </button>
+
                                                 </div>
-                                            <!-- App Management Section -->
-                                            <div class="mb-4">
-                                                <h6 class="text-info">
-                                                    <i class="bi bi-gear-fill"></i> App Management
-                                                </h6>
-                                                <div class="row">
-                                                    <div class="col-md-3">
-                                                        <button class="btn btn-outline-primary w-100 app-operation-btn" id="uninstall-app-btn">
-                                                            <i class="bi bi-trash"></i> Uninstall App
-                                                        </button>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <button class="btn btn-outline-warning w-100 app-operation-btn" id="update-app-btn">
-                                                            <i class="bi bi-arrow-up"></i> Update App
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <div class="row">
-                                                    <div class="col-md-3">
-                                                        <button class="btn btn-outline-info w-100 app-operation-btn" id="list-apps-btn">
-                                                            <i class="bi bi-list"></i> List Apps
-                                                        </button>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <button class="btn btn-outline-secondary w-100 app-operation-btn" id="bench-restart-btn">
-                                                            <i class="bi bi-arrow-clockwise"></i> Supervisor Bench
-                                                        </button>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <button class="btn btn-outline-success w-100 app-operation-btn" id="supervisor-status-btn">
-                                                            <i class="bi bi-activity"></i> Supervisor Status
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
+                                            </div>                                    
+                                        
                                         </div>
                                     </div>
                                     
                                 </div>
+                                
                                 <div class="col-md-12">
-                                <!-- Bench Build Card -->
-                                <div class="col-md-8">
-                                    <div class="frappe-cloud-card mt-3">
-                                        <div class="card-header bg-secondary text-white">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-hammer"></i> Bench Build
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <div class="mb-3">
-                                                        <label for="build-app-name" class="form-label">App Name (Optional)</label>
-                                                        <div class="input-group">
-                                                            <select class="form-select" id="build-app-name">
-                                                                <option value="">Build All Apps</option>
-                                                            </select>
-                                                            <button class="btn btn-outline-secondary" type="button" id="refresh-build-apps-btn" title="Refresh Apps">
-                                                                <i class="bi bi-bootstrap-reboot"></i>
-                                                            </button>
-                                                        </div>
-                                                        <div class="form-text">Leave empty to build all apps, or select specific app</div>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">&nbsp;</label>
-                                                        <button class="btn btn-secondary w-100" id="bench-build-btn">
-                                                            <i class="bi bi-hammer"></i> Build
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">&nbsp;</label>
-                                                        <div class="form-check">
-                                                            <input class="form-check-input" type="checkbox" id="build-force">
-                                                            <label class="form-check-label" for="build-force">
-                                                                Force Build
-                                                            </label>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                                 
                                     <!-- Operation Log -->
                                     <div class="frappe-cloud-card mt-3">
