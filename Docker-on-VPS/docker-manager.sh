@@ -609,7 +609,8 @@ show_main_menu() {
     echo -e "${GREEN}9.${NC} File Transfer"
     echo -e "${GREEN}10.${NC} Install Packages"
     echo -e "${GREEN}11.${NC} View Create-Site logs"
-    echo -e "${GREEN}12.${NC} Exit"
+    echo -e "${GREEN}12.${NC} Fix Restart Policies"
+    echo -e "${GREEN}13.${NC} Exit"
     echo ""
 }
 
@@ -734,7 +735,7 @@ main() {
     while true; do
         show_main_menu
         
-        read -p "Select an option (1-12): " choice
+        read -p "Select an option (1-13): " choice
         
         case $choice in
             1)
@@ -771,6 +772,32 @@ main() {
                 view_logs "$SELECTED_SITE" "create-site"
                 ;;
             12)
+                echo -e "${BLUE}🔧 Fix Restart Policies${NC}"
+                echo "This will fix restart policies for all Frappe containers to auto-start after reboot."
+                read -p "Continue? (y/n): " confirm
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    for site in $(docker ps -a --format "{{.Names}}" | grep -E ".*-(db|redis|app)$" | sed "s/-(db\|redis\|app)$//" | sort -u); do
+                        echo -e "${BLUE}Fixing $site containers...${NC}"
+                        for container in ${site}-db ${site}-redis ${site}-app; do
+                            if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
+                                current_policy=$(docker inspect "$container" --format="{{.HostConfig.RestartPolicy.Name}}" 2>/dev/null || echo "unknown")
+                                if [[ "$current_policy" != "unless-stopped" ]]; then
+                                    echo "  Updating $container restart policy..."
+                                    docker update --restart=unless-stopped "$container"
+                                fi
+                                if [[ "$(docker inspect "$container" --format="{{.State.Status}}")" != "running" ]]; then
+                                    echo "  Starting $container..."
+                                    docker start "$container"
+                                fi
+                            fi
+                        done
+                    done
+                    echo -e "${GREEN}✅ Restart policies fixed! Containers will now start automatically after PC restart.${NC}"
+                else
+                    echo "Operation cancelled."
+                fi
+                ;;
+            13)
                 echo -e "${GREEN}👋 Goodbye!${NC}"
                 exit 0
                 ;;
@@ -882,6 +909,30 @@ rebuild_with_custom_apps() {
     
     while [ $attempt -lt $max_attempts ]; do
         if docker exec "${container_name}" bash -c "cd /home/frappe/frappe-bench && bench --version" >/dev/null 2>&1; then
+            echo -e "${BLUE}🔧 Fix Restart Policies${NC}"
+                echo "This will fix restart policies for all Frappe containers to auto-start after reboot."
+                read -p "Continue? (y/n): " confirm
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    for site in $(docker ps -a --format "{{.Names}}" | grep -E ".*-(db|redis|app)$" | sed "s/-(db\|redis\|app)$//" | sort -u); do
+                        echo -e "${BLUE}Fixing $site containers...${NC}"
+                        for container in ${site}-db ${site}-redis ${site}-app; do
+                            if docker ps -a --format "{{.Names}}" | grep -q "^${container}$"; then
+                                current_policy=$(docker inspect "$container" --format="{{.HostConfig.RestartPolicy.Name}}" 2>/dev/null || echo "unknown")
+                                if [[ "$current_policy" != "unless-stopped" ]]; then
+                                    echo "  Updating $container restart policy..."
+                                    docker update --restart=unless-stopped "$container"
+                                fi
+                                if [[ "$(docker inspect "$container" --format="{{.State.Status}}")" != "running" ]]; then
+                                    echo "  Starting $container..."
+                                    docker start "$container"
+                                fi
+                            fi
+                        done
+                    done
+                    echo -e "${GREEN}✅ Restart policies fixed! Containers will now start automatically after PC restart.${NC}"
+                else
+                    echo "Operation cancelled."
+                fi
             break
         fi
         echo -e "${YELLOW}   Attempt $((attempt + 1))/$max_attempts - Container not ready yet...${NC}"
@@ -982,7 +1033,7 @@ manage_containers_menu() {
     while true; do
         show_container_menu
         
-        read -p "Select an option (1-12): " choice
+        read -p "Select an option (1-13): " choice
         
         case $choice in
             1)

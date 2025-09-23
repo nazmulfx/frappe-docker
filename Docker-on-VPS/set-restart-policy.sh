@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Auto-Restart Policy Setter for Docker on VPS
-# This script adds "restart: always" policy to all containers in docker-compose files
+# This script adds "restart: unless-stopped" policy to all containers in docker-compose files
 
 # Color definitions
 GREEN='\033[0;32m'
@@ -85,11 +85,11 @@ add_restart_policy() {
     fi
     
     # Add restart policy before each container_name line that doesn't have one
-    sed 's/\(^\s*\)\(container_name:\)/\1restart: always\n\1\2/g' "$compose_file" > "$temp_file"
+    sed 's/\(^\s*\)\(container_name:\)/\1restart: unless-stopped\n\1\2/g' "$compose_file" > "$temp_file"
     
     # Count the number of restart policies added
-    local added_policies=$(grep -c "restart: always" "$temp_file")
-    local original_policies=$(grep -c "restart: always" "$compose_file")
+    local added_policies=$(grep -c "restart: unless-stopped" "$temp_file")
+    local original_policies=$(grep -c "restart: unless-stopped" "$compose_file")
     local new_policies=$((added_policies - original_policies))
     
     # Replace original file with the modified one
