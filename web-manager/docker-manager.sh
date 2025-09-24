@@ -171,11 +171,33 @@ check_database_connection() {
         return 1
     fi
     
-    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" -e "SELECT 1;" &>/dev/null; then
-        return 0
-    else
-        return 1
+    # Try with password first
+    if [ -n "$DB_PASS" ]; then
+        if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" -e "SELECT 1;" &>/dev/null; then
+            return 0
+        fi
     fi
+    
+    # Try without password (for auth_socket)
+    if mysql -h "$DB_HOST" -u "$DB_USER" -e "SELECT 1;" &>/dev/null; then
+        return 0
+    fi
+    
+    # Try with 127.0.0.1 if host is localhost
+    if [ "$DB_HOST" = "localhost" ]; then
+        if [ -n "$DB_PASS" ]; then
+            if mysql -h "127.0.0.1" -u "$DB_USER" -p"$DB_PASS" -e "SELECT 1;" &>/dev/null; then
+                DB_HOST="127.0.0.1"
+                return 0
+            fi
+        fi
+        if mysql -h "127.0.0.1" -u "$DB_USER" -e "SELECT 1;" &>/dev/null; then
+            DB_HOST="127.0.0.1"
+            return 0
+        fi
+    fi
+    
+    return 1
 }
 
 # Check if database exists
@@ -285,6 +307,13 @@ EOF
     # Ensure virtual environment is activated and run migration
     source "$VENV_DIR/bin/activate"
     cd "$SCRIPT_DIR"
+    
+    # Set environment variables for database connection
+    export DB_HOST="$DB_HOST"
+    export DB_NAME="$DB_NAME"
+    export DB_USER="$DB_USER"
+    export DB_PASS="$DB_PASS"
+    
     python3 temp_migration.py "${ADMIN_PASSWORD}"
     local migration_result=$?
     
@@ -407,12 +436,48 @@ start_app() {
         exit 1
     fi
     
+    # Set environment variables for database connection
+    export DB_HOST="$DB_HOST"
+    export DB_NAME="$DB_NAME"
+    export DB_USER="$DB_USER"
+    export DB_PASS="$DB_PASS"
+    
+    print_info "Database configuration:"
+    print_info "  Host: $DB_HOST"
+    print_info "  Database: $DB_NAME"
+    print_info "  User: $DB_USER"
+    print_info "  Password: [HIDDEN]"
+    echo ""
+    
     print_info "Starting web server on http://localhost:5000"
     print_info "Press Ctrl+C to stop the server"
     echo ""
     
     # Use the python from the virtual environment
     "$VENV_DIR/bin/python" "$APP_FILE"
+}
+
+# Test MySQL connection
+test_mysql_connection() {
+    print_step "Testing MySQL Connection..."
+    
+    if [[ -z "$DB_HOST" || -z "$DB_USER" || -z "$DB_PASS" ]]; then
+        prompt_mysql_credentials
+    fi
+    
+    create_venv
+    install_packages
+    
+    # Set environment variables for database connection
+    export DB_HOST="$DB_HOST"
+    export DB_NAME="$DB_NAME"
+    export DB_USER="$DB_USER"
+    export DB_PASS="$DB_PASS"
+    
+    # Run the Python test script
+    source "$VENV_DIR/bin/activate"
+    cd "$SCRIPT_DIR"
+    python3 test_mysql_connection.py
 }
 
 # Show help
@@ -423,6 +488,7 @@ show_help() {
     echo "  install    Install dependencies and setup environment"
     echo "  start      Start the application (default)"
     echo "  migrate    Run database migration only"
+    echo "  test       Test MySQL connection"
     echo "  status     Show application status"
     echo "  clean      Remove virtual environment and config files"
     echo "  help       Show this help message"
@@ -544,6 +610,9 @@ main() {
             prompt_admin_password
             run_migration
             print_success "Migration completed!"
+            ;;
+        "test")
+            test_mysql_connection
             ;;
         "status")
             show_status
