@@ -540,12 +540,111 @@ if ! is_traefik_running; then
     echo "Traefik is not running. Creating traefik-docker-compose.yml..."
     
     if [[ "$use_ssl" == true ]]; then
-        read -p "Enter your Cloudflare API token (leave blank for HTTP challenge): " cf_api_token
+        echo -e "${BLUE}SSL Configuration Options:${NC}"
+        echo "1. HTTP Challenge (works with ANY DNS provider: Namecheap, GoDaddy, etc.)"
+        echo "2. DNS Challenge (Cloudflare only - supports wildcard certificates)"
+        echo ""
+        read -p "Enter your Cloudflare API token (leave blank for HTTP challenge with any DNS provider): " cf_api_token
         read -p "Enter email for Let's Encrypt notifications: " email
+        
+        if [[ -z "$email" ]]; then
+            echo -e "${RED}Error: Email is required for Let's Encrypt certificates${NC}"
+            exit 1
+        fi
     fi
 
     # Generate Traefik config
-    # ... (omitted for brevity, but would be here)
+    if [[ "$use_ssl" == true ]]; then
+        # Prepare ACME challenge options based on token presence
+        if [[ -n "$cf_api_token" ]]; then
+            echo -e "${GREEN}Using DNS challenge with Cloudflare...${NC}"
+            ACME_CHALLENGE_OPTIONS=(
+                "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+                "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
+            )
+            ENV_SECTION=$(cat << EOF
+    environment:
+      - CF_DNS_API_TOKEN=${cf_api_token}
+EOF
+)
+        else
+            echo -e "${GREEN}Using HTTP challenge (works with any DNS provider)...${NC}"
+            ACME_CHALLENGE_OPTIONS=(
+                "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+                "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+            )
+            ENV_SECTION=""
+        fi
+
+        cat > "traefik-docker-compose.yml" << EOF
+version: "3"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      - "--serversTransport.insecureSkipVerify=true"
+      - "--certificatesresolvers.myresolver.acme.email=${email}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+$(printf '      - "%s"\n' "${ACME_CHALLENGE_OPTIONS[@]}")
+      - "--accesslog=true"
+      - "--log.level=INFO"
+      - "--api.dashboard=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik-letsencrypt:/letsencrypt"
+    networks:
+      - traefik_proxy
+${ENV_SECTION}
+    container_name: traefik
+    restart: unless-stopped
+
+networks:
+  traefik_proxy:
+    external: true
+EOF
+    else
+        echo -e "${YELLOW}Creating HTTP-only Traefik configuration...${NC}"
+        cat > "traefik-docker-compose.yml" << EOF
+version: "3"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--accesslog=true"
+      - "--log.level=INFO"
+      - "--api.dashboard=true"
+      - "--providers.docker.network=traefik_proxy"
+    ports:
+      - "80:80"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - traefik_proxy
+    container_name: traefik
+    restart: unless-stopped
+
+networks:
+  traefik_proxy:
+    external: true
+EOF
+    fi
 
     echo "Starting Traefik..."
     DOCKER_COMPOSE_CMD=$(detect_docker_compose)
