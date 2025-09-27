@@ -22,7 +22,8 @@ class Config:
         # Method 2: Try without password (for systems with auth_socket plugin)
         return f'mysql+pymysql://{Config.DB_USER}@{Config.DB_HOST}/{Config.DB_NAME}'
     
-    SQLALCHEMY_DATABASE_URI = get_database_uri()
+    # Generate database URI after class definition
+    SQLALCHEMY_DATABASE_URI = None
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_recycle': 300,
@@ -43,3 +44,6 @@ class Config:
     ALLOWED_IPS = ['127.0.0.1', '::1']
     REQUIRE_HTTPS = False  # Set to True for production
     ENABLE_AUDIT_LOG = True
+
+# Set the database URI after class definition
+Config.SQLALCHEMY_DATABASE_URI = Config.get_database_uri()
