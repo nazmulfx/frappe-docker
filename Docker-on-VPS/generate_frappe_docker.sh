@@ -537,7 +537,8 @@ fi
 
 # Check and configure Traefik
 if ! is_traefik_running; then
-    echo "Traefik is not running. Creating traefik-docker-compose.yml..."
+    echo -e "${BLUE}🚀 Auto-installing Traefik...${NC}"
+    echo "Creating traefik-docker-compose.yml..."
     
     if [[ "$use_ssl" == true ]]; then
         echo -e "${BLUE}SSL Configuration Options:${NC}"
@@ -654,6 +655,18 @@ EOF
     fi
     $DOCKER_COMPOSE_CMD -f traefik-docker-compose.yml up -d
     sleep 3
+    
+    # Check if Traefik started successfully
+    if is_traefik_running; then
+        echo -e "${GREEN}✅ Traefik installed and running successfully!${NC}"
+    else
+        echo -e "${RED}❌ Traefik installation failed${NC}"
+        echo -e "${YELLOW}💡 You can try configuring Traefik manually${NC}"
+        read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
+        if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
 fi
 
 # Get site name

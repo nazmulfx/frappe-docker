@@ -588,14 +588,54 @@ fi
 if ! is_traefik_running; then
     echo -e "${RED}⚠️  Traefik is not running!${NC}"
     echo ""
-    echo "Please run one of the following first:"
-    echo "  1. ./setup-traefik-local.sh (for local environment)"
-    echo "  2. Start Traefik manually"
+    echo "Options:"
+    echo "  1. Auto-install Traefik (RECOMMENDED)"
+    echo "  2. Continue without Traefik (manual setup required)"
+    echo "  3. Exit and run setup-traefik-local.sh manually"
     echo ""
-    read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
-    if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+    read -p "Choose an option (1-3): " traefik_option
+    
+    case $traefik_option in
+        1)
+            echo -e "${BLUE}🚀 Auto-installing Traefik...${NC}"
+            if [[ -f "./setup-traefik-local.sh" ]]; then
+                echo -e "${GREEN}✅ Found setup-traefik-local.sh, running it...${NC}"
+                chmod +x ./setup-traefik-local.sh
+                ./setup-traefik-local.sh
+                
+                # Check if Traefik started successfully
+                sleep 5
+                if is_traefik_running; then
+                    echo -e "${GREEN}✅ Traefik installed and running successfully!${NC}"
+                else
+                    echo -e "${RED}❌ Traefik installation failed${NC}"
+                    echo -e "${YELLOW}💡 You can try running ./setup-traefik-local.sh manually${NC}"
+                    read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
+                    if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
+                        exit 1
+                    fi
+                fi
+            else
+                echo -e "${RED}❌ setup-traefik-local.sh not found in current directory${NC}"
+                echo -e "${YELLOW}💡 Please run ./setup-traefik-local.sh manually first${NC}"
+                read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
+                if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
+                    exit 1
+                fi
+            fi
+            ;;
+        2)
+            echo -e "${YELLOW}⚠️  Continuing without Traefik - manual setup required${NC}"
+            ;;
+        3)
+            echo -e "${YELLOW}Please run: ./setup-traefik-local.sh${NC}"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid option. Exiting...${NC}"
+            exit 1
+            ;;
+    esac
 else
     echo -e "${GREEN}✅ Traefik is running${NC}"
 fi

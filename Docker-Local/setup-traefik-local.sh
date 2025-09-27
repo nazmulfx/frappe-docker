@@ -7,6 +7,22 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Detect preferred docker compose command
+detect_docker_compose() {
+    # Try docker compose (v2) first - preferred method
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return 0
+    # Fallback to docker-compose (v1) if v2 is not available
+    elif command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return 0
+    else
+        echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is available${NC}" >&2
+        return 1
+    fi
+}
+
 echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}     Traefik Local Environment Setup Script    ${NC}"
 echo -e "${BLUE}===============================================${NC}"
@@ -51,10 +67,17 @@ fi
 
 echo ""
 
+# Get the correct docker compose command
+DOCKER_COMPOSE_CMD=$(detect_docker_compose)
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Docker Compose not found. Please install Docker Compose and try again.${NC}"
+    exit 1
+fi
+
 # Check if Traefik is already running
 if docker ps --filter "name=traefik" --format "{{.Names}}" | grep -q "traefik"; then
     echo -e "${YELLOW}Traefik is already running. Stopping it...${NC}"
-    docker compose -f traefik-docker-compose.yml down 2>/dev/null || docker stop traefik 2>/dev/null
+    $DOCKER_COMPOSE_CMD -f traefik-docker-compose.yml down 2>/dev/null || docker stop traefik 2>/dev/null
     sleep 2
 fi
 
@@ -224,7 +247,7 @@ fi
 # Start Traefik
 echo ""
 echo -e "${GREEN}Starting Traefik...${NC}"
-docker compose -f traefik-docker-compose.yml up -d
+$DOCKER_COMPOSE_CMD -f traefik-docker-compose.yml up -d
 
 # Wait for Traefik to start
 sleep 3
@@ -275,6 +298,6 @@ EOF
 else
     echo ""
     echo -e "${RED}❌ Failed to start Traefik${NC}"
-    echo "Check the logs with: docker compose -f traefik-docker-compose.yml logs"
+    echo "Check the logs with: $DOCKER_COMPOSE_CMD -f traefik-docker-compose.yml logs"
     exit 1
 fi
