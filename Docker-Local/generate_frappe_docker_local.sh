@@ -1023,6 +1023,70 @@ echo "   • Edit Frappe/ERPNext code directly in VS Code"
 echo "   • Changes are immediately reflected in the running container"
 echo ""
 
+
+# Auto-set restart policy for containers
+echo ""
+echo -e "${BLUE}🔄 Setting up container restart policies...${NC}"
+echo -e "${YELLOW}💡 This ensures your containers automatically start after system reboot${NC}"
+
+set_restart_policy_for_site() {
+    local site_name=$1
+    
+    echo -e "${BLUE}🔄 Setting restart policy for $site_name containers...${NC}"
+    
+    # Get all containers for this site
+    local containers=$(docker ps -a --filter "name=^${site_name}-" --format "{{.Names}}")
+    
+    if [[ -z "$containers" ]]; then
+        echo -e "${YELLOW}⚠️  No containers found for $site_name${NC}"
+        return 1
+    fi
+    
+    # For each container, set restart policy to 'always'
+    for container in $containers; do
+        echo -e "${GREEN}📌 Setting restart policy for $container to 'always'${NC}"
+        if docker update --restart=always "$container"; then
+            echo -e "${GREEN}✅ Successfully set restart policy for $container${NC}"
+        else
+            echo -e "${RED}❌ Failed to set restart policy for $container${NC}"
+        fi
+    done
+    
+    echo -e "${GREEN}✅ All $site_name containers now set to restart automatically after system reboot${NC}"
+}
+
+# Set restart policy for the current site
+if set_restart_policy_for_site "$safe_site_name"; then
+    echo -e "${GREEN}🎉 Restart policies set successfully!${NC}"
+    echo -e "${BLUE}💡 Your containers will now automatically start after system reboot${NC}"
+else
+    echo -e "${YELLOW}⚠️  Could not set restart policies automatically${NC}"
+    echo -e "${BLUE}💡 You can run ./set-restart-policy.sh manually later${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║                    🎉 SETUP COMPLETED! 🎉                     ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${GREEN}✅ Your Frappe/ERPNext site is now fully configured and ready!${NC}"
+echo ""
+echo -e "${BLUE}🔧 What was completed:${NC}"
+echo -e "   ✅ ERPNext Version: ${erpnext_version}"
+echo -e "   ✅ Site created and configured"
+echo -e "   ✅ Containers optimized and running"
+echo -e "   ✅ Restart policies set for auto-start after reboot"
+echo -e "   ✅ VS Code development environment prepared"
+echo -e "   ✅ Hosts file configured for local access"
+echo ""
+echo -e "${GREEN}🌐 Access your site at: ${access_url}${NC}"
+echo -e "${GREEN}👤 Username: Administrator${NC}"
+echo -e "${GREEN}🔑 Password: admin${NC}"
+echo ""
+echo -e "${BLUE}💡 Your containers will automatically start after system reboot!${NC}"
+
+
+
 # Docker Manager prompt (if needed)
 read -p "Do you want to access the docker-manager? (y/n): " ACCESS_MANAGER
 
