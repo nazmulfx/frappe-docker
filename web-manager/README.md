@@ -40,6 +40,22 @@ A professional web-based Docker container management system with advanced securi
 - **CSRF Protection**
 - **IP Whitelisting**
 - **HTTPS Support**
+- **SSH Terminal Access** with web-based interface
+- **Container Management** with real-time monitoring
+
+## 📸 Screenshots
+
+### Dashboard Overview
+![Dashboard Overview](screenshots/dashboard-overview.png)
+
+### Container Management
+![Container Management](screenshots/container-management.png)
+
+### User Management
+![User Management](screenshots/user-management.png)
+
+### SSH Terminal
+![SSH Terminal](screenshots/ssh-terminal.png)
 
 ## 📚 Documentation
 
