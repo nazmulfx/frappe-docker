@@ -295,6 +295,11 @@ PrintMotd no"""
     
     def _start_socat_forwarding(self, container_ip, external_port):
         """Start socat port forwarding with proper process management"""
+        # Check if socat is available (should be installed by docker-manager.sh)
+        result = subprocess.run(['which', 'socat'], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception("socat is not installed. Please run the docker-manager.sh script first or install socat manually: sudo apt install socat")
+        
         # FIXED: Forward to port 22 (SSH port), not custom port
         # Try socat without sudo first, then with sudo if needed
         socat_cmd = [
