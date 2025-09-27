@@ -915,19 +915,19 @@ if [[ "$ACCESS_MANAGER" =~ ^[Yy]$ ]]; then
     elif [[ -f "./docker-manager.sh" ]]; then
         echo "✅ Found docker-manager.sh in current directory"
         sudo ./docker-manager.sh
-    elif [[ -f "/var/www/html/docker2 15/docker-manager.sh" ]]; then
-        echo "✅ Found docker-manager.sh in project directory"
-        sudo /var/www/html/docker2\ 15/docker-manager.sh
+    elif [[ -f "../docker-manager.sh" ]]; then
+        echo "✅ Found docker-manager.sh in project root"
+        sudo ../docker-manager.sh
     else
         echo "❌ docker-manager not found in common locations"
         echo ""
         echo "💡 Try these commands:"
         echo "   sudo ./docker-manager.sh"
-        echo "   sudo /var/www/html/docker2\ 15/docker-manager.sh"
+        echo "   sudo ../docker-manager.sh"
         echo "   sudo docker-manager (if installed globally)"
     fi
 else
     echo ""
     echo "💡 You can access the docker-manager anytime by running:"
-    echo "   sudo ./docker-manager.sh"
+    echo "   sudo ../docker-manager.sh"
 fi

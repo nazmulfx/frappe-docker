@@ -10,7 +10,7 @@ This error occurs because different systems have different MySQL authentication 
 
 ### Solution 1: Use the Test Command
 ```bash
-cd /var/www/html/docker2\ 15/web-manager
+cd web-manager
 ./docker-manager.sh test
 ```
 
@@ -147,7 +147,7 @@ FLUSH PRIVILEGES;
 
 ### Step 5: Test Application Connection
 ```bash
-cd /var/www/html/docker2\ 15/web-manager
+cd web-manager
 ./docker-manager.sh test
 ```
 
@@ -217,7 +217,7 @@ mysql -u root -p
 After fixing MySQL, run the application setup:
 
 ```bash
-cd /var/www/html/docker2\ 15/web-manager
+cd web-manager
 ./docker-manager.sh install
 ```
 

@@ -193,7 +193,7 @@ if mysql -u root -p -e "SELECT 1;" &>/dev/null; then
     print_success "MySQL connection successful!"
     echo ""
     print_info "You can now run the Docker Manager setup:"
-    echo "  cd /var/www/html/docker2\\ 15/web-manager"
+    echo "  cd web-manager"
     echo "  ./docker-manager.sh install"
     echo ""
     print_info "When prompted for MySQL credentials:"

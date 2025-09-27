@@ -127,7 +127,7 @@ sudo useradd -m -s /bin/bash dockermgr
 sudo usermod -aG docker dockermgr
 
 # Move application to user directory
-sudo cp -r /var/www/html/docker2\ 15 /home/dockermgr/docker-manager
+sudo cp -r . /home/dockermgr/docker-manager
 sudo chown -R dockermgr:dockermgr /home/dockermgr/docker-manager
 
 # Run as dedicated user

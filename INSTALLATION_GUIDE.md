@@ -87,7 +87,7 @@ The easiest way to install the Secure Docker Manager:
 
 ```bash
 # Navigate to the web-manager directory
-cd /var/www/html/docker2\ 15/web-manager
+cd web-manager
 
 # Make the script executable
 chmod +x docker-manager.sh
@@ -109,7 +109,7 @@ If you prefer manual control over the installation process:
 
 #### Step 1: Create Virtual Environment
 ```bash
-cd /var/www/html/docker2\ 15/web-manager
+cd web-manager
 python3 -m venv web-docker-manager-env
 source web-docker-manager-env/bin/activate
 ```
@@ -478,7 +478,7 @@ find $BACKUP_DIR -name "backup_*.sql.gz" -mtime +30 -delete
 tar -czf docker_manager_app_$(date +%Y%m%d).tar.gz \
     --exclude='web-docker-manager-env' \
     --exclude='*.log' \
-    /var/www/html/docker2\ 15/web-manager/
+    web-manager/
 ```
 
 ### Performance Optimization
@@ -546,9 +546,9 @@ After=network.target mysql.service
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/var/www/html/docker2 15/web-manager
-Environment=PATH=/var/www/html/docker2 15/web-manager/web-docker-manager-env/bin
-ExecStart=/var/www/html/docker2 15/web-manager/web-docker-manager-env/bin/gunicorn -c gunicorn.conf.py app:app
+WorkingDirectory=/path/to/frappe-docker/web-manager
+Environment=PATH=/path/to/frappe-docker/web-manager/web-docker-manager-env/bin
+ExecStart=/path/to/frappe-docker/web-manager/web-docker-manager-env/bin/gunicorn -c gunicorn.conf.py app:app
 Restart=always
 
 [Install]
@@ -616,7 +616,7 @@ sudo nano /etc/logrotate.d/docker-manager
 ```
 
 ```
-/var/www/html/docker2 15/web-manager/docker-manager.log {
+/path/to/frappe-docker/web-manager/docker-manager.log {
     daily
     missingok
     rotate 30
