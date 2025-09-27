@@ -537,9 +537,106 @@ show_status() {
     echo ""
 }
 
+# Check and install system dependencies
+check_system_dependencies() {
+    print_step "Checking system dependencies..."
+    
+    local dependencies_missing=false
+    
+    # Check for socat (required for SSH forwarding)
+    if ! command -v socat >/dev/null 2>&1; then
+        print_warning "socat not found - required for SSH forwarding functionality"
+        print_info "Attempting to install socat..."
+        
+        # Check if we can use apt
+        if command -v apt >/dev/null 2>&1; then
+            if sudo apt update >/dev/null 2>&1 && sudo apt install -y socat >/dev/null 2>&1; then
+                print_success "socat installed successfully"
+            else
+                print_error "Failed to install socat automatically"
+                print_info "Please install manually: sudo apt install socat"
+                dependencies_missing=true
+            fi
+        else
+            print_error "apt package manager not found"
+            print_info "Please install socat manually for your system"
+            dependencies_missing=true
+        fi
+    else
+        print_success "socat is available"
+    fi
+    
+    # Check for python3
+    if ! command -v python3 >/dev/null 2>&1; then
+        print_error "python3 not found - required for the application"
+        print_info "Please install python3: sudo apt install python3"
+        dependencies_missing=true
+    else
+        print_success "python3 is available"
+    fi
+    
+    # Check for python3-venv
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+        print_warning "python3-venv not found - required for virtual environment"
+        print_info "Attempting to install python3-venv..."
+        
+        if command -v apt >/dev/null 2>&1; then
+            if sudo apt install -y python3-venv >/dev/null 2>&1; then
+                print_success "python3-venv installed successfully"
+            else
+                print_error "Failed to install python3-venv automatically"
+                print_info "Please install manually: sudo apt install python3-venv"
+                dependencies_missing=true
+            fi
+        else
+            print_error "apt package manager not found"
+            print_info "Please install python3-venv manually for your system"
+            dependencies_missing=true
+        fi
+    else
+        print_success "python3-venv is available"
+    fi
+    
+    # Check for pip
+    if ! command -v pip3 >/dev/null 2>&1; then
+        print_warning "pip3 not found - required for Python packages"
+        print_info "Attempting to install python3-pip..."
+        
+        if command -v apt >/dev/null 2>&1; then
+            if sudo apt install -y python3-pip >/dev/null 2>&1; then
+                print_success "python3-pip installed successfully"
+            else
+                print_error "Failed to install python3-pip automatically"
+                print_info "Please install manually: sudo apt install python3-pip"
+                dependencies_missing=true
+            fi
+        else
+            print_error "apt package manager not found"
+            print_info "Please install python3-pip manually for your system"
+            dependencies_missing=true
+        fi
+    else
+        print_success "pip3 is available"
+    fi
+    
+    if [ "$dependencies_missing" = true ]; then
+        print_error "Some dependencies are missing. Please install them before continuing."
+        return 1
+    fi
+    
+    print_success "All system dependencies are available"
+    echo ""
+    return 0
+}
+
 # Main function
 main() {
     print_header
+    
+    # Check system dependencies first
+    if ! check_system_dependencies; then
+        exit 1
+    fi
     
     # Try to load existing configuration
     if load_config; then
