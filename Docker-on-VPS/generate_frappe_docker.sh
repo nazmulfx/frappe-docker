@@ -19,6 +19,124 @@ generate_password() {
     fi
 }
 
+# Fetch available ERPNext versions from Docker Hub
+fetch_erpnext_versions() {
+    # Try to fetch versions using curl (faster than docker pull)
+    local versions=""
+    
+    # Check if curl is available and try to fetch from Docker Hub
+    if command -v curl >/dev/null 2>&1; then
+        echo -e "${BLUE}   Fetching from Docker Hub API...${NC}" >&2
+        versions=$(curl -s --connect-timeout 10 --max-time 30 "https://registry.hub.docker.com/v2/repositories/frappe/erpnext/tags?page_size=100" | \
+            grep -o '"name":"[^"]*"' | \
+            grep -E '^"name":"v[0-9]+\.[0-9]+\.[0-9]+"' | \
+            sed 's/"name":"//g' | \
+            sed 's/"//g' | \
+            sort -V -r | \
+            head -1000 2>/dev/null)
+    fi
+    
+    if [[ -z "$versions" ]]; then
+        echo -e "${YELLOW}   Using fallback version list...${NC}" >&2
+        # Fallback list of common versions
+        versions="v15.80.1
+v15.80.0
+v15.79.2
+v15.79.1
+v15.79.0
+v15.78.1
+v15.78.0
+v15.77.0
+v15.76.0
+v15.75.1
+v15.75.0
+v15.74.0
+v15.73.2
+v15.73.1
+v15.73.0
+v15.72.3
+v15.72.2
+v15.72.1
+v15.71.1
+v15.70.2"
+    fi
+    
+    echo "$versions"
+}
+
+# Select ERPNext version
+select_erpnext_version() {
+    echo ""
+    echo -e "${BLUE}📦 ERPNext Version Selection${NC}"
+    echo "=================================="
+    echo -e "${BLUE}🔍 Fetching available ERPNext versions from Docker Hub...${NC}"
+    
+    local versions=$(fetch_erpnext_versions)
+    local version_array=()
+    local i=1
+    
+    # Check if versions are fetched
+    if [[ -z "$versions" ]]; then
+        echo -e "${RED}❌ No versions found!${NC}"
+        return 1
+    fi
+    
+    echo ""
+    echo "Available ERPNext versions:"
+    echo ""
+    
+    # Convert to array and display
+    local is_first=true
+    while IFS= read -r version; do
+        if [[ -n "$version" ]]; then
+            version_array+=("$version")
+            if [[ "$is_first" == "true" ]]; then
+                echo -e "  ${GREEN}[$i] $version (LATEST - RECOMMENDED)${NC}"
+                is_first=false
+            elif [[ "$version" == "v15.63.0" ]]; then
+                echo -e "  ${YELLOW}[$i] $version (STABLE)${NC}"
+            else
+                echo "  [$i] $version"
+            fi
+            ((i++))
+        fi
+    done <<< "$versions"
+    
+    # Check if we have any versions
+    if [[ ${#version_array[@]} -eq 0 ]]; then
+        echo -e "${RED}❌ No valid versions found!${NC}"
+        return 1
+    fi
+    
+    echo ""
+    # Get the latest version (first in the sorted list)
+    local latest_version="${version_array[0]}"
+    echo -e "${GREEN}💡 $latest_version is the latest version with newest features${NC}"
+    echo -e "${YELLOW}💡 v15.63.0 is a stable version recommended for production${NC}"
+    echo -e "${BLUE}💡 Choose based on your needs: latest features vs stability${NC}"
+    echo ""
+    
+    # Get user selection
+    while true; do
+        read -p "Select ERPNext version (1-${#version_array[@]}) [1]: " selection
+        
+        # Default to 1 if empty
+        if [[ -z "$selection" ]]; then
+            selection=1
+        fi
+        
+        # Validate selection
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le "${#version_array[@]}" ]]; then
+            selected_version="${version_array[$((selection-1))]}"
+            echo -e "${GREEN}✅ Selected ERPNext version: $selected_version${NC}"
+            SELECTED_ERPNEXT_VERSION="$selected_version"
+            break
+        else
+            echo -e "${RED}❌ Invalid selection. Please enter a number between 1 and ${#version_array[@]}${NC}"
+        fi
+    done
+}
+
 # Detect preferred docker compose command
 detect_docker_compose() {
     # Try docker compose (v2) first - preferred method
@@ -70,6 +188,7 @@ generate_docker_compose() {
     local safe_site_name=$1
     local site_name=$2
     local use_ssl=$3
+    local erpnext_version=$4
     local compose_file="$safe_site_name/${safe_site_name}-docker-compose.yml"
 
     # Traefik labels for the main app container
@@ -120,7 +239,7 @@ version: "3.8"
 
 services:
   app:
-    image: frappe/erpnext:v15.63.0
+    image: frappe/erpnext:${erpnext_version}
     container_name: ${safe_site_name}-app
     restart: unless-stopped
     networks:
@@ -315,7 +434,7 @@ ${app_labels}
         tail -f /home/frappe/supervisor/logs/supervisord.log
 
   create-site:
-    image: frappe/erpnext:v15.63.0
+    image: frappe/erpnext:${erpnext_version}
     container_name: ${safe_site_name}-create-site
     restart: "no"
     networks:
@@ -701,10 +820,14 @@ fi
 mkdir -p "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
 echo -e "${GREEN}📁 Created frappe-bench directory: ${VSCODE_DIR}/${safe_site_name}-frappe-bench${NC}"
 
+# Select ERPNext version
+select_erpnext_version
+erpnext_version=$SELECTED_ERPNEXT_VERSION
+
 # Copy Frappe apps to the mounted directory for VS Code development
 echo -e "${BLUE}📦 Copying Frappe apps to mounted directory...${NC}"
 sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
-docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:$erpnext_version bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
 echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
 echo -e "${BLUE}   💡 You can now open this folder in VS Code for development${NC}"
 
@@ -714,7 +837,7 @@ REDIS_PASSWORD=$(generate_password)
 FRAPPE_SITE_NAME_HEADER=${site_name}
 SITES=${site_name}
 cat > "$safe_site_name/.env" << EOF
-ERPNEXT_VERSION=v15.63.0
+ERPNEXT_VERSION=$erpnext_version
 DB_PASSWORD=${DB_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
 LETSENCRYPT_EMAIL=${email}
@@ -723,7 +846,7 @@ SITES=${SITES}
 EOF
 
 # Generate docker-compose
-generate_docker_compose "$safe_site_name" "$site_name" "$use_ssl"
+generate_docker_compose "$safe_site_name" "$site_name" "$use_ssl" "$erpnext_version"
 
 # Start containers
 echo -e "${GREEN}Starting your minimal Frappe/ERPNext site...${NC}"
@@ -739,7 +862,7 @@ echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development.
 if [ ! -d "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps/frappe" ]; then
     echo -e "${YELLOW}📦 Apps not found, copying from container...${NC}"
     sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
-    docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:v15.63.0 bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+    docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:$erpnext_version bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
     echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
 else
     echo -e "${GREEN}✅ Frappe apps already available${NC}"
@@ -819,7 +942,7 @@ else
     echo -e "🌐 Your site will be accessible at: http://${site_name}"
 fi
 echo ""
-echo "📋 Frappe Version: v15.63.0"
+echo "📋 ERPNext Version: $erpnext_version"
 echo "👤 Default Username: Administrator"
 echo "🔑 Default Password: admin"
 echo ""
