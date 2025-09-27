@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Secure Docker Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .container-card {
+            transition: transform 0.2s;
+        }
+        .container-card:hover {
+            transform: translateY(-2px);
+        }
+        .status-badge {
+            font-size: 0.8rem;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="bi bi-shield-lock-fill"></i> Secure Docker Manager
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link active" href="{{ url_for('index') }}">
+                    <i class="bi bi-house"></i> Dashboard
+                </a>
+                <a class="nav-link" href="{{ url_for('user_profile') }}">
+                    <i class="bi bi-person-circle"></i> Profile
+                </a>
+                {% if session.is_admin %}
+                <a class="nav-link" href="{{ url_for('user_management') }}">
+                    <i class="bi bi-people"></i> Users
+                </a>
+                <a class="nav-link" href="{{ url_for('audit_logs') }}">
+                    <i class="bi bi-clipboard-data"></i> Audit Logs
+                </a>
+                {% endif %}
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-house"></i> Docker Container Dashboard</h2>
+                    <div class="action-buttons">
+                        <button class="btn btn-outline-primary btn-sm" onclick="refreshContainers()">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                        <a href="{{ url_for('user_profile') }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-person-circle"></i> Profile
+                        </a>
+                        {% if session.is_admin %}
+                        <a href="{{ url_for('user_management') }}" class="btn btn-outline-info btn-sm">
+                            <i class="bi bi-people"></i> Users
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <!-- Statistics Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card stats-card">
+                            <div class="card-body text-center">
+                                <h3>{{ containers|length }}</h3>
+                                <p class="mb-0">Total Containers</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stats-card">
+                            <div class="card-body text-center">
+                                <h3>{{ containers|selectattr('State', 'equalto', 'running')|list|length }}</h3>
+                                <p class="mb-0">Running</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stats-card">
+                            <div class="card-body text-center">
+                                <h3>{{ containers|selectattr('State', 'equalto', 'exited')|list|length }}</h3>
+                                <p class="mb-0">Stopped</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stats-card">
+                            <div class="card-body text-center">
+                                <h3>{{ projects|length }}</h3>
+                                <p class="mb-0">Projects</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Projects -->
+                {% for project_name, project_containers in projects.items() %}
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-folder"></i> {{ project_name }}
+                            <span class="badge bg-secondary">{{ project_containers|length }} containers</span>
+                        </h5>
+                        <div class="action-buttons">
+                            {% if project_containers|selectattr('State', 'equalto', 'running')|list|length > 0 %}
+                            <button class="btn btn-outline-warning btn-sm" onclick="projectAction('{{ project_name }}', 'stop')">
+                                <i class="bi bi-stop-circle"></i> Stop All
+                            </button>
+                            {% endif %}
+                            {% if project_containers|selectattr('State', 'equalto', 'exited')|list|length > 0 %}
+                            <button class="btn btn-outline-success btn-sm" onclick="projectAction('{{ project_name }}', 'start')">
+                                <i class="bi bi-play-circle"></i> Start All
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            {% for container in project_containers %}
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card container-card h-100">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <h6 class="card-title mb-0">
+                                                <i class="bi bi-box"></i> {{ container.Names }}
+                                            </h6>
+                                            <div class="dropdown">
+                                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                                                    <i class="bi bi-three-dots-vertical"></i>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    {% if container.State == 'running' %}
+                                                    <li><a class="dropdown-item" href="#" onclick="containerAction('{{ container.Names }}', 'stop')">
+                                                        <i class="bi bi-stop-circle"></i> Stop
+                                                    </a></li>
+                                                    <li><a class="dropdown-item" href="#" onclick="containerAction('{{ container.Names }}', 'restart')">
+                                                        <i class="bi bi-arrow-clockwise"></i> Restart
+                                                    </a></li>
+                                                    {% else %}
+                                                    <li><a class="dropdown-item" href="#" onclick="containerAction('{{ container.Names }}', 'start')">
+                                                        <i class="bi bi-play-circle"></i> Start
+                                                    </a></li>
+                                                    {% endif %}
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><a class="dropdown-item text-danger" href="#" onclick="containerAction('{{ container.Names }}', 'remove')">
+                                                        <i class="bi bi-trash"></i> Remove
+                                                    </a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        
+                                        <p class="card-text text-muted small mb-2">
+                                            <i class="bi bi-image"></i> {{ container.Image }}
+                                        </p>
+                                        
+                                        <div class="mb-2">
+                                            {% if container.State == 'running' %}
+                                                <span class="badge bg-success status-badge">Running</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary status-badge">Stopped</span>
+                                            {% endif %}
+                                            
+                                            {% if container.Status %}
+                                                <span class="badge bg-info status-badge">{{ container.Status }}</span>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <div class="action-buttons">
+                                            {% if container.State == 'running' %}
+                                            <button class="btn btn-outline-warning btn-sm" onclick="containerAction('{{ container.Names }}', 'stop')">
+                                                <i class="bi bi-stop-circle"></i> Stop
+                                            </button>
+                                            <button class="btn btn-outline-primary btn-sm" onclick="containerAction('{{ container.Names }}', 'restart')">
+                                                <i class="bi bi-arrow-clockwise"></i> Restart
+                                            </button>
+                                            {% else %}
+                                            <button class="btn btn-outline-success btn-sm" onclick="containerAction('{{ container.Names }}', 'start')">
+                                                <i class="bi bi-play-circle"></i> Start
+                                            </button>
+                                            {% endif %}
+                                            <button class="btn btn-outline-info btn-sm" onclick="viewLogs('{{ container.Names }}')">
+                                                <i class="bi bi-file-text"></i> Logs
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if not projects %}
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-box text-muted" style="font-size: 3rem;"></i>
+                        <h5 class="mt-3">No containers found</h5>
+                        <p class="text-muted">No Docker containers are currently available.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Container Logs Modal -->
+    <div class="modal fade" id="logsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Container Logs</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <pre id="logsContent" style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem;"></pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get CSRF token from Flask session
+        const csrfToken = '{{ csrf_token }}';
+        
+        function containerAction(containerName, action) {
+            if (action === 'remove' && !confirm(`Are you sure you want to remove container "${containerName}"?`)) {
+                return;
+            }
+            
+            fetch(`/api/container/${containerName}/action`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ action: action })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred');
+            });
+        }
+
+        function projectAction(projectName, action) {
+            const containers = document.querySelectorAll(`[data-project="${projectName}"]`);
+            if (containers.length === 0) return;
+            
+            if (confirm(`Are you sure you want to ${action} all containers in project "${projectName}"?`)) {
+                containers.forEach(container => {
+                    const containerName = container.dataset.containerName;
+                    containerAction(containerName, action);
+                });
+            }
+        }
+
+        function viewLogs(containerName) {
+            fetch(`/api/container/${containerName}/logs`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('logsContent').textContent = data.logs;
+                    const modal = new bootstrap.Modal(document.getElementById('logsModal'));
+                    modal.show();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred');
+            });
+        }
+
+        function refreshContainers() {
+            location.reload();
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshContainers, 30000);
+    </script>
+</body>
+</html>

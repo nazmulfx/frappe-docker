@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}{{ container.Names }} - Web Docker Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fab fa-docker"></i> {{ container.Names }}
+        <small class="text-muted">Container Details</small>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            {% if 'Up' in container.Status %}
+                <button class="btn btn-sm btn-warning" onclick="containerAction('{{ container.Names }}', 'stop')">
+                    <i class="fas fa-stop"></i> Stop
+                </button>
+                <button class="btn btn-sm btn-info" onclick="containerAction('{{ container.Names }}', 'restart')">
+                    <i class="fas fa-redo"></i> Restart
+                </button>
+            {% else %}
+                <button class="btn btn-sm btn-success" onclick="containerAction('{{ container.Names }}', 'start')">
+                    <i class="fas fa-play"></i> Start
+                </button>
+            {% endif %}
+            <button class="btn btn-sm btn-secondary" onclick="loadLogs('{{ container.Names }}')">
+                <i class="fas fa-file-alt"></i> View Logs
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="containerAction('{{ container.Names }}', 'remove')">
+                <i class="fas fa-trash"></i> Remove
+            </button>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Container Information -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Container Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-borderless">
+                            <tr>
+                                <th width="30%">Name:</th>
+                                <td>{{ container.Names }}</td>
+                            </tr>
+                            <tr>
+                                <th>Image:</th>
+                                <td><span class="badge bg-secondary">{{ container.Image }}</span></td>
+                            </tr>
+                            <tr>
+                                <th>Status:</th>
+                                <td>
+                                    {% if 'Up' in container.Status %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-play"></i> {{ container.Status }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-danger">
+                                            <i class="fas fa-stop"></i> {{ container.Status }}
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Command:</th>
+                                <td><code>{{ container.Command }}</code></td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-borderless">
+                            <tr>
+                                <th width="30%">Created:</th>
+                                <td>{{ container.CreatedAt }}</td>
+                            </tr>
+                            <tr>
+                                <th>Ports:</th>
+                                <td>{{ container.Ports or 'No ports exposed' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Size:</th>
+                                <td>{{ container.Size or 'Unknown' }}</td>
+                            </tr>
+                            <tr>
+                                <th>ID:</th>
+                                <td><code>{{ container.ID }}</code></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Container Logs -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-file-alt"></i> Recent Logs</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()">
+                    <i class="fas fa-sync-alt"></i> Refresh Logs
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="logsContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading logs...</span>
+                        </div>
+                        <p class="mt-2">Loading container logs...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logs Modal -->
+<div class="modal fade" id="logsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Container Logs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre class="log-output"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load logs on page load
+$(document).ready(function() {
+    refreshLogs();
+});
+
+function refreshLogs() {
+    $('#logsContainer').html(`
+        <div class="text-center py-4">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading logs...</span>
+            </div>
+            <p class="mt-2">Loading container logs...</p>
+        </div>
+    `);
+    
+    $.ajax({
+        url: `/api/container/{{ container.Names }}/logs?lines=100`,
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                if (response.logs.trim()) {
+                    $('#logsContainer').html(`<pre class="log-output">${response.logs}</pre>`);
+                } else {
+                    $('#logsContainer').html(`
+                        <div class="text-center py-4">
+                            <i class="fas fa-file-alt fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No logs available</p>
+                        </div>
+                    `);
+                }
+            } else {
+                $('#logsContainer').html(`
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i> Error loading logs: ${response.logs}
+                    </div>
+                `);
+            }
+        },
+        error: function() {
+            $('#logsContainer').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Failed to load logs
+                </div>
+            `);
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project_name }} - Web Docker Manager{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-folder"></i> {{ project_name }}
+        <small class="text-muted">Project Details</small>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button class="btn btn-sm btn-outline-success" onclick="restartAllContainers()">
+                <i class="fas fa-redo"></i> Restart All
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeAllContainers()">
+                <i class="fas fa-trash"></i> Remove All
+            </button>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Project Statistics -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2 card-stat card-stat-success">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Containers</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ containers|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fab fa-docker fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2 card-stat">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Volumes</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ volumes|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-database fa-2x text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2 card-stat card-stat-warning">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Networks</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ networks|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-network-wired fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2 card-stat">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Running</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% set running_containers = [] %}
+                            {% for container in containers %}
+                                {% if 'Up' in container.Status %}
+                                    {% set _ = running_containers.append(container) %}
+                                {% endif %}
+                            {% endfor %}
+                            {{ running_containers|length }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-play-circle fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Containers -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fab fa-docker"></i> Containers</h5>
+            </div>
+            <div class="card-body">
+                {% if containers %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Image</th>
+                                <th>Status</th>
+                                <th>Ports</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for container in containers %}
+                            <tr>
+                                <td>
+                                    <a href="{{ url_for('container_detail', container_name=container.Names) }}" class="text-decoration-none">
+                                        <strong>{{ container.Names.replace(project_name + '-', '') }}</strong>
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ container.Image }}</span>
+                                </td>
+                                <td>
+                                    {% if 'Up' in container.Status %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-play"></i> Running
+                                        </span>
+                                    {% elif 'Exited' in container.Status %}
+                                        <span class="badge bg-danger">
+                                            <i class="fas fa-stop"></i> Stopped
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-warning">
+                                            <i class="fas fa-question"></i> {{ container.Status }}
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ container.Ports or 'No ports' }}</small>
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ container.CreatedAt }}</small>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        {% if 'Up' in container.Status %}
+                                            <button class="btn btn-warning" onclick="containerAction('{{ container.Names }}', 'stop')" title="Stop">
+                                                <i class="fas fa-stop"></i>
+                                            </button>
+                                            <button class="btn btn-info" onclick="containerAction('{{ container.Names }}', 'restart')" title="Restart">
+                                                <i class="fas fa-redo"></i>
+                                            </button>
+                                        {% else %}
+                                            <button class="btn btn-success" onclick="containerAction('{{ container.Names }}', 'start')" title="Start">
+                                                <i class="fas fa-play"></i>
+                                            </button>
+                                        {% endif %}
+                                        <button class="btn btn-secondary" onclick="loadLogs('{{ container.Names }}')" title="Logs">
+                                            <i class="fas fa-file-alt"></i>
+                                        </button>
+                                        <button class="btn btn-danger" onclick="containerAction('{{ container.Names }}', 'remove')" title="Remove">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fab fa-docker fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No containers found for this project</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Volumes and Networks -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-database"></i> Volumes</h5>
+            </div>
+            <div class="card-body">
+                {% if volumes %}
+                <ul class="list-group list-group-flush">
+                    {% for volume in volumes %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ volume }}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeVolume('{{ volume }}')" title="Remove Volume">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-center py-3">
+                    <i class="fas fa-database fa-2x text-muted mb-2"></i>
+                    <p class="text-muted mb-0">No volumes found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-network-wired"></i> Networks</h5>
+            </div>
+            <div class="card-body">
+                {% if networks %}
+                <ul class="list-group list-group-flush">
+                    {% for network in networks %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ network }}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeNetwork('{{ network }}')" title="Remove Network">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-center py-3">
+                    <i class="fas fa-network-wired fa-2x text-muted mb-2"></i>
+                    <p class="text-muted mb-0">No networks found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logs Modal -->
+<div class="modal fade" id="logsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Container Logs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre class="log-output"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function restartAllContainers() {
+    if (!confirm('Are you sure you want to restart all containers for {{ project_name }}?')) {
+        return;
+    }
+    
+    // Implementation would need additional API endpoint
+    alert('Restart all functionality would be implemented here');
+}
+
+function removeAllContainers() {
+    if (!confirm('Are you sure you want to remove ALL containers, volumes, and networks for {{ project_name }}? This cannot be undone!')) {
+        return;
+    }
+    
+    if (!confirm('FINAL CONFIRMATION: This will permanently delete all data for {{ project_name }}. Type DELETE to confirm.')) {
+        return;
+    }
+    
+    // Implementation would need additional API endpoint
+    alert('Remove all functionality would be implemented here');
+}
+
+function removeVolume(volumeName) {
+    if (!confirm(`Are you sure you want to remove volume ${volumeName}? This will delete all data in the volume!`)) {
+        return;
+    }
+    
+    // Implementation would need additional API endpoint
+    alert(`Remove volume ${volumeName} functionality would be implemented here`);
+}
+
+function removeNetwork(networkName) {
+    if (!confirm(`Are you sure you want to remove network ${networkName}?`)) {
+        return;
+    }
+    
+    // Implementation would need additional API endpoint
+    alert(`Remove network ${networkName} functionality would be implemented here`);
+}
+</script>
+{% endblock %}

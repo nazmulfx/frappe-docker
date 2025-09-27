@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Secure Docker Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+        }
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        .security-features {
+            background: rgba(0, 123, 255, 0.1);
+            border-left: 4px solid #007bff;
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 0 8px 8px 0;
+        }
+        .qr-code-container {
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .qr-code-container img {
+            max-width: 200px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-5">
+                <div class="login-container p-4">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-shield-lock-fill text-primary" style="font-size: 3rem;"></i>
+                        <h2 class="mt-3">Secure Docker Manager</h2>
+                        <p class="text-muted">Enterprise-grade container management</p>
+                    </div>
+
+                    {% if error %}
+                        <div class="alert alert-danger" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i> {{ error }}
+                        </div>
+                    {% endif %}
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    {% if awaiting_2fa %}
+                        <!-- 2FA Verification -->
+                        <div class="alert alert-info">
+                            <i class="bi bi-shield-check"></i>
+                            <strong>Two-Factor Authentication Required</strong>
+                            <p class="mb-0 mt-2">Please enter the 6-digit code from your authenticator app.</p>
+                        </div>
+                        
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="totp_code" class="form-label">
+                                    <i class="bi bi-key"></i> Authentication Code
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="totp_code" 
+                                       name="totp_code" 
+                                       maxlength="6" 
+                                       pattern="[0-9]{6}"
+                                       placeholder="123456"
+                                       autocomplete="off"
+                                       required
+                                       autofocus>
+                                <div class="form-text">Enter the 6-digit code from your authenticator app</div>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-check2-circle"></i> Verify & Login
+                                </button>
+                            </div>
+                        </form>
+                    {% else %}
+                        <!-- Regular Login -->
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">
+                                    <i class="bi bi-person-fill"></i> Username
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="username" 
+                                       name="username" 
+                                       placeholder="Enter your username"
+                                       autocomplete="username"
+                                       required
+                                       autofocus>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="password" class="form-label">
+                                    <i class="bi bi-lock-fill"></i> Password
+                                </label>
+                                <div class="input-group">
+                                    <input type="password" 
+                                           class="form-control" 
+                                           id="password" 
+                                           name="password" 
+                                           placeholder="Enter your password"
+                                           autocomplete="current-password"
+                                           required>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()">
+                                        <i class="bi bi-eye" id="passwordToggleIcon"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-box-arrow-in-right"></i> Login
+                                </button>
+                            </div>
+                        </form>
+                    {% endif %}
+
+                    <div class="security-features">
+                        <h6><i class="bi bi-shield-check"></i> Security Features</h6>
+                        <ul class="list-unstyled mb-0 small">
+                            <li><i class="bi bi-check-circle text-success"></i> Secure authentication</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Optional two-factor authentication</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Account lockout protection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> IP whitelist protection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Rate limiting</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Input sanitization</li>
+                            <li><i class="bi bi-check-circle text-success"></i> CSRF protection</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Security headers</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Session management</li>
+                            <li><i class="bi bi-check-circle text-success"></i> Audit logging</li>
+                        </ul>
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i>
+                            2FA is optional - users can enable it in their profile settings
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function togglePassword() {
+            const passwordField = document.getElementById('password');
+            const toggleIcon = document.getElementById('passwordToggleIcon');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleIcon.className = 'bi bi-eye-slash';
+            } else {
+                passwordField.type = 'password';
+                toggleIcon.className = 'bi bi-eye';
+            }
+        }
+
+        // Auto-focus on appropriate field
+        document.addEventListener('DOMContentLoaded', function() {
+            const totpField = document.getElementById('totp_code');
+            const usernameField = document.getElementById('username');
+            
+            if (totpField) {
+                totpField.focus();
+            } else if (usernameField) {
+                usernameField.focus();
+            }
+        });
+
+        // Format TOTP input - FIXED REGEX
+        document.addEventListener('DOMContentLoaded', function() {
+            const totpField = document.getElementById('totp_code');
+            if (totpField) {
+                totpField.addEventListener('input', function(e) {
+                    // Only allow digits 0-9
+                    e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[Unit]
+Description=WebSocket Terminal Server for Frappe Docker
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/var/www/html/frappe-docker
+ExecStart=/var/www/html/frappe-docker/start-terminal-ws.sh
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=terminal-ws
+
+[Install]
+WantedBy=multi-user.target 

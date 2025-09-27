@@ -1,0 +1,607 @@
+/* Ubuntu Terminal Styling - Authentic Look */
+
+/* Import Ubuntu font */
+@import url('https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap');
+
+/* Terminal container - Ubuntu window style */
+.terminal-container {
+    background: linear-gradient(135deg, #2c2c2c 0%, #1e1e1e 100%);
+    border: 1px solid #555;
+    border-radius: 8px;
+    padding: 0;
+    margin: 10px 0;
+    box-shadow: 
+        0 4px 20px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.1);
+    font-family: 'Ubuntu Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+    overflow: hidden;
+}
+
+/* Ubuntu terminal header */
+.terminal-header {
+    background: linear-gradient(to bottom, #3c3c3c 0%, #2c2c2c 100%);
+    color: #ffffff;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 1000;
+    border-bottom: 1px solid #555;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+}
+
+/* Ubuntu window controls */
+.terminal-window-controls {
+    display: flex;
+    gap: 6px;
+}
+
+.terminal-control-btn {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    position: relative;
+}
+
+.terminal-control-btn.close {
+    background: #ff5f56;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.terminal-control-btn.minimize {
+    background: #ffbd2e;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.terminal-control-btn.maximize {
+    background: #27ca3f;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.terminal-control-btn:hover {
+    opacity: 0.8;
+}
+
+/* Terminal title */
+.terminal-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: 500;
+    color: #ffffff;
+}
+
+/* Terminal body - Ubuntu dark theme */
+.terminal-body {
+    background: #300a24; /* Ubuntu's default dark purple background */
+    color: #ffffff;
+    font-family: 'Ubuntu Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    padding: 15px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    line-height: 1.4;
+    min-height: 600px;
+    max-height: 800px;
+    overflow-y: auto;
+    position: relative;
+}
+
+/* Ubuntu terminal scrollbar */
+.terminal-body::-webkit-scrollbar {
+    width: 12px;
+}
+
+.terminal-body::-webkit-scrollbar-track {
+    background: #2c2c2c;
+    border-radius: 6px;
+}
+
+.terminal-body::-webkit-scrollbar-thumb {
+    background: linear-gradient(to bottom, #555 0%, #444 100%);
+    border-radius: 6px;
+    border: 2px solid #2c2c2c;
+}
+
+.terminal-body::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(to bottom, #666 0%, #555 100%);
+}
+
+.terminal-body::-webkit-scrollbar-corner {
+    background: #2c2c2c;
+}
+
+/* Ubuntu terminal colors */
+.terminal-green {
+    color: #4ade80; /* Ubuntu green */
+    font-weight: 400;
+}
+
+.terminal-red {
+    color: #f87171; /* Ubuntu red */
+    font-weight: 400;
+}
+
+.terminal-blue {
+    color: #60a5fa; /* Ubuntu blue */
+    font-weight: 400;
+}
+
+.terminal-yellow {
+    color: #fbbf24; /* Ubuntu yellow */
+    font-weight: 400;
+}
+
+.terminal-cyan {
+    color: #22d3ee; /* Ubuntu cyan */
+    font-weight: 400;
+}
+
+.terminal-gray {
+    color: #9ca3af; /* Ubuntu gray */
+    font-weight: 400;
+}
+
+.terminal-white {
+    color: #ffffff;
+    font-weight: 400;
+}
+
+.terminal-bold {
+    font-weight: 700;
+}
+
+/* Command prompt styling - Ubuntu style */
+.terminal-prompt {
+    color: #4ade80; /* Ubuntu green */
+    font-weight: 400;
+}
+
+.terminal-path {
+    color: #60a5fa; /* Ubuntu blue */
+    font-weight: 400;
+}
+
+.terminal-command {
+    color: #ffffff;
+    font-weight: 400;
+}
+
+/* Ubuntu terminal input */
+.terminal-input {
+    background: #300a24;
+    color: #ffffff;
+    border: none;
+    font-family: 'Ubuntu Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    padding: 12px 15px;
+    width: 100%;
+    outline: none;
+    border-top: 1px solid #555;
+    border-radius: 0 0 8px 8px;
+}
+
+.terminal-input:focus {
+    background: #300a24;
+    box-shadow: none;
+}
+
+.terminal-input::placeholder {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+/* Command separator - Ubuntu style */
+.terminal-separator {
+    color: #555;
+    font-size: 11px;
+    margin: 8px 0;
+    text-align: center;
+    font-weight: 400;
+}
+
+/* Ubuntu terminal output styling */
+.terminal-output-line {
+    margin: 1px 0;
+    padding: 0;
+    font-weight: 400;
+}
+
+/* Ubuntu terminal specific styling */
+.terminal-ubuntu-prompt {
+    background: transparent;
+    color: #4ade80;
+    font-weight: 400;
+}
+
+/* Directory listing colors (Ubuntu style) */
+.terminal-dir {
+    color: #60a5fa; /* Blue for directories */
+    font-weight: 400;
+}
+
+.terminal-file {
+    color: #ffffff; /* White for files */
+    font-weight: 400;
+}
+
+.terminal-executable {
+    color: #4ade80; /* Green for executables */
+    font-weight: 400;
+}
+
+.terminal-link {
+    color: #22d3ee; /* Cyan for links */
+    font-weight: 400;
+}
+
+/* Ubuntu terminal animations */
+.terminal-cursor {
+    animation: ubuntu-blink 1s infinite;
+    background-color: #ffffff;
+    color: #300a24;
+    font-weight: 400;
+}
+
+@keyframes ubuntu-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* Ubuntu terminal progress indicators */
+.terminal-progress {
+    color: #22d3ee;
+    animation: ubuntu-pulse 1.5s infinite;
+    font-weight: 400;
+}
+
+@keyframes ubuntu-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Ubuntu terminal error highlighting */
+.terminal-error-line {
+    background-color: rgba(248, 113, 113, 0.1);
+    padding: 2px 4px;
+    border-left: 3px solid #f87171;
+    margin: 2px 0;
+    border-radius: 2px;
+}
+
+/* Ubuntu terminal success highlighting */
+.terminal-success-line {
+    background-color: rgba(74, 222, 128, 0.1);
+    padding: 2px 4px;
+    border-left: 3px solid #4ade80;
+    margin: 2px 0;
+    border-radius: 2px;
+}
+
+/* Ubuntu terminal warning highlighting */
+.terminal-warning-line {
+    background-color: rgba(251, 191, 36, 0.1);
+    padding: 2px 4px;
+    border-left: 3px solid #fbbf24;
+    margin: 2px 0;
+    border-radius: 2px;
+}
+
+/* Ubuntu terminal info highlighting */
+.terminal-info-line {
+    background-color: rgba(96, 165, 250, 0.1);
+    padding: 2px 4px;
+    border-left: 3px solid #60a5fa;
+    margin: 2px 0;
+    border-radius: 2px;
+}
+
+/* Ubuntu terminal selection */
+.terminal-body::selection {
+    background-color: #60a5fa;
+    color: #ffffff;
+}
+
+/* Ubuntu terminal focus */
+.terminal-container:focus-within {
+    box-shadow: 
+        0 4px 20px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.1),
+        0 0 0 2px #60a5fa;
+}
+
+/* Ubuntu terminal responsive design */
+@media (max-width: 768px) {
+    .terminal-body,
+    .terminal-input {
+        font-size: 12px;
+        padding: 10px;
+    }
+    
+    .terminal-container {
+        margin: 5px 0;
+        border-radius: 6px;
+    }
+    
+    .terminal-header {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+    
+    .terminal-control-btn {
+        width: 10px;
+        height: 10px;
+    }
+}
+
+/* Ubuntu terminal dark mode enhancements */
+@media (prefers-color-scheme: dark) {
+    .terminal-container {
+        background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+        border-color: #444;
+    }
+    
+    .terminal-header {
+        background: linear-gradient(to bottom, #2a2a2a 0%, #1a1a1a 100%);
+        border-bottom-color: #444;
+    }
+}
+
+/* Ubuntu terminal accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .terminal-cursor,
+    .terminal-progress {
+        animation: none;
+    }
+}
+
+/* Ubuntu terminal print styles */
+@media print {
+    .terminal-container {
+        background: white;
+        color: black;
+        border: 1px solid black;
+        box-shadow: none;
+    }
+    
+    .terminal-header {
+        background: #f0f0f0;
+        color: black;
+    }
+    
+    .terminal-body {
+        background: white;
+        color: black;
+    }
+}
+
+/* Ubuntu Terminal Additional Features */
+
+/* Blinking cursor for input */
+.terminal-input:focus {
+    position: relative;
+}
+
+.terminal-input:focus::after {
+    content: '█';
+    color: #ffffff;
+    animation: ubuntu-blink 1s infinite;
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Ubuntu terminal command history styling */
+.terminal-history-item {
+    padding: 2px 0;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+}
+
+.terminal-history-item:hover {
+    background-color: rgba(96, 165, 250, 0.1);
+}
+
+/* Ubuntu terminal autocomplete styling */
+.terminal-autocomplete {
+    background-color: rgba(96, 165, 250, 0.1);
+    border: 1px solid #60a5fa;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-left: 2px;
+    color: #60a5fa;
+    font-style: italic;
+}
+
+/* Ubuntu terminal status indicators */
+.terminal-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.terminal-status.connected {
+    background-color: #4ade80;
+    box-shadow: 0 0 6px #4ade80;
+}
+
+.terminal-status.disconnected {
+    background-color: #f87171;
+    box-shadow: 0 0 6px #f87171;
+}
+
+.terminal-status.connecting {
+    background-color: #fbbf24;
+    animation: ubuntu-pulse 1s infinite;
+}
+
+/* Ubuntu terminal loading animation */
+.terminal-loading {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #555;
+    border-top: 2px solid #60a5fa;
+    border-radius: 50%;
+    animation: ubuntu-spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes ubuntu-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Ubuntu terminal tooltip */
+.terminal-tooltip {
+    position: absolute;
+    background-color: #1a1a1a;
+    color: #ffffff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    z-index: 1000;
+    border: 1px solid #555;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.terminal-tooltip.show {
+    opacity: 1;
+}
+
+/* Ubuntu terminal context menu */
+.terminal-context-menu {
+    position: absolute;
+    background-color: #2c2c2c;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 0;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    min-width: 120px;
+}
+
+.terminal-context-menu-item {
+    padding: 6px 12px;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.2s ease;
+}
+
+.terminal-context-menu-item:hover {
+    background-color: #60a5fa;
+}
+
+/* Ubuntu terminal resize handle */
+.terminal-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    cursor: nw-resize;
+    background: linear-gradient(-45deg, transparent 30%, #555 30%, #555 70%, transparent 70%);
+}
+
+/* Ubuntu terminal fullscreen mode */
+.terminal-container.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    border-radius: 0;
+    margin: 0;
+}
+
+.terminal-container.fullscreen .terminal-body {
+    height: calc(100vh - 60px);
+    max-height: none;
+}
+
+/* Ubuntu terminal themes */
+.terminal-container.theme-light {
+    background: linear-gradient(135deg, #f5f5f5 0%, #e5e5e5 100%);
+    border-color: #ccc;
+}
+
+.terminal-container.theme-light .terminal-header {
+    background: linear-gradient(to bottom, #e5e5e5 0%, #d5d5d5 100%);
+    color: #333;
+    border-bottom-color: #ccc;
+}
+
+.terminal-container.theme-light .terminal-body {
+    background: #ffffff;
+    color: #333;
+}
+
+.terminal-container.theme-light .terminal-input {
+    background: #ffffff;
+    color: #333;
+    border-top-color: #ccc;
+}
+
+/* Ubuntu terminal accessibility improvements */
+.terminal-container:focus-within .terminal-header {
+    background: linear-gradient(to bottom, #404040 0%, #303030 100%);
+}
+
+/* Ubuntu terminal drag and drop */
+.terminal-container.dragover {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px #60a5fa;
+}
+
+/* Ubuntu terminal notification */
+.terminal-notification {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: #2c2c2c;
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 1000;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+}
+
+.terminal-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.terminal-notification.success {
+    border-left: 4px solid #4ade80;
+}
+
+.terminal-notification.error {
+    border-left: 4px solid #f87171;
+}
+
+.terminal-notification.warning {
+    border-left: 4px solid #fbbf24;
+}
+
+.terminal-notification.info {
+    border-left: 4px solid #60a5fa;
+}

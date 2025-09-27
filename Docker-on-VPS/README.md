@@ -93,11 +93,11 @@ Enter site name (e.g. example.com): your-domain.com
 
 #### 3. SSL Configuration (HTTPS only)
 ```
-Enter your Cloudflare API token (leave blank for HTTP challenge): 
+Enter your Cloudflare API token (leave blank for HTTP challenge with any DNS provider): 
 Enter email for Let's Encrypt notifications: your-email@example.com
 ```
-- **Cloudflare API Token**: For DNS challenge (recommended for wildcard certs)
-- **Leave blank**: For HTTP challenge (standard method)
+- **Cloudflare API Token**: For DNS challenge (Cloudflare only - supports wildcard certs)
+- **Leave blank**: For HTTP challenge (works with ANY DNS provider: Namecheap, GoDaddy, etc.)
 - **Email**: Required for Let's Encrypt certificate notifications
 
 ### Configuration Options
@@ -110,6 +110,7 @@ Enter email for Let's Encrypt notifications: your-email@example.com
 
 #### HTTPS Setup with HTTP Challenge
 - Standard SSL setup using HTTP-01 challenge
+- **Works with ANY DNS provider**: Namecheap, GoDaddy, Google Domains, etc.
 - Automatic certificate generation and renewal
 - Accessible via `https://your-domain.com`
 - HTTP automatically redirects to HTTPS

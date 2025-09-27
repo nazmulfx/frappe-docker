@@ -9,6 +9,150 @@ NC='\033[0m' # No Color
 
 # --- Helper Functions ---
 
+# Generate secure password
+generate_password() {
+    # Try pwgen first, fallback to openssl
+    if command -v pwgen >/dev/null 2>&1; then
+        pwgen -s 32 1
+    else
+        openssl rand -base64 24 | tr -d "=+/" | cut -c1-32
+    fi
+}
+
+# Fetch available ERPNext versions from Docker Hub
+fetch_erpnext_versions() {
+    # Try to fetch versions using curl (faster than docker pull)
+    local versions=""
+    
+    # Check if curl is available and try to fetch from Docker Hub
+    if command -v curl >/dev/null 2>&1; then
+        echo -e "${BLUE}   Fetching from Docker Hub API...${NC}" >&2
+        versions=$(curl -s --connect-timeout 10 --max-time 30 "https://registry.hub.docker.com/v2/repositories/frappe/erpnext/tags?page_size=100" | \
+            grep -o '"name":"[^"]*"' | \
+            grep -E '^"name":"v[0-9]+\.[0-9]+\.[0-9]+"' | \
+            sed 's/"name":"//g' | \
+            sed 's/"//g' | \
+            sort -V -r | \
+            head -1000 2>/dev/null)
+    fi
+    
+    if [[ -z "$versions" ]]; then
+        echo -e "${YELLOW}   Using fallback version list...${NC}" >&2
+        # Fallback list of common versions
+        versions="v15.80.1
+v15.80.0
+v15.79.2
+v15.79.1
+v15.79.0
+v15.78.1
+v15.78.0
+v15.77.0
+v15.76.0
+v15.75.1
+v15.75.0
+v15.74.0
+v15.73.2
+v15.73.1
+v15.73.0
+v15.72.3
+v15.72.2
+v15.72.1
+v15.71.1
+v15.70.2"
+    fi
+    
+    echo "$versions"
+}
+
+# Select ERPNext version
+select_erpnext_version() {
+    echo ""
+    echo -e "${BLUE}📦 ERPNext Version Selection${NC}"
+    echo "=================================="
+    echo -e "${BLUE}🔍 Fetching available ERPNext versions from Docker Hub...${NC}"
+    
+    local versions=$(fetch_erpnext_versions)
+    local version_array=()
+    local i=1
+    
+    # Check if versions are fetched
+    if [[ -z "$versions" ]]; then
+        echo -e "${RED}❌ No versions found!${NC}"
+        return 1
+    fi
+    
+    echo ""
+    echo "Available ERPNext versions:"
+    echo ""
+    
+    # Convert to array and display
+    local is_first=true
+    while IFS= read -r version; do
+        if [[ -n "$version" ]]; then
+            version_array+=("$version")
+            if [[ "$is_first" == "true" ]]; then
+                echo -e "  ${GREEN}[$i] $version (LATEST - RECOMMENDED)${NC}"
+                is_first=false
+            elif [[ "$version" == "v15.63.0" ]]; then
+                echo -e "  ${YELLOW}[$i] $version (STABLE)${NC}"
+            else
+                echo "  [$i] $version"
+            fi
+            ((i++))
+        fi
+    done <<< "$versions"
+    
+    # Check if we have any versions
+    if [[ ${#version_array[@]} -eq 0 ]]; then
+        echo -e "${RED}❌ No valid versions found!${NC}"
+        return 1
+    fi
+    
+    echo ""
+    # Get the latest version (first in the sorted list)
+    local latest_version="${version_array[0]}"
+    echo -e "${GREEN}💡 $latest_version is the latest version with newest features${NC}"
+    echo -e "${YELLOW}💡 v15.63.0 is a stable version recommended for production${NC}"
+    echo -e "${BLUE}💡 Choose based on your needs: latest features vs stability${NC}"
+    echo ""
+    
+    # Get user selection
+    while true; do
+        read -p "Select ERPNext version (1-${#version_array[@]}) [1]: " selection
+        
+        # Default to 1 if empty
+        if [[ -z "$selection" ]]; then
+            selection=1
+        fi
+        
+        # Validate selection
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le "${#version_array[@]}" ]]; then
+            selected_version="${version_array[$((selection-1))]}"
+            echo -e "${GREEN}✅ Selected ERPNext version: $selected_version${NC}"
+            SELECTED_ERPNEXT_VERSION="$selected_version"
+            break
+        else
+            echo -e "${RED}❌ Invalid selection. Please enter a number between 1 and ${#version_array[@]}${NC}"
+        fi
+    done
+}
+
+# Detect preferred docker compose command
+detect_docker_compose() {
+    # Try docker compose (v2) first - preferred method
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+        return 0
+    # Fallback to docker-compose (v1) if v2 is not available
+    elif command -v docker-compose >/dev/null 2>&1; then
+        echo "docker-compose"
+        return 0
+    else
+        echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is available${NC}" >&2
+        return 1
+    fi
+}
+
 # Check if a command exists
 command_exists() {
     command -v "$1" &> /dev/null
@@ -109,6 +253,7 @@ manage_hosts_entry() {
 generate_docker_compose() {
     local safe_site_name=$1
     local site_name=$2
+    local erpnext_version=$3
     local compose_file="$safe_site_name/${safe_site_name}-docker-compose.yml"
     
     # Load local config to check for custom ports
@@ -140,47 +285,94 @@ version: "3.8"
 
 services:
   app:
-    image: frappe/erpnext:v15.63.0
+    image: frappe/erpnext:${erpnext_version}
     container_name: ${safe_site_name}-app
+    restart: unless-stopped
     networks:
       - frappe_network
       - traefik_proxy
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      create-site:
+        condition: service_completed_successfully
     labels:
 ${app_labels}
     deploy:
       restart_policy:
         condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    healthcheck:
+      test: |
+        /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status | grep -q "RUNNING" && 
+        curl -f http://localhost:8000/api/method/ping || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+      - ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
     environment:
       DB_HOST: db
       DB_PORT: "3306"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SOCKETIO_PORT: "9000"
+      DB_PASSWORD: \${DB_PASSWORD}
+      REDIS_PASSWORD: \${REDIS_PASSWORD}
+      FRAPPE_SITE_NAME_HEADER: \${FRAPPE_SITE_NAME_HEADER}
+      SITES: \${SITES}
     entrypoint:
       - bash
       - -c
       - |
-        echo "Waiting for site to be ready...";
+        echo "🚀 Starting Frappe application container...";
+        echo "⏳ Waiting for site to be ready...";
+        
+        # Wait for site creation to complete
         while [ ! -f sites/${site_name}/site_config.json ]; do
           echo "Site not ready yet, waiting...";
-          sleep 5;
+          sleep 10;
         done;
-        echo "Site is ready, installing supervisor...";
         
-        # Install supervisor using pip (works with frappe user)
-        pip3 install supervisor;
+        # Additional wait for site to be fully configured
+        echo "Waiting for site configuration to complete...";
+        sleep 30;
         
-        # Create supervisor directories in user's home
+        # Check if supervisor is already installed
+        if ! command -v supervisord >/dev/null 2>&1; then
+          echo "Installing supervisor...";
+          pip3 install supervisor;
+        else
+          echo "Supervisor already installed";
+        fi;
+        
+        # Create supervisor directories
         mkdir -p /home/frappe/supervisor/conf.d /home/frappe/supervisor/logs;
         
-        # Create supervisor config in user's home directory
-        cat > /home/frappe/supervisor/supervisord.conf << 'SUPERVISOR_EOF'
+        # Only create config if it doesn't exist
+        if [ ! -f /home/frappe/supervisor/supervisord.conf ]; then
+          echo "Creating supervisor configuration...";
+          cat > /home/frappe/supervisor/supervisord.conf << 'SUPERVISOR_EOF'
         [unix_http_server]
         file=/home/frappe/supervisor/supervisor.sock
         chmod=0777
@@ -269,83 +461,167 @@ ${app_labels}
         stderr_logfile=/home/frappe/supervisor/logs/frappe-websocket-error.log
         FRAPPE_CONF_EOF
 
-        echo "Supervisor installed and configured. Starting Frappe processes...";
+        fi;
         
-        # Start supervisor using full path
+        echo "🚀 Starting supervisor...";
         /home/frappe/.local/bin/supervisord -c /home/frappe/supervisor/supervisord.conf;
         
-        # Wait a moment for processes to start
-        sleep 5;
+        # Wait for supervisor to start
+        sleep 10;
         
-        # Show status using full path
+        echo "✅ Supervisor started, showing status:";
         /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status;
         
-        # Keep container running and show logs
+        echo "🎉 Frappe application container is ready!";
+        echo "📝 Monitoring supervisor logs...";
+        
+        # Keep container running
         tail -f /home/frappe/supervisor/logs/supervisord.log
 
   create-site:
-    image: frappe/erpnext:v15.63.0
+    image: frappe/erpnext:${erpnext_version}
     container_name: ${safe_site_name}-create-site
+    restart: "no"
     networks:
       - frappe_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     deploy:
       restart_policy:
         condition: none
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+      - ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DB_PASSWORD: \${DB_PASSWORD}
+      REDIS_PASSWORD: \${REDIS_PASSWORD}
+      FRAPPE_SITE_NAME_HEADER: \${FRAPPE_SITE_NAME_HEADER}
+      SITES: \${SITES}
     entrypoint:
       - bash
       - -c
       - |
         wait-for-it -t 120 db:3306;
         wait-for-it -t 120 redis:6379;
-        ls -1 apps > sites/apps.txt || true;
+        cd /home/frappe/frappe-bench;
+        
+        
+        # Create apps.txt with all available apps
+        if [ -f sites/apps.txt ]; then
+          echo "Preserving existing apps.txt...";
+          # Merge with current apps
+          ls -1 apps >> sites/apps.txt.tmp 2>/dev/null || true;
+          sort sites/apps.txt.tmp | uniq > sites/apps.txt;
+          rm -f sites/apps.txt.tmp;
+        else
+          ls -1 apps > sites/apps.txt || true;
+        fi;
         bench set-config -g db_host db;
         bench set-config -gp db_port 3306;
-        bench set-config -g redis_cache "redis://redis:6379";
-        bench set-config -g redis_queue "redis://redis:6379";
-        bench set-config -g redis_socketio "redis://redis:6379";
+        bench set-config -g redis_cache "redis://:\${REDIS_PASSWORD}@redis:6379";
+        bench set-config -g redis_queue "redis://:\${REDIS_PASSWORD}@redis:6379";
+        bench set-config -g redis_socketio "redis://:\${REDIS_PASSWORD}@redis:6379";
         bench set-config -gp socketio_port 9000;
         if [ ! -d sites/${site_name} ]; then
           echo "Creating new site...";
-          bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default ${site_name};
+          bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=\${DB_PASSWORD} --install-app erpnext --set-default ${site_name};
           echo "${site_name}" > sites/currentsite.txt;
         else
           echo "Site ${site_name} already exists, skipping creation";
+          echo "${site_name}" > sites/currentsite.txt;
         fi
 
   db:
     image: mariadb:10.6
     container_name: ${safe_site_name}-db
+    restart: unless-stopped
     networks:
       - frappe_network
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
-      interval: 1s
-      retries: 20
+      test: mysqladmin ping -h localhost --password=\${DB_PASSWORD}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     deploy:
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed
     environment:
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: \${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: \${DB_PASSWORD}
     volumes:
       - db-data:/var/lib/mysql
 
   redis:
     image: redis:6.2-alpine
     container_name: ${safe_site_name}-redis
+    restart: unless-stopped
     networks:
       - frappe_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "\${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     deploy:
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/tmp
+    command: redis-server --appendonly yes --requirepass \${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
 
 networks:
   frappe_network:
@@ -356,7 +632,9 @@ networks:
 volumes:
   sites:
   logs:
+  apps:
   db-data:
+  redis-data:
 EOF
 }
 
@@ -429,17 +707,61 @@ fi
 if ! is_traefik_running; then
     echo -e "${RED}⚠️  Traefik is not running!${NC}"
     echo ""
-    echo "Please run one of the following first:"
-    echo "  1. ./setup-traefik-local.sh (for local environment)"
-    echo "  2. Start Traefik manually"
+    echo "Options:"
+    echo "  1. Auto-install Traefik (RECOMMENDED)"
+    echo "  2. Continue without Traefik (manual setup required)"
+    echo "  3. Exit and run setup-traefik-local.sh manually"
     echo ""
-    read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
-    if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+    read -p "Choose an option (1-3): " traefik_option
+    
+    case $traefik_option in
+        1)
+            echo -e "${BLUE}🚀 Auto-installing Traefik...${NC}"
+            if [[ -f "./setup-traefik-local.sh" ]]; then
+                echo -e "${GREEN}✅ Found setup-traefik-local.sh, running it...${NC}"
+                chmod +x ./setup-traefik-local.sh
+                ./setup-traefik-local.sh
+                
+                # Check if Traefik started successfully
+                sleep 5
+                if is_traefik_running; then
+                    echo -e "${GREEN}✅ Traefik installed and running successfully!${NC}"
+                else
+                    echo -e "${RED}❌ Traefik installation failed${NC}"
+                    echo -e "${YELLOW}💡 You can try running ./setup-traefik-local.sh manually${NC}"
+                    read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
+                    if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
+                        exit 1
+                    fi
+                fi
+            else
+                echo -e "${RED}❌ setup-traefik-local.sh not found in current directory${NC}"
+                echo -e "${YELLOW}💡 Please run ./setup-traefik-local.sh manually first${NC}"
+                read -p "Do you want to continue anyway? (y/n): " continue_without_traefik
+                if [[ ! "$continue_without_traefik" =~ ^[Yy]$ ]]; then
+                    exit 1
+                fi
+            fi
+            ;;
+        2)
+            echo -e "${YELLOW}⚠️  Continuing without Traefik - manual setup required${NC}"
+            ;;
+        3)
+            echo -e "${YELLOW}Please run: ./setup-traefik-local.sh${NC}"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid option. Exiting...${NC}"
+            exit 1
+            ;;
+    esac
 else
     echo -e "${GREEN}✅ Traefik is running${NC}"
 fi
+
+# Select ERPNext version
+select_erpnext_version
+erpnext_version=$SELECTED_ERPNEXT_VERSION
 
 # Get site name with localhost suggestion for local env
 echo ""
@@ -462,20 +784,130 @@ safe_site_name=$(echo "$site_name" | sed 's/[^a-zA-Z0-9]/_/g')
 # Create site directory
 mkdir -p "$safe_site_name"
 
+# Determine the VS Code development directory
+# Use the actual user's home directory, not root's home when running with sudo
+ACTUAL_USER_HOME=$(eval echo ~$SUDO_USER)
+if [ -z "$ACTUAL_USER_HOME" ] || [ "$ACTUAL_USER_HOME" = "~$SUDO_USER" ]; then
+    # Fallback to current user's home if SUDO_USER is not set
+    ACTUAL_USER_HOME="$HOME"
+fi
+
+VSCODE_DIR="${ACTUAL_USER_HOME}/frappe-docker"
+if [ ! -d "$VSCODE_DIR" ]; then
+    mkdir -p "$VSCODE_DIR"
+    echo -e "${GREEN}📁 Created VS Code development directory: ${VSCODE_DIR}${NC}"
+fi
+
+# Create frappe-bench directory for VS Code development
+mkdir -p "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
+echo -e "${GREEN}📁 Created frappe-bench directory: ${VSCODE_DIR}/${safe_site_name}-frappe-bench${NC}"
+
+# Copy Frappe apps to the mounted directory for VS Code development
+echo -e "${BLUE}📦 Copying Frappe apps to mounted directory...${NC}"
+sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
+docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:${erpnext_version} bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
+echo -e "${BLUE}   💡 You can now open this folder in VS Code for development${NC}"
+
 # Create .env file
-cat > "$safe_site_name/.env" << EOF
-ERPNEXT_VERSION=v15.63.0
-DB_PASSWORD=admin
+DB_PASSWORD=$(generate_password)
+REDIS_PASSWORD=$(generate_password)
 FRAPPE_SITE_NAME_HEADER=${site_name}
 SITES=${site_name}
+cat > "$safe_site_name/.env" << EOF
+ERPNEXT_VERSION=${erpnext_version}
+DB_PASSWORD=${DB_PASSWORD}
+REDIS_PASSWORD=${REDIS_PASSWORD}
+FRAPPE_SITE_NAME_HEADER=${FRAPPE_SITE_NAME_HEADER}
+SITES=${SITES}
 EOF
 
 # Generate docker-compose
-generate_docker_compose "$safe_site_name" "$site_name"
+generate_docker_compose "$safe_site_name" "$site_name" "$erpnext_version"
 
 # Start containers
 echo -e "${GREEN}Starting your optimized Frappe/ERPNext site...${NC}"
-docker compose -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+DOCKER_COMPOSE_CMD=$(detect_docker_compose)
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+
+# Ensure Frappe apps are available in the mounted directory
+echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"
+if [ ! -d "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps/frappe" ]; then
+    echo -e "${YELLOW}📦 Apps not found, copying from container...${NC}"
+    sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
+    docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:${erpnext_version} bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
+    echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
+else
+    echo -e "${GREEN}✅ Frappe apps already available${NC}"
+fi
+
+# Ensure apps.txt includes all installed apps
+echo -e "${BLUE}🔧 Ensuring apps.txt includes all installed apps...${NC}"
+sleep 10  # Wait for containers to be ready
+docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && ls -1 apps > sites/apps.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, apps.txt will be updated automatically${NC}"
+echo -e "${GREEN}✅ apps.txt updated with all installed apps${NC}"
+
+# Ensure currentsite.txt is set correctly
+echo -e "${BLUE}🔧 Ensuring currentsite.txt is set correctly...${NC}"
+docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && echo '${site_name}' > sites/currentsite.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, currentsite.txt will be set automatically${NC}"
+echo -e "${GREEN}✅ currentsite.txt set to ${site_name}${NC}"
+
+# Wait 2 minutes for everything to initialize, then restart containers
+echo -e "${BLUE}⏳ Waiting 3 minutes for containers to initialize...${NC}"
+echo -e "${YELLOW}💡 This allows the site to be fully created and configured${NC}"
+sleep 180
+
+echo -e "${BLUE}🔄 Restarting all containers for proper initialization...${NC}"
+
+# Stop all containers first using explicit container names
+echo -e "${YELLOW}⏹️  Stopping all containers...${NC}"
+
+# Check which containers are running and stop them
+for container in ${safe_site_name}-app ${safe_site_name}-db ${safe_site_name}-redis ${safe_site_name}-create-site; do
+    if docker ps --filter "name=$container" --format "{{.Names}}" | grep -F "$container" >/dev/null 2>&1; then
+        echo -e "${BLUE}   Stopping $container...${NC}"
+        docker stop "$container" 2>/dev/null || echo -e "${YELLOW}   Warning: Could not stop $container${NC}"
+    else
+        echo -e "${BLUE}   $container is not running${NC}"
+    fi
+done
+
+# Wait a moment
+sleep 5
+
+# Start all containers using the full path to docker-compose file
+echo -e "${YELLOW}▶️  Starting all containers...${NC}"
+if ! $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
+    echo -e "${YELLOW}⚠️  Docker Compose up failed, trying alternative method...${NC}"
+    # Try starting containers individually as fallback
+    $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
+fi
+
+# Wait a bit and check if containers are running
+sleep 10
+echo -e "${BLUE}🔍 Checking container status after restart...${NC}"
+$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
+
+echo -e "${GREEN}✅ Containers restarted successfully!${NC}"
+echo -e "${BLUE}⏳ Waiting 30 seconds for containers to be ready...${NC}"
+sleep 30
+
+# Final status check
+echo -e "${BLUE}📊 Final container status:${NC}"
+$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
+
+# Test if the site is accessible
+echo -e "${BLUE}🔍 Testing site accessibility...${NC}"
+sleep 10
+if curl -f -s http://localhost:8000/api/method/ping >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Site is accessible after restart!${NC}"
+else
+    echo -e "${YELLOW}⚠️  Site may still be starting up...${NC}"
+    echo -e "${BLUE}💡 You can check the status with: docker logs ${safe_site_name}-app${NC}"
+fi
 
 # Show port information immediately after starting
 echo ""
@@ -500,7 +932,7 @@ echo -e "${BLUE}🔧 Managing hosts file for local access...${NC}"
 if manage_hosts_entry "$site_name" "add"; then
     if [[ ! $site_name =~ \.localhost$ ]]; then
         # Get the correct port from local config
-        local display_port=""
+        display_port=""
         if [[ -f ".traefik-local-config" ]]; then
             source .traefik-local-config
             if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
@@ -517,7 +949,7 @@ echo ""
 echo -e "${GREEN}🚀 Your optimized site is being prepared and will be live in approximately 5 minutes...${NC}"
 
 # Determine the access URL based on configuration
-local access_url=""
+access_url=""
 if [[ -f ".traefik-local-config" ]]; then
     source .traefik-local-config
     if [[ "$USE_LOCALHOST" == "true" ]]; then
@@ -540,7 +972,7 @@ fi
 echo -e "🌐 Your site will be accessible at: ${access_url}"
 
 echo ""
-echo "📋 Frappe Version: v15.63.0"
+echo "📋 Frappe Version: ${erpnext_version}"
 echo "👤 Default Username: Administrator"
 echo "🔑 Default Password: admin"
 echo ""
@@ -576,6 +1008,19 @@ echo "   • Restart web: sudo docker exec ${safe_site_name}-app /home/frappe/.l
 echo "   • Restart workers: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-worker-*"
 echo "   • Restart all: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all"
 echo "   • View logs: sudo docker exec ${safe_site_name}-app tail -f /home/frappe/supervisor/logs/frappe-web.log"
+
+echo ""
+echo "📦 Custom App Management:"
+echo "   • Install custom app: docker exec -it ${safe_site_name}-app bench get-app your_app_name"
+echo "   • Install app on site: docker exec -it ${safe_site_name}-app bench --site ${site_name} install-app your_app_name"
+echo "   • Check installed apps: docker exec -it ${safe_site_name}-app cat sites/apps.txt"
+echo "   • Custom apps are now preserved on container restart AND system reboot!"
+echo "   • Apps are stored in Docker named volume for persistence"
+echo ""
+echo "💻 VS Code Development:"
+echo "   • Open in VS Code: code ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps"
+echo "   • Edit Frappe/ERPNext code directly in VS Code"
+echo "   • Changes are immediately reflected in the running container"
 echo ""
 
 # Docker Manager prompt (if needed)
@@ -593,19 +1038,19 @@ if [[ "$ACCESS_MANAGER" =~ ^[Yy]$ ]]; then
     elif [[ -f "./docker-manager.sh" ]]; then
         echo "✅ Found docker-manager.sh in current directory"
         sudo ./docker-manager.sh
-    elif [[ -f "/var/www/html/docker2 15/docker-manager.sh" ]]; then
-        echo "✅ Found docker-manager.sh in project directory"
-        sudo /var/www/html/docker2\ 15/docker-manager.sh
+    elif [[ -f "../docker-manager.sh" ]]; then
+        echo "✅ Found docker-manager.sh in project root"
+        sudo ../docker-manager.sh
     else
         echo "❌ docker-manager not found in common locations"
         echo ""
         echo "💡 Try these commands:"
         echo "   sudo ./docker-manager.sh"
-        echo "   sudo /var/www/html/docker2\ 15/docker-manager.sh"
+        echo "   sudo ../docker-manager.sh"
         echo "   sudo docker-manager (if installed globally)"
     fi
 else
     echo ""
     echo "💡 You can access the docker-manager anytime by running:"
-    echo "   sudo ./docker-manager.sh"
+    echo "   sudo ../docker-manager.sh"
 fi
