@@ -274,9 +274,11 @@ generate_docker_compose() {
       - "traefik.http.routers.${safe_site_name}-app-http.entrypoints=${http_entrypoint}"
       - "traefik.http.routers.${safe_site_name}-app-http.service=${safe_site_name}-app"
       - "traefik.http.services.${safe_site_name}-websocket.loadbalancer.server.port=9000"
-      - "traefik.http.routers.${safe_site_name}-websocket.rule=PathPrefix(\`/socket.io\`)"
+      - "traefik.http.routers.${safe_site_name}-websocket.rule=Host(\`${site_name}\`) && PathPrefix(\`/socket.io\`)"
       - "traefik.http.routers.${safe_site_name}-websocket.entrypoints=${http_entrypoint}"
       - "traefik.http.routers.${safe_site_name}-websocket.service=${safe_site_name}-websocket"
+      - "traefik.http.middlewares.${safe_site_name}-websocket-headers.headers.customRequestHeaders.X-Forwarded-Proto=http"
+      - "traefik.http.routers.${safe_site_name}-websocket.middlewares=${safe_site_name}-websocket-headers"
 EOF
 )
 
@@ -337,6 +339,16 @@ ${app_labels}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SOCKETIO_PORT: "9000"
+      SOCKETIO_ORIGINS: "http://${site_name}:8081,http://${site_name},http://localhost:8081,http://localhost"
+      ALLOW_CORS: "*"
+      CORS_ORIGIN: "*"
+      ALLOW_ORIGIN: "*"
+      DISABLE_ORIGIN_CHECK: "true"
+      SESSION_EXPIRY: "3600"
+      SESSION_TIMEOUT: "3600"
+      SOCKETIO_SESSION_TIMEOUT: "3600"
+      SOCKETIO_ALLOW_ORIGIN_CHECK: "false"
+      SOCKETIO_DISABLE_ORIGIN_CHECK: "true"
       DB_PASSWORD: \${DB_PASSWORD}
       REDIS_PASSWORD: \${REDIS_PASSWORD}
       FRAPPE_SITE_NAME_HEADER: \${FRAPPE_SITE_NAME_HEADER}
@@ -451,7 +463,7 @@ ${app_labels}
         stderr_logfile=/home/frappe/supervisor/logs/frappe-worker-default-error.log
 
         [program:frappe-websocket]
-        command=node /home/frappe/frappe-bench/apps/frappe/socketio.js
+        command=bash -c "cd /home/frappe/frappe-bench && node -e \"process.env.SOCKETIO_ORIGINS='http://${site_name}:8081,http://${site_name},http://localhost:8081,http://localhost'; process.env.ALLOW_CORS='*'; process.env.CORS_ORIGIN='*'; process.env.ALLOW_ORIGIN='*'; process.env.DISABLE_ORIGIN_CHECK='true'; process.env.SOCKETIO_ALLOW_ORIGIN_CHECK='false'; process.env.SOCKETIO_DISABLE_ORIGIN_CHECK='true'; require('./apps/frappe/socketio.js');\""
         directory=/home/frappe/frappe-bench
         user=frappe
         autostart=true
@@ -459,6 +471,7 @@ ${app_labels}
         redirect_stderr=true
         stdout_logfile=/home/frappe/supervisor/logs/frappe-websocket.log
         stderr_logfile=/home/frappe/supervisor/logs/frappe-websocket-error.log
+        environment=SOCKETIO_ORIGINS="http://${site_name}:8081,http://${site_name},http://localhost:8081,http://localhost",ALLOW_CORS="*",CORS_ORIGIN="*",ALLOW_ORIGIN="*",SESSION_EXPIRY="3600",SESSION_TIMEOUT="3600",SOCKETIO_SESSION_TIMEOUT="3600",DISABLE_ORIGIN_CHECK="true",SOCKETIO_ALLOW_ORIGIN_CHECK="false",SOCKETIO_DISABLE_ORIGIN_CHECK="true"
         FRAPPE_CONF_EOF
 
         fi;
@@ -543,6 +556,18 @@ ${app_labels}
         bench set-config -g redis_queue "redis://:\${REDIS_PASSWORD}@redis:6379";
         bench set-config -g redis_socketio "redis://:\${REDIS_PASSWORD}@redis:6379";
         bench set-config -gp socketio_port 9000;
+        bench set-config -g socketio_origins "http://${site_name}:8081,http://${site_name},http://localhost:8081,http://localhost";
+        bench set-config -g allow_cors "*";
+        bench set-config -g cors_origin "*";
+        bench set-config -g socketio_cors_allowed_origins "*";
+        bench set-config -g allow_origin "*";
+        bench set-config -g socketio_allow_origin "*";
+        bench set-config -g disable_origin_check true;
+        bench set-config -g session_expiry 3600;
+        bench set-config -g session_timeout 3600;
+        bench set-config -g socketio_session_timeout 3600;
+        bench set-config -g socketio_allow_origin_check false;
+        bench set-config -g socketio_disable_origin_check true;
         if [ ! -d sites/${site_name} ]; then
           echo "Creating new site...";
           bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=\${DB_PASSWORD} --install-app erpnext --set-default ${site_name};
