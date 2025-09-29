@@ -253,6 +253,11 @@
                                 <i class="bi bi-shield-lock"></i> SSH Access
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="operation-log-tab" data-bs-toggle="tab" data-bs-target="#operation-log-panel" type="button" role="tab" aria-controls="operation-log-panel" aria-selected="false">
+                                <i class="bi bi-journal-text"></i> Operation Log
+                            </button>
+                        </li>
                     </ul>
                     
                     <div class="tab-content mt-3" id="installTabsContent">
@@ -577,18 +582,27 @@
                                     </div>
                                     
                                 </div>
-                                
-                                <div class="col-md-12">
-                                
+                            </div>
+                        </div>
+
+                        <!-- Operation Log Tab -->
+                        <div class="tab-pane fade" id="operation-log-panel" role="tabpanel">
+                            <div class="row">
+                                <div class="col-12">
                                     <!-- Operation Log -->
-                                    <div class="frappe-cloud-card mt-3">
-                                        <div class="card-header bg-dark text-white">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                                             <h6 class="mb-0">
-                                                <i class="bi bi-terminal"></i> Operation Log
-                                                <button class="btn btn-sm btn-outline-light float-end" id="clear-log-btn">
+                                                <i class="bi bi-journal-text"></i> Operation Log
+                                            </h6>
+                                            <div>
+                                                <button class="btn btn-sm btn-outline-light" id="clear-log-btn">
                                                     <i class="bi bi-trash"></i> Clear
                                                 </button>
-                                            </h6>
+                                                <button class="btn btn-sm btn-outline-light" id="refresh-log-btn">
+                                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                                </button>
+                                            </div>
                                         </div>
                                         <div class="card-body p-0">
                                             <div id="operation-log" class="operation-log">
@@ -962,25 +976,9 @@ async function fetchWithLoader(url, options = {}, loaderMessage = 'Processing...
         return response;
     } finally {
         LoaderManager.hide();
-        // Scroll to operation log after AJAX completion
-        scrollToOperationLog();
     }
 }
 
-// Function to scroll to operation log
-function scrollToOperationLog() {
-    const operationLog = document.getElementById('operation-log');
-    if (operationLog) {
-        // Wait a bit for the log to update, then scroll
-        setTimeout(() => {
-            operationLog.scrollIntoView({ 
-                behavior: 'smooth', 
-                block: 'start',
-                inline: 'nearest'
-            });
-        }, 100);
-    }
-}
 
 // Frappe Cloud-like App Management JavaScript
 class FrappeAppManager {
@@ -1043,6 +1041,7 @@ class FrappeAppManager {
         
         // Log management
         document.getElementById('clear-log-btn')?.addEventListener('click', () => this.clearOperationLog());
+        document.getElementById('refresh-log-btn')?.addEventListener('click', () => this.refreshOperationLog());
         document.getElementById('refresh-containers')?.addEventListener('click', () => this.refreshContainers());
         
         // Terminal operations
@@ -1210,10 +1209,6 @@ class FrappeAppManager {
         logContainer.innerHTML = logHTML;
         logContainer.scrollTop = 0;
         
-        // Scroll to operation log after updating
-        setTimeout(() => {
-            scrollToOperationLog();
-        }, 50);
     }
     
     getLogIcon(type) {
@@ -1228,6 +1223,11 @@ class FrappeAppManager {
     
     clearOperationLog() {
         this.operationLog = [];
+        this.updateOperationLogDisplay();
+    }
+    
+    refreshOperationLog() {
+        // Switch to operation log tab and refresh the display
         this.updateOperationLogDisplay();
     }
     
