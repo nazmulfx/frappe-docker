@@ -989,16 +989,7 @@ echo ""
 echo "To add another domain or site, simply run this script again with a different site name."
 echo ""
 echo -e "${GREEN}🎯 FINAL ACCESS INFORMATION:${NC}"
-if [[ -f ".traefik-local-config" ]]; then
-    source .traefik-local-config
-    if [[ "$TRAEFIK_HTTP_PORT" != "80" ]]; then
-        echo -e "${GREEN}   🌐 Site URL: http://${site_name}:${TRAEFIK_HTTP_PORT}${NC}"
-    else
-        echo -e "${GREEN}   🌐 Site URL: http://${site_name}${NC}"
-    fi
-else
-    echo -e "${GREEN}   🌐 Site URL: http://${site_name}${NC}"
-fi
+echo -e "${GREEN}   🌐 Site URL: ${access_url}${NC}"
 echo -e "${GREEN}   👤 Username: Administrator${NC}"
 echo -e "${GREEN}   🔑 Password: admin${NC}"
 echo ""
