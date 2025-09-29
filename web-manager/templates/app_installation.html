@@ -27,6 +27,72 @@
 {% block title %}App Installation - Web Docker Manager{% endblock %}
 
 {% block custom_css %}
+/* Global Loader Styles */
+.global-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.loader-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loader-text {
+    color: #333;
+    font-weight: 500;
+    margin: 0;
+}
+
+/* Button loading state */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+}
+
 .app-installation-card {
     margin-bottom: 20px;
     transition: transform 0.2s ease-in-out;
@@ -143,6 +209,14 @@
 {% endblock %}
 
 {% block content %}
+<!-- Global Loader -->
+<div class="global-loader" id="globalLoader">
+    <div class="loader-content">
+        <div class="spinner"></div>
+        <p class="loader-text" id="loaderText">Processing...</p>
+    </div>
+</div>
+
 <div class="container-fluid mt-4">
     <h1 class="h3 mb-4">
         <i class="bi bi-cloud-arrow-up me-2"></i>Frappe App Management
@@ -851,6 +925,63 @@
 {% block custom_js %}
 <script src="{{ url_for('static', filename='js/ssh-manager.js') }}"></script>
 <script>
+// Global Loader Management
+class LoaderManager {
+    static show(message = 'Processing...') {
+        const loader = document.getElementById('globalLoader');
+        const loaderText = document.getElementById('loaderText');
+        if (loader && loaderText) {
+            loaderText.textContent = message;
+            loader.style.display = 'flex';
+        }
+    }
+    
+    static hide() {
+        const loader = document.getElementById('globalLoader');
+        if (loader) {
+            loader.style.display = 'none';
+        }
+    }
+    
+    static setButtonLoading(button, isLoading) {
+        if (isLoading) {
+            button.classList.add('btn-loading');
+            button.disabled = true;
+        } else {
+            button.classList.remove('btn-loading');
+            button.disabled = false;
+        }
+    }
+}
+
+// Enhanced fetch with loader
+async function fetchWithLoader(url, options = {}, loaderMessage = 'Processing...') {
+    LoaderManager.show(loaderMessage);
+    try {
+        const response = await fetch(url, options);
+        return response;
+    } finally {
+        LoaderManager.hide();
+        // Scroll to operation log after AJAX completion
+        scrollToOperationLog();
+    }
+}
+
+// Function to scroll to operation log
+function scrollToOperationLog() {
+    const operationLog = document.getElementById('operation-log');
+    if (operationLog) {
+        // Wait a bit for the log to update, then scroll
+        setTimeout(() => {
+            operationLog.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'start',
+                inline: 'nearest'
+            });
+        }, 100);
+    }
+}
+
 // Frappe Cloud-like App Management JavaScript
 class FrappeAppManager {
     constructor() {
@@ -1002,7 +1133,7 @@ class FrappeAppManager {
         this.addToLog('info', `Executing: ${description}`);
         
         try {
-            const response = await fetch('/api/frappe/execute-command', {
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1012,7 +1143,7 @@ class FrappeAppManager {
                     container: this.selectedContainer,
                     command: command
                 })
-            });
+            }, `Executing: ${description}`);
             
             const data = await response.json();
             
@@ -1078,6 +1209,11 @@ class FrappeAppManager {
         
         logContainer.innerHTML = logHTML;
         logContainer.scrollTop = 0;
+        
+        // Scroll to operation log after updating
+        setTimeout(() => {
+            scrollToOperationLog();
+        }, 50);
     }
     
     getLogIcon(type) {
@@ -1107,6 +1243,7 @@ class FrappeAppManager {
         const authMethod = document.getElementById('auth-method').value;
         const githubToken = document.getElementById('github-token').value;
         const overwrite = document.getElementById('get-app-overwrite').checked;
+        const getAppBtn = document.getElementById('get-app-btn');
         
         if (!repoUrl) {
             this.addToLog('error', 'Repository URL is required');
@@ -1126,6 +1263,7 @@ class FrappeAppManager {
         
         try {
             this.addToLog('info', `Getting app from ${repoUrl} (auth: ${authMethod})...`);
+            LoaderManager.setButtonLoading(getAppBtn, true);
             
             let command;
             
@@ -1148,7 +1286,7 @@ class FrappeAppManager {
             
             this.addToLog('info', `Executing command: ${command}`);
             
-            const response = await fetch('/api/frappe/execute-command', {
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1158,7 +1296,7 @@ class FrappeAppManager {
                     container: this.selectedContainer,
                     command: command
                 })
-            });
+            }, `Getting app from ${repoUrl}...`);
             
             const result = await response.json();
             
@@ -1182,6 +1320,8 @@ class FrappeAppManager {
             }
         } catch (error) {
             this.addToLog('error', `Error getting app: ${error.message}`);
+        } finally {
+            LoaderManager.setButtonLoading(getAppBtn, false);
         }
     }
     
@@ -1190,6 +1330,7 @@ class FrappeAppManager {
             const appName = document.getElementById('install-app-name').value;
             const siteName = document.getElementById('install-site-name').value;
             const force = document.getElementById('install-app-force').checked;
+            const installAppBtn = document.getElementById('install-app-btn');
             
             if (!appName || !siteName) {
                 this.addToLog('error', 'Please select an app and a site');
@@ -1203,9 +1344,10 @@ class FrappeAppManager {
             
             try {
                 this.addToLog('info', `Installing app ${appName} on site ${siteName}...`);
+                LoaderManager.setButtonLoading(installAppBtn, true);
                 
                 // Build the bench install-app command
-                const command = `bench --site ${siteName} install-app ${appName}`;
+                let command = `bench --site ${siteName} install-app ${appName}`;
                 
                 if (force) {
                     command += ` --force`;
@@ -1213,7 +1355,7 @@ class FrappeAppManager {
                 
                 this.addToLog('info', `Executing command: ${command}`);
                 
-                const response = await fetch('/api/frappe/execute-command', {
+                const response = await fetchWithLoader('/api/frappe/execute-command', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1223,7 +1365,7 @@ class FrappeAppManager {
                         container: this.selectedContainer,
                         command: command
                     })
-                });
+                }, `Installing app ${appName} on site ${siteName}...`);
                 
                 const result = await response.json();
                 
@@ -1245,6 +1387,8 @@ class FrappeAppManager {
                 }
             } catch (error) {
                 this.addToLog('error', `Error installing app: ${error.message}`);
+            } finally {
+                LoaderManager.setButtonLoading(installAppBtn, false);
             }
         } catch (error) {
             this.addToLog('error', `Error installing app: ${error.message}`);
@@ -1252,20 +1396,77 @@ class FrappeAppManager {
     }
     
     async uninstallApp() {
-        const appName = prompt('Enter app name to uninstall:');
+        // Get app name using SweetAlert
+        const { value: appName } = await Swal.fire({
+            title: 'Uninstall App',
+            text: 'Enter the app name to uninstall:',
+            input: 'text',
+            inputPlaceholder: 'Enter app name',
+            showCancelButton: true,
+            confirmButtonText: 'Next',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'You need to enter an app name!';
+                }
+            }
+        });
+        
         if (!appName) return;
         
-        const siteName = prompt('Enter site name:');
+        // Get site name using SweetAlert
+        const { value: siteName } = await Swal.fire({
+            title: 'Select Site',
+            text: 'Enter the site name:',
+            input: 'text',
+            inputPlaceholder: 'Enter site name',
+            showCancelButton: true,
+            confirmButtonText: 'Continue',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'You need to enter a site name!';
+                }
+            }
+        });
+        
         if (!siteName) return;
         
-        if (confirm(`Are you sure you want to uninstall ${appName} from ${siteName}?`)) {
+        // Confirmation dialog using SweetAlert
+        const result = await Swal.fire({
+            title: 'Confirm Uninstall',
+            text: `Are you sure you want to uninstall "${appName}" from "${siteName}"?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, uninstall it!',
+            cancelButtonText: 'Cancel'
+        });
+        
+        if (result.isConfirmed) {
             const command = `bench --site ${siteName} uninstall-app ${appName}`;
             await this.executeCommand(command, `Uninstalling app ${appName} from site ${siteName}`);
         }
     }
     
     async updateApp() {
-        const appName = prompt('Enter app name to update:');
+        // Get app name using SweetAlert
+        const { value: appName } = await Swal.fire({
+            title: 'Update App',
+            text: 'Enter the app name to update:',
+            input: 'text',
+            inputPlaceholder: 'Enter app name',
+            showCancelButton: true,
+            confirmButtonText: 'Update',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'You need to enter an app name!';
+                }
+            }
+        });
+        
         if (!appName) return;
         
         const command = `bench update --patch`;
@@ -1293,7 +1494,18 @@ class FrappeAppManager {
             this.showError('Please select a container first');
             return;
         }
-        if (confirm('Are you sure you want to restart the bench? This will restart all services.')) {
+        const result = await Swal.fire({
+            title: 'Restart Bench Services',
+            text: 'Are you sure you want to restart the bench? This will restart all services.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, restart it!',
+            cancelButtonText: 'Cancel'
+        });
+        
+        if (result.isConfirmed) {
             const command = '/home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all';
             await this.executeCommand(command, 'Restarting bench services via Supervisor');
         }
@@ -1483,7 +1695,7 @@ class FrappeAppManager {
             // Show loading state
             this.setAppsDropdownLoading(true);
             
-            const response = await fetch('/api/frappe/execute-command', {
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1493,7 +1705,7 @@ class FrappeAppManager {
                     container: this.selectedContainer,
                     command: 'cat ~/frappe-bench/sites/apps.txt'
                 })
-            });
+            }, 'Loading apps...');
             
             const result = await response.json();
             
@@ -1616,7 +1828,7 @@ class FrappeAppManager {
             // Show loading state
             this.setSitesDropdownLoading(true);
             
-            const response = await fetch('/api/frappe/execute-command', {
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1626,7 +1838,7 @@ class FrappeAppManager {
                     container: this.selectedContainer,
                     command: 'cat ~/frappe-bench/sites/currentsite.txt'
                 })
-            });
+            }, 'Loading sites...');
             
             const result = await response.json();
             
@@ -1772,7 +1984,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Terminal logs functions (keeping existing functionality)
 function loadTerminalLogs() {
     console.log('Loading terminal logs...');
-    fetch('/api/frappe/terminal-logs')
+    fetchWithLoader('/api/frappe/terminal-logs', {}, 'Loading terminal logs...')
         .then(response => response.json())
         .then(data => {
             console.log('Terminal logs data:', data);
@@ -1821,14 +2033,25 @@ function updateLogsCount(count) {
     }
 }
 
-function clearTerminalLogs() {
-    if (confirm('Are you sure you want to clear all terminal error logs?')) {
-        fetch('/api/frappe/clear-terminal-logs', {
+async function clearTerminalLogs() {
+    const result = await Swal.fire({
+        title: 'Clear Terminal Logs',
+        text: 'Are you sure you want to clear all terminal error logs?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, clear them!',
+        cancelButtonText: 'Cancel'
+    });
+    
+    if (result.isConfirmed) {
+        fetchWithLoader('/api/frappe/clear-terminal-logs', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             }
-        })
+        }, 'Clearing terminal logs...')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
