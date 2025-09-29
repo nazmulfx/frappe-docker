@@ -23,6 +23,9 @@ chmod +x generate_frappe_docker.sh
 # Linux
 sudo ./Docker-Local/setup-traefik-local.sh
 sudo ./Docker-Local/generate_frappe_docker_local.sh
+
+# Web Interface (Both VPS and Local)
+sudo ./web-manager/docker-manager.sh
 ```
 
 ## 🖥️ Web Docker Manager
@@ -43,25 +46,25 @@ The **Web Docker Manager** is a powerful web interface for managing Frappe/ERPNe
 
 ## 📸 Screenshots
 
-### 1. Docker Manager Dashboard
-![Docker Manager Dashboard](screenshots/01-docker-manager-dashboard.png)
-Main dashboard showing all containers and their status.
+### 1. Frappe Docker Local Installation Process
+![Frappe Docker Local Installation Process](screenshots/01-docker-manager-dashboard.png)
+Complete setup process for generating and installing Frappe sites locally.
 
-### 2. Container Selection
-![Container Selection](screenshots/02-container-selection.png)
-Interface for selecting and managing specific containers.
+### 2. Container Management Interface
+![Container Management Interface](screenshots/02-container-selection.png)
+Command-line interface for managing Docker containers with 13 menu options including container access, process management, log viewing, and system cleanup.
 
 ### 3. App Installation Interface
 ![App Installation Interface](screenshots/03-app-installation-interface.png)
-Complete Frappe/ERPNext app installation and management interface.
+Complete Frappe/ERPNext app installation and management interface with real-time operation logs, terminal access, and SSH integration.
 
 ### 4. Terminal Access Tab
 ![Terminal Access Tab](screenshots/04-terminal-access.png)
-Integrated terminal for direct container access.
+Integrated terminal for direct container access within the web interface.
 
 ### 5. SSH Access Tab
 ![SSH Access Tab](screenshots/05-ssh-access.png)
-Secure SSH connection management.
+Secure SSH connection management with session persistence and authentication.
 
 ### 6. Powerful Docker Manager
 ![Powerful Docker Manager](screenshots/06-powerful-docker-manager.png)
@@ -87,16 +90,34 @@ Comprehensive Docker management interface - **Super powerful tool for end-to-end
 
 ## 🛠️ Container Management
 
-### Command Line Tools
-```bash
-# VPS/Production
-./docker-manager.sh
+### Command Line Tools (`./docker-manager.sh`)
+Powerful command-line interface with 13 menu options:
 
-# Local Development
-sudo ./web-manager/docker-manager.sh
-```
+**Main Menu Options:**
+1. **Show running containers** - Display all Frappe containers and their status
+2. **Access container shell (normal user)** - Enter container as frappe user
+3. **Access container shell (root user)** - Enter container as root user
+4. **Manage Frappe processes** - Control Supervisor processes (web, workers, scheduler, websocket)
+5. **View logs** - Access various log types (web, worker, schedule, websocket, supervisor, container, create-site)
+6. **Manage containers** - Start, stop, restart, rebuild containers with custom apps preservation
+7. **Show site information** - Display detailed site and container information
+8. **Access specific container as root** - Root access to any container
+9. **File Transfer** - Copy files to/from containers
+10. **Install Packages** - Smart package installation with common development tools
+11. **View Create-Site logs** - Monitor site creation process
+12. **Fix Restart Policies** - Auto-start containers after reboot
+13. **Exit** - Close the manager
 
-### Web Interface
+**Advanced Features:**
+- **Process Management**: Start, stop, restart individual or all Frappe processes
+- **Log Viewing**: Real-time logs for web, workers, scheduler, websocket, supervisor
+- **Container Operations**: Rebuild with custom apps preservation, complete cleanup
+- **File Transfer**: Bidirectional file copying between host and containers
+- **Package Installation**: Smart installation of development tools (nano, vim, curl, wget, git, htop, tree, net-tools)
+- **System Cleanup**: Docker space management and unused resource cleanup
+- **Complete Site Removal**: Remove containers, folders, and hosts file entries
+
+### Web Interface (`sudo ./web-manager/docker-manager.sh`)
 Access the Web Docker Manager at `http://your-server:5000` for:
 - Visual container management
 - App installation interface
@@ -216,6 +237,9 @@ chmod +x generate_frappe_docker.sh
 # Linux
 sudo ./Docker-Local/setup-traefik-local.sh
 sudo ./Docker-Local/generate_frappe_docker_local.sh
+
+# Web Interface (Both VPS and Local)
+sudo ./web-manager/docker-manager.sh
 ```
 
 ### Web Interface
