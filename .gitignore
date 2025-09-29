@@ -7,3 +7,4 @@ bin
 web-manager/web-docker-manager-env/lib/*
 web-manager/__pycache__/*
 *.backup
+web-manager/ssh_sessions/*
