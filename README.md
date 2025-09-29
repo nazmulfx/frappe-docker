@@ -289,6 +289,62 @@ Located in `Docker-Local/helper-screenshot/`:
 ### 🌐 **VPS/Cloud Server Screenshots**
 Production deployment screenshots available in the VPS documentation.
 
+### 🖥️ **Web Docker Manager Screenshots**
+Located in `screenshots/` - Complete visual guide for generating and installing Frappe sites:
+
+#### **1. Docker Manager Dashboard**
+![Docker Manager Dashboard](screenshots/01-docker-manager-dashboard.png)
+- **Overview**: Main dashboard showing all available containers and their status
+- **Features**: Container management, site information, and quick access to tools
+- **Usage**: Starting point for all Docker operations
+
+#### **2. Container Selection**
+![Container Selection](screenshots/02-container-selection.png)
+- **Overview**: Interface for selecting and managing specific containers
+- **Features**: Container status, resource usage, and management options
+- **Usage**: Choose which container to work with for site operations
+
+#### **3. App Installation Interface**
+![App Installation Interface](screenshots/03-app-installation-interface.png)
+- **Overview**: Complete Frappe/ERPNext app installation and management interface
+- **Features**: 
+  - App installation, uninstallation, and updates
+  - Site creation and management
+  - Real-time operation logs
+  - Terminal access integration
+- **Usage**: Primary interface for managing Frappe applications and sites
+
+#### **4. App Installation Interface - Terminal Tab**
+![App Installation Interface - Terminal Tab](screenshots/04-terminal-access.png)
+- **Overview**: Terminal access tab within the App Installation Interface
+- **Features**: 
+  - Integrated terminal for direct container access
+  - Command execution within the web interface
+  - Real-time output display
+  - Multiple terminal sessions
+- **Usage**: Direct command-line access to containers from the web interface
+
+#### **5. App Installation Interface - SSH Tab**
+![App Installation Interface - SSH Tab](screenshots/05-ssh-access.png)
+- **Overview**: SSH access tab within the App Installation Interface
+- **Features**: 
+  - SSH session management
+  - Secure authentication
+  - Remote container access
+  - Session persistence
+- **Usage**: Secure remote access to containers and services from the web interface
+
+#### **6. Powerful Docker Manager**
+![Powerful Docker Manager](screenshots/06-powerful-docker-manager.png)
+- **Overview**: Comprehensive Docker management interface
+- **Features**: 
+  - Complete container lifecycle management
+  - Advanced monitoring and logging
+  - Resource optimization
+  - Multi-container orchestration
+- **Usage**: Advanced Docker operations and system management
+- **Note**: This is a super powerful tool for end-to-end Docker management
+
 ---
 
 ## 🚨 Troubleshooting
