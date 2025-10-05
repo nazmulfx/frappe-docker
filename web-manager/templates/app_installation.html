@@ -374,6 +374,11 @@
                                                     <i class="bi bi-activity"></i> Supervisor Status
                                                 </button>
                                             </div>
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-danger w-100 app-operation-btn" id="open-as-admin-btn">
+                                                    <i class="bi bi-shield-lock-fill"></i> Open as Administrator
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1474,6 +1479,7 @@ class FrappeAppManager {
         document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
         document.getElementById('supervisor-status-btn')?.addEventListener('click', () => this.supervisorStatus());
         document.getElementById('bench-build-btn')?.addEventListener('click', () => this.benchBuild());
+        document.getElementById('open-as-admin-btn')?.addEventListener('click', () => this.openAsAdministrator());
         
         
         // Quick actions
@@ -1993,6 +1999,305 @@ class FrappeAppManager {
         }
         const command = '/home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status';
         await this.executeCommand(command, 'Checking Supervisor status');
+    }
+    
+    async openAsAdministrator() {
+        if (!this.selectedContainer) {
+            await Swal.fire({
+                title: 'No Container Selected',
+                text: 'Please select a container first',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        // Get site name using SweetAlert with dropdown
+        const { value: siteName } = await Swal.fire({
+            title: 'Open Site as Administrator',
+            html: `
+                <div class="text-start mb-3">
+                    <label for="admin-site-select" class="form-label">Select Site:</label>
+                    <select class="form-select" id="admin-site-select">
+                        <option value="">Loading sites...</option>
+                    </select>
+                </div>
+                <div class="alert alert-info text-start mb-0">
+                    <i class="bi bi-info-circle"></i> This will open the selected site in a new browser tab. Make sure you know the administrator password.
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Open Site',
+            cancelButtonText: 'Cancel',
+            didOpen: async () => {
+                const select = document.getElementById('admin-site-select');
+                
+                try {
+                    // Load sites for the selected container
+                    const response = await fetch('/api/frappe/execute-command', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            container: this.selectedContainer,
+                            command: 'cat ~/frappe-bench/sites/currentsite.txt'
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.output && !result.error) {
+                        const sites = result.output.trim().split('\n').filter(site => {
+                            const trimmed = site.trim();
+                            return trimmed && 
+                                   !trimmed.includes('common_site_config.json') && 
+                                   !trimmed.includes('currentsite.txt') &&
+                                   !trimmed.startsWith('.');
+                        });
+                        
+                        select.innerHTML = '<option value="">-- Select a site --</option>';
+                        sites.forEach(site => {
+                            const siteName = site.trim();
+                            if (siteName) {
+                                const option = document.createElement('option');
+                                option.value = siteName;
+                                option.textContent = siteName;
+                                select.appendChild(option);
+                            }
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">Failed to load sites</option>';
+                    }
+                } catch (error) {
+                    select.innerHTML = '<option value="">Error loading sites</option>';
+                }
+            },
+            preConfirm: () => {
+                const select = document.getElementById('admin-site-select');
+                const site = select.value;
+                
+                if (!site) {
+                    Swal.showValidationMessage('Please select a site');
+                    return false;
+                }
+                
+                return site;
+            }
+        });
+        
+        if (!siteName) return;
+
+        try {
+            // Check what ports are listening (since docker command not available in container)
+            const portCheckResponse = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: 'netstat -tlnp | grep ":8081\\|:8080\\|:8082\\|:8083\\|:8084\\|:8085\\|:80" | head -10'
+                })
+            }, `Checking listening ports...`);
+            
+            const portCheckResult = await portCheckResponse.json();
+            let traefikPort = '8081'; // Default to most common custom port
+            
+            this.addToLog('info', `Listening ports: ${portCheckResult.output}`);
+            
+            if (portCheckResult.output && !portCheckResult.error) {
+                const portLines = portCheckResult.output.split('\n');
+                for (const line of portLines) {
+                    // Look for custom ports first, skip port 80
+                    if (line.includes(':8081')) {
+                        traefikPort = '8081';
+                        this.addToLog('info', `Found port 8081 listening`);
+                        break;
+                    } else if (line.includes(':8080')) {
+                        traefikPort = '8080';
+                        this.addToLog('info', `Found port 8080 listening`);
+                        break;
+                    } else if (line.includes(':8082')) {
+                        traefikPort = '8082';
+                        this.addToLog('info', `Found port 8082 listening`);
+                        break;
+                    } else if (line.includes(':8083')) {
+                        traefikPort = '8083';
+                        this.addToLog('info', `Found port 8083 listening`);
+                        break;
+                    } else if (line.includes(':8084')) {
+                        traefikPort = '8084';
+                        this.addToLog('info', `Found port 8084 listening`);
+                        break;
+                    } else if (line.includes(':8085')) {
+                        traefikPort = '8085';
+                        this.addToLog('info', `Found port 8085 listening`);
+                        break;
+                    }
+                }
+            }
+            
+            this.addToLog('info', `Detected port: ${traefikPort}`);
+            
+            // Test the site with different ports using curl to find the working one
+            // Custom ports first, port 80 last (since it conflicts with Apache/Nginx)
+            const testPorts = ['8081', '8080', '8082', '8083', '8084', '8085', '80'];
+            let workingPort = traefikPort; // Start with detected port
+            
+            this.addToLog('info', `Testing site ${siteName} with different ports...`);
+            
+            for (const port of testPorts) {
+                const curlTestResponse = await fetchWithLoader('/api/frappe/execute-command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCSRFToken()
+                    },
+                    body: JSON.stringify({
+                        container: this.selectedContainer,
+                        command: `curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://${siteName}:${port}" 2>/dev/null || echo "000"`
+                    })
+                }, `Testing port ${port}...`);
+                
+                const curlResult = await curlTestResponse.json();
+                const httpCode = curlResult.output ? curlResult.output.trim() : '000';
+                
+                this.addToLog('info', `Port ${port} test result: HTTP ${httpCode}`);
+                
+                // If we get a valid HTTP response (200, 301, 302, etc.), this port works
+                if (httpCode && httpCode !== '000' && !httpCode.includes('error') && parseInt(httpCode) >= 200 && parseInt(httpCode) < 600) {
+                    workingPort = port;
+                    this.addToLog('success', `Found working port: ${port} (HTTP ${httpCode})`);
+                    break;
+                }
+            }
+            
+            this.addToLog('info', `Using port: ${workingPort}`);
+            
+            // Get the site URL configuration
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: `cat ~/frappe-bench/sites/${siteName}/site_config.json`
+                })
+            }, `Getting site configuration for ${siteName}...`);
+            
+            const result = await response.json();
+            
+            if (result.output && !result.error) {
+                try {
+                    const siteConfig = JSON.parse(result.output);
+                    let siteUrl = siteConfig.host_name || siteName;
+                    
+                    this.addToLog('info', `Site config: ${JSON.stringify(siteConfig)}`);
+                    this.addToLog('info', `Site hostname: ${siteUrl}`);
+                    
+                    // Use the working port that we tested with curl
+                    let port = workingPort;
+                    
+                    // Build the complete URL with Traefik port
+                    if (siteUrl.includes(':')) {
+                        // URL already has port or is an IP with port
+                        siteUrl = siteUrl;
+                    } else {
+                        // Add Traefik port to the URL
+                        siteUrl = siteUrl + ':' + port;
+                    }
+                    
+                    // Ensure the URL has a protocol
+                    if (!siteUrl.startsWith('http://') && !siteUrl.startsWith('https://')) {
+                        siteUrl = 'http://' + siteUrl;
+                    }
+                    
+                    this.addToLog('success', `Opening ${siteName} at ${siteUrl}`);
+                    
+                    // Force login as Administrator without password
+                    // Try multiple auto-login methods
+                    const autoLoginMethods = [
+                        `${siteUrl}/login?usr=administrator&pwd=admin`, // Default password
+                        `${siteUrl}/desk`, // Direct desk access
+                        `${siteUrl}/app` // Direct app access
+                    ];
+                    
+                    // Try the first method (most common)
+                    const loginUrl = autoLoginMethods[0];
+                    window.open(loginUrl, '_blank');
+                    
+                    await Swal.fire({
+                        title: 'Force Login as Administrator',
+                        html: `
+                            <p>Site opened with force login:</p>
+                            <p><strong>${siteUrl}</strong></p>
+                            <hr>
+                            <div class="alert alert-success text-start">
+                                <h6><i class="bi bi-shield-check"></i> Force Login Active</h6>
+                                <p class="mb-1"><strong>Username:</strong> Administrator</p>
+                                <p class="mb-1"><strong>Method:</strong> Auto-login with default password</p>
+                                <p class="mb-0"><strong>Status:</strong> Attempting automatic login...</p>
+                            </div>
+                            <div class="alert alert-info text-start mb-0">
+                                <small><i class="bi bi-info-circle"></i> If this doesn't work, try the Terminal tab to reset the admin password with "bench set-admin-password newpassword".</small>
+                            </div>
+                        `,
+                        icon: 'success'
+                    });
+                } catch (parseError) {
+                    // If we can't parse the config, just try to open the site name with working port
+                    let siteUrl = 'http://' + siteName + ':' + workingPort;
+                    this.addToLog('warning', `Could not parse site config, trying ${siteUrl}`);
+                    
+                    // Force login as Administrator
+                    const loginUrl = `${siteUrl}/login?usr=Administrator&pwd=admin`;
+                    window.open(loginUrl, '_blank');
+                    
+                    await Swal.fire({
+                        title: 'Site Opened',
+                        html: `
+                            <p>Site opened in a new tab:</p>
+                            <p><strong>${siteUrl}</strong></p>
+                            <div class="alert alert-warning text-start">
+                                <i class="bi bi-exclamation-triangle"></i> Could not determine the exact URL. If the site doesn't load, check your Traefik configuration or site settings.
+                            </div>
+                        `,
+                        icon: 'info'
+                    });
+                }
+            } else {
+                // Fallback: just try to open with the site name and working port
+                let siteUrl = 'http://' + siteName + ':' + workingPort;
+                this.addToLog('warning', `Could not get site config, trying ${siteUrl}`);
+                
+                // Force login as Administrator
+                const loginUrl = `${siteUrl}/login?usr=Administrator&pwd=admin`;
+                window.open(loginUrl, '_blank');
+                
+                await Swal.fire({
+                    title: 'Site Opened',
+                    html: `
+                        <p>Site opened in a new tab:</p>
+                        <p><strong>${siteUrl}</strong></p>
+                        <div class="alert alert-warning text-start">
+                            <i class="bi bi-exclamation-triangle"></i> Could not read site configuration. If the site doesn't load, check your Traefik configuration.
+                        </div>
+                    `,
+                    icon: 'info'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error opening site: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
     }
     
     async benchBuild() {
