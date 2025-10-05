@@ -1,7 +1,12 @@
 http:
   routers:
-    docker_manager:
-      rule: "Host(`dmf.inventopos.com`)"
+    docker_manager_http:
+      rule: "Host(\`docker-manager.invento.live\`)"
+      entryPoints:
+        - web
+      service: docker_manager_svc
+    docker_manager_https:
+      rule: "Host(\`docker-manager.invento.live\`)"
       entryPoints:
         - websecure
       service: docker_manager_svc
@@ -11,4 +16,8 @@ http:
     docker_manager_svc:
       loadBalancer:
         servers:
-          - url: "http://host.docker.internal:5000"
+          - url: "http://127.0.0.1:5000"
+
+
+
+# ip route show default | awk '/default/ {print $3}'
