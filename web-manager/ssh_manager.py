@@ -548,16 +548,135 @@ PrintMotd no"""
                 return port
         return None
     
+    def _is_vps_environment(self):
+        """Detect if running on VPS or local environment"""
+        try:
+            # Check for VPS indicators
+            vps_indicators = [
+                # Check if we have a public IP (not private range)
+                self._has_public_ip(),
+                # Check for cloud provider indicators
+                self._is_cloud_instance(),
+                # Check if external services are accessible
+                self._can_access_external_services()
+            ]
+            
+            # If majority of indicators suggest VPS, return True
+            vps_score = sum(vps_indicators)
+            is_vps = vps_score >= 2
+            
+            logger.info(f"Environment detection: VPS={is_vps} (score: {vps_score}/3)")
+            return is_vps
+            
+        except Exception as e:
+            logger.warning(f"Environment detection failed: {str(e)}")
+            # Default to local if detection fails
+            return False
+    
+    def _has_public_ip(self):
+        """Check if server has a public IP address"""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            
+            # Check if IP is in private ranges
+            private_ranges = [
+                ("10.0.0.0", "10.255.255.255"),
+                ("172.16.0.0", "172.31.255.255"),
+                ("192.168.0.0", "192.168.255.255"),
+                ("127.0.0.0", "127.255.255.255")
+            ]
+            
+            for start, end in private_ranges:
+                if self._ip_in_range(local_ip, start, end):
+                    return False  # Private IP, likely local
+            
+            return True  # Public IP, likely VPS
+            
+        except:
+            return False
+    
+    def _is_cloud_instance(self):
+        """Check if running on cloud instance"""
+        try:
+            # Check for cloud provider metadata services
+            cloud_indicators = [
+                # AWS EC2
+                self._check_url("http://169.254.169.254/latest/meta-data/", timeout=2),
+                # Google Cloud
+                self._check_url("http://metadata.google.internal/computeMetadata/v1/", timeout=2),
+                # Azure
+                self._check_url("http://169.254.169.254/metadata/instance", timeout=2)
+            ]
+            return any(cloud_indicators)
+        except:
+            return False
+    
+    def _can_access_external_services(self):
+        """Check if external services are accessible"""
+        try:
+            import urllib.request
+            with urllib.request.urlopen('http://ifconfig.me', timeout=3) as response:
+                return response.getcode() == 200
+        except:
+            return False
+    
+    def _check_url(self, url, timeout=2):
+        """Check if URL is accessible"""
+        try:
+            import urllib.request
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return response.getcode() == 200
+        except:
+            return False
+    
+    def _ip_in_range(self, ip, start, end):
+        """Check if IP is in given range"""
+        try:
+            ip_int = int(''.join([f"{int(x):03d}" for x in ip.split('.')]))
+            start_int = int(''.join([f"{int(x):03d}" for x in start.split('.')]))
+            end_int = int(''.join([f"{int(x):03d}" for x in end.split('.')]))
+            return start_int <= ip_int <= end_int
+        except:
+            return False
+
     def _get_server_ip(self):
-        """Get server IP address"""
+        """Get server IP address - smart detection for VPS vs local"""
+        is_vps = self._is_vps_environment()
+        
+        if is_vps:
+            # VPS environment - try to get public IP first
+            try:
+                import urllib.request
+                with urllib.request.urlopen('http://ifconfig.me', timeout=5) as response:
+                    public_ip = response.read().decode('utf-8').strip()
+                    if public_ip and self._is_valid_ip(public_ip):
+                        logger.info(f"VPS detected - Using public IP: {public_ip}")
+                        return public_ip
+            except Exception as e:
+                logger.warning(f"VPS detected but could not get public IP: {str(e)}")
+        
+        # Local environment or fallback - use internal IP
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
+            logger.info(f"Local environment detected - Using internal IP: {ip}")
             return ip
-        except:
+        except Exception as e:
+            logger.warning(f"Could not get internal IP: {str(e)}")
             return "localhost"
+    
+    def _is_valid_ip(self, ip):
+        """Validate IP address format"""
+        try:
+            socket.inet_aton(ip)
+            return True
+        except socket.error:
+            return False
     
     def _save_session_to_file(self, session_info):
         """Save session to persistent file storage"""
