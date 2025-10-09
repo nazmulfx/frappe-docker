@@ -1499,7 +1499,6 @@ class FrappeAppManager {
             terminalContainerSelect.addEventListener('change', function() {
                 const selectedContainer = this.value;
                 if (selectedContainer && window.terminal) {
-                    console.log('Connecting to container from dropdown:', selectedContainer);
                     window.terminal.connectToContainer(selectedContainer);
                     
                     const terminalTitle = document.getElementById('terminal-title');
@@ -2021,6 +2020,12 @@ class FrappeAppManager {
                         <option value="">Loading sites...</option>
                     </select>
                 </div>
+                <div class="text-start mb-3">
+                    <label for="admin-port-select" class="form-label">Select Port:</label>
+                    <select class="form-select" id="admin-port-select">
+                        <option value="">Loading ports...</option>
+                    </select>
+                </div>
                 <div class="alert alert-info text-start mb-0">
                     <i class="bi bi-info-circle"></i> This will open the selected site in a new browser tab. Make sure you know the administrator password.
                 </div>
@@ -2029,152 +2034,157 @@ class FrappeAppManager {
             confirmButtonText: 'Open Site',
             cancelButtonText: 'Cancel',
             didOpen: async () => {
-                const select = document.getElementById('admin-site-select');
+                const siteSelect = document.getElementById('admin-site-select');
+                const portSelect = document.getElementById('admin-port-select');
                 
                 try {
-                    // Load sites for the selected container
-                    const response = await fetch('/api/frappe/execute-command', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': this.getCSRFToken()
-                        },
-                        body: JSON.stringify({
-                            container: this.selectedContainer,
+                    // Load sites and get default site from config
+                    const [sitesResponse, configResponse, portsResponse] = await Promise.all([
+                        // Get sites list
+                        fetch('/api/frappe/execute-command', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCSRFToken()
+                            },
+                            body: JSON.stringify({
+                                container: this.selectedContainer,
                             command: 'cat ~/frappe-bench/sites/currentsite.txt'
+                            })
+                        }),
+                        // Get default site from config
+                        fetch('/api/frappe/execute-command', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCSRFToken()
+                            },
+                            body: JSON.stringify({
+                                container: this.selectedContainer,
+                                command: 'cat ~/frappe-bench/sites/common_site_config.json 2>/dev/null | grep -o \'"default_site": *"[^"]*"\' | head -1 || echo ""'
+                            })
+                        }),
+                        // Get available ports
+                        fetch('/api/frappe/execute-command', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': this.getCSRFToken()
+                            },
+                            body: JSON.stringify({
+                                container: this.selectedContainer,
+                                command: "echo ':8080' && echo ':8081' && echo ':8082' && echo ':8083' && echo ':8084' && echo ':8085' && echo ':80' && echo ':443'"
+                            })
                         })
-                    });
+                    ]);
                     
-                    const result = await response.json();
+                    const [sitesResult, configResult, portsResult] = await Promise.all([
+                        sitesResponse.json(),
+                        configResponse.json(),
+                        portsResponse.json()
+                    ]);
                     
-                    if (result.output && !result.error) {
-                        const sites = result.output.trim().split('\n').filter(site => {
-                            const trimmed = site.trim();
-                            return trimmed && 
-                                   !trimmed.includes('common_site_config.json') && 
-                                   !trimmed.includes('currentsite.txt') &&
-                                   !trimmed.startsWith('.');
-                        });
-                        
-                        select.innerHTML = '<option value="">-- Select a site --</option>';
+                    // Populate sites dropdown
+                    if (sitesResult.output && !sitesResult.error) {
+                        const sites = sitesResult.output.trim().split('\n').filter(site => site.trim());
+                        siteSelect.innerHTML = '<option value="">-- Select a site --</option>';
                         sites.forEach(site => {
                             const siteName = site.trim();
                             if (siteName) {
                                 const option = document.createElement('option');
                                 option.value = siteName;
                                 option.textContent = siteName;
-                                select.appendChild(option);
+                                siteSelect.appendChild(option);
                             }
                         });
+                        
+                        // Set default site if found in config
+                        if (configResult.output && configResult.output.includes('default_site')) {
+                            const defaultSiteMatch = configResult.output.match(/"default_site":\s*"([^"]+)"/);
+                            if (defaultSiteMatch && defaultSiteMatch[1]) {
+                                const defaultSite = defaultSiteMatch[1];
+                                siteSelect.value = defaultSite;
+                            }
+                        }
                     } else {
-                        select.innerHTML = '<option value="">Failed to load sites</option>';
+                        siteSelect.innerHTML = '<option value="">Failed to load sites</option>';
+                    }
+                    
+                    // Populate ports dropdown
+                    
+                    if (portsResult.output && !portsResult.error) {
+                        const portLines = portsResult.output.trim().split('\n').filter(line => line.trim());
+                        
+                        const ports = new Set();
+                        
+                        // Extract ports from netstat/ss output
+                        portLines.forEach(line => {
+                            const portMatch = line.match(/:(\d+)/);
+                            if (portMatch) {
+                                ports.add(portMatch[1]);
+                            }
+                        });
+                        
+                        
+                        // Add common ports if none found
+                        if (ports.size === 0) {
+                            ['443', '8081', '8080', '8082', '8083', '8084', '8085', '80'].forEach(port => ports.add(port));
+                        }
+                        
+                        portSelect.innerHTML = '<option value="">-- Select a port --</option>';
+                        Array.from(ports).sort().forEach(port => {
+                            const option = document.createElement('option');
+                            option.value = port;
+                            option.textContent = `${port} ${port === '443' ? '(HTTPS)' : port === '80' ? '(HTTP)' : ''}`;
+                            portSelect.appendChild(option);
+                        });
+                        
+                        // Set default to 8081 if available
+                        if (ports.has('8081')) {
+                            portSelect.value = '8081';
+                        } else if (ports.has('443')) {
+                            portSelect.value = '443';
+                        }
+                        
+                    } else {
+                        portSelect.innerHTML = '<option value="">Failed to load ports</option>';
                     }
                 } catch (error) {
-                    select.innerHTML = '<option value="">Error loading sites</option>';
+                    siteSelect.innerHTML = '<option value="">Error loading sites</option>';
+                    portSelect.innerHTML = '<option value="">Error loading ports</option>';
                 }
             },
             preConfirm: () => {
-                const select = document.getElementById('admin-site-select');
-                const site = select.value;
+                const siteSelect = document.getElementById('admin-site-select');
+                const portSelect = document.getElementById('admin-port-select');
+                const site = siteSelect.value;
+                const port = portSelect.value;
                 
                 if (!site) {
                     Swal.showValidationMessage('Please select a site');
                     return false;
                 }
                 
-                return site;
+                if (!port) {
+                    Swal.showValidationMessage('Please select a port');
+                    return false;
+                }
+                
+                return { site, port };
             }
         });
         
         if (!siteName) return;
 
         try {
-            // Check what ports are listening (since docker command not available in container)
-            const portCheckResponse = await fetchWithLoader('/api/frappe/execute-command', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                },
-                body: JSON.stringify({
-                    container: this.selectedContainer,
-                    command: 'netstat -tlnp | grep ":8081\\|:8080\\|:8082\\|:8083\\|:8084\\|:8085\\|:80" | head -10'
-                })
-            }, `Checking listening ports...`);
+            const { site, port } = siteName;
+            const protocol = port === '443' ? 'https' : 'http';
+            const siteUrl = `${protocol}://${site}:${port}`;
             
-            const portCheckResult = await portCheckResponse.json();
-            let traefikPort = '8081'; // Default to most common custom port
-            
-            this.addToLog('info', `Listening ports: ${portCheckResult.output}`);
-            
-            if (portCheckResult.output && !portCheckResult.error) {
-                const portLines = portCheckResult.output.split('\n');
-                for (const line of portLines) {
-                    // Look for custom ports first, skip port 80
-                    if (line.includes(':8081')) {
-                        traefikPort = '8081';
-                        this.addToLog('info', `Found port 8081 listening`);
-                        break;
-                    } else if (line.includes(':8080')) {
-                        traefikPort = '8080';
-                        this.addToLog('info', `Found port 8080 listening`);
-                        break;
-                    } else if (line.includes(':8082')) {
-                        traefikPort = '8082';
-                        this.addToLog('info', `Found port 8082 listening`);
-                        break;
-                    } else if (line.includes(':8083')) {
-                        traefikPort = '8083';
-                        this.addToLog('info', `Found port 8083 listening`);
-                        break;
-                    } else if (line.includes(':8084')) {
-                        traefikPort = '8084';
-                        this.addToLog('info', `Found port 8084 listening`);
-                        break;
-                    } else if (line.includes(':8085')) {
-                        traefikPort = '8085';
-                        this.addToLog('info', `Found port 8085 listening`);
-                        break;
-                    }
-                }
-            }
-            
-            this.addToLog('info', `Detected port: ${traefikPort}`);
-            
-            // Test the site with different ports using curl to find the working one
-            // Custom ports first, port 80 last (since it conflicts with Apache/Nginx)
-            const testPorts = ['8081', '8080', '8082', '8083', '8084', '8085', '80'];
-            let workingPort = traefikPort; // Start with detected port
-            
-            this.addToLog('info', `Testing site ${siteName} with different ports...`);
-            
-            for (const port of testPorts) {
-                const curlTestResponse = await fetchWithLoader('/api/frappe/execute-command', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': this.getCSRFToken()
-                    },
-                    body: JSON.stringify({
-                        container: this.selectedContainer,
-                        command: `curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://${siteName}:${port}" 2>/dev/null || echo "000"`
-                    })
-                }, `Testing port ${port}...`);
-                
-                const curlResult = await curlTestResponse.json();
-                const httpCode = curlResult.output ? curlResult.output.trim() : '000';
-                
-                this.addToLog('info', `Port ${port} test result: HTTP ${httpCode}`);
-                
-                // If we get a valid HTTP response (200, 301, 302, etc.), this port works
-                if (httpCode && httpCode !== '000' && !httpCode.includes('error') && parseInt(httpCode) >= 200 && parseInt(httpCode) < 600) {
-                    workingPort = port;
-                    this.addToLog('success', `Found working port: ${port} (HTTP ${httpCode})`);
-                    break;
-                }
-            }
-            
-            this.addToLog('info', `Using port: ${workingPort}`);
+            this.addToLog('info', `Opening site: ${siteUrl}`);
+            this.addToLog('info', `Selected site: ${site}`);
+            this.addToLog('info', `Selected port: ${port}`);
+            this.addToLog('info', `Protocol: ${protocol}`);
             
             // Get the site URL configuration
             const response = await fetchWithLoader('/api/frappe/execute-command', {
@@ -2185,22 +2195,22 @@ class FrappeAppManager {
                 },
                 body: JSON.stringify({
                     container: this.selectedContainer,
-                    command: `cat ~/frappe-bench/sites/${siteName}/site_config.json`
+                    command: `cat ~/frappe-bench/sites/${site}/site_config.json`
                 })
-            }, `Getting site configuration for ${siteName}...`);
+            }, `Getting site configuration for ${site}...`);
             
             const result = await response.json();
             
             if (result.output && !result.error) {
                 try {
                     const siteConfig = JSON.parse(result.output);
-                    let siteUrl = siteConfig.host_name || siteName;
+                    let siteUrl = siteConfig.host_name || site;
                     
                     this.addToLog('info', `Site config: ${JSON.stringify(siteConfig)}`);
                     this.addToLog('info', `Site hostname: ${siteUrl}`);
                     
-                    // Use the working port that we tested with curl
-                    let port = workingPort;
+                    // Use the selected port from the dropdown
+                    let selectedPort = port;
                     
                     // Build the complete URL with Traefik port
                     if (siteUrl.includes(':')) {
@@ -2208,7 +2218,7 @@ class FrappeAppManager {
                         siteUrl = siteUrl;
                     } else {
                         // Add Traefik port to the URL
-                        siteUrl = siteUrl + ':' + port;
+                        siteUrl = siteUrl + ':' + selectedPort;
                     }
                     
                     // Ensure the URL has a protocol
@@ -2249,8 +2259,8 @@ class FrappeAppManager {
                         icon: 'success'
                     });
                 } catch (parseError) {
-                    // If we can't parse the config, just try to open the site name with working port
-                    let siteUrl = 'http://' + siteName + ':' + workingPort;
+                    // If we can't parse the config, just try to open the site name with selected port
+                    let siteUrl = 'http://' + site + ':' + port;
                     this.addToLog('warning', `Could not parse site config, trying ${siteUrl}`);
                     
                     // Force login as Administrator
@@ -2270,8 +2280,8 @@ class FrappeAppManager {
                     });
                 }
             } else {
-                // Fallback: just try to open with the site name and working port
-                let siteUrl = 'http://' + siteName + ':' + workingPort;
+                // Fallback: just try to open with the site name and selected port
+                let siteUrl = 'http://' + site + ':' + port;
                 this.addToLog('warning', `Could not get site config, trying ${siteUrl}`);
                 
                 // Force login as Administrator
@@ -2381,7 +2391,6 @@ class FrappeAppManager {
         const terminalContainer = document.getElementById('terminal-container');
         if (terminalContainer) {
             try {
-                console.log('Creating terminal instance...');
                 window.terminal = new XTermWS(terminalContainer, {
                     theme: {
                         background: '#1a1a1a',
@@ -2411,7 +2420,6 @@ class FrappeAppManager {
                 if (containerSelect && containerSelect.value) {
                     setTimeout(() => {
                         if (window.terminal) {
-                            console.log('Auto-connecting to container:', containerSelect.value);
                             window.terminal.connectToContainer(containerSelect.value);
                             
                             const terminalTitle = document.getElementById('terminal-title');
@@ -3702,11 +3710,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Terminal logs functions (keeping existing functionality)
 function loadTerminalLogs() {
-    console.log('Loading terminal logs...');
     fetchWithLoader('/api/frappe/terminal-logs', {}, 'Loading terminal logs...')
         .then(response => response.json())
         .then(data => {
-            console.log('Terminal logs data:', data);
             const logs = data.logs || [];
             updateTerminalLogsTable(logs);
             updateLogsCount(logs.length);
@@ -3719,7 +3725,6 @@ function loadTerminalLogs() {
 }
 
 function updateTerminalLogsTable(logs) {
-    console.log("Updating terminal logs table with", logs.length, "logs");
     const tbody = document.getElementById("terminal-logs-tbody");
     
     if (logs.length === 0) {
@@ -3788,14 +3793,12 @@ async function clearTerminalLogs() {
 }
 
 function startPeriodicRefresh() {
-    console.log('Starting periodic refresh...');
     logsRefreshInterval = setInterval(() => {
         loadTerminalLogs();
     }, 50000);
 }
 
 function stopPeriodicRefresh() {
-    console.log('Stopping periodic refresh...');
     if (logsRefreshInterval) {
         clearInterval(logsRefreshInterval);
         logsRefreshInterval = null;
@@ -3803,17 +3806,14 @@ function stopPeriodicRefresh() {
 }
 
 function setupRealTimeErrorTracking() {
-    console.log('Setting up real-time error tracking...');
     
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
         return originalFetch.apply(this, args).then(response => {
             if (args[0] && args[0].includes('/api/frappe/execute-command')) {
                 return response.clone().json().then(data => {
-                    console.log('Command execution response:', data);
                     
                     if (data && (data.success === false || data.error || data.exit_code > 0)) {
-                        console.log('Command failed, refreshing logs...');
                         loadTerminalLogs();
                     }
                     return response;
@@ -3825,11 +3825,9 @@ function setupRealTimeErrorTracking() {
 }
 
 function checkForNewErrors(currentCount) {
-    console.log('Checking for new errors. Current:', currentCount, 'Last:', lastErrorCount);
     
     if (currentCount > lastErrorCount && lastErrorCount > 0) {
         const newErrors = currentCount - lastErrorCount;
-        console.log('New errors detected:', newErrors);
         showErrorNotification(newErrors);
         
         const terminalLogsTab = document.getElementById('terminal-logs-tab');
@@ -3843,7 +3841,6 @@ function checkForNewErrors(currentCount) {
 }
 
 function showErrorNotification(errorCount) {
-    console.log('Showing error notification for', errorCount, 'errors');
     
     const terminalLogsTab = document.getElementById('terminal-logs-tab');
     if (terminalLogsTab) {
