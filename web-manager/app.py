@@ -18,6 +18,8 @@ import base64
 import qrcode
 import io
 import os
+import threading
+import uuid
 from datetime import datetime, timedelta
 from config import Config
 from models import db, User, AuditLog, create_default_admin
@@ -61,6 +63,9 @@ login_attempts = {}
 # Global variable to store current working directories for each container
 container_working_dirs = {}
 blocked_ips = {}
+
+# Global dictionary to store site creation tasks status
+site_creation_tasks = {}
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -2353,6 +2358,437 @@ def delete_backup():
     except Exception as e:
         logger.error(f"Error deleting backup: {str(e)}")
         return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/get-erpnext-versions', methods=['GET'])
+@require_auth
+def get_erpnext_versions():
+    """Fetch available ERPNext versions from Docker Hub"""
+    try:
+        # Use curl to fetch versions from Docker Hub API
+        cmd = [
+            "curl", "-s", "--connect-timeout", "10", "--max-time", "30",
+            "https://registry.hub.docker.com/v2/repositories/frappe/erpnext/tags?page_size=100"
+        ]
+        
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate(timeout=35)
+        
+        if process.returncode == 0:
+            data = json.loads(stdout.decode())
+            # Extract version tags that match pattern v[0-9]+.[0-9]+.[0-9]+
+            versions = []
+            for result in data.get('results', []):
+                tag_name = result.get('name', '')
+                if re.match(r'^v\d+\.\d+\.\d+$', tag_name):
+                    versions.append(tag_name)
+            
+            # Sort versions in reverse order (newest first)
+            versions.sort(reverse=True, key=lambda x: [int(n) for n in x[1:].split('.')])
+            
+            # Limit to top 50 versions
+            versions = versions[:50]
+            
+            if versions:
+                return jsonify({
+                    'success': True,
+                    'versions': versions,
+                    'count': len(versions)
+                })
+            else:
+                # Return fallback versions if API fails
+                return jsonify({
+                    'success': True,
+                    'versions': [
+                        'v15.80.1', 'v15.80.0', 'v15.79.2', 'v15.79.1', 'v15.79.0',
+                        'v15.78.1', 'v15.78.0', 'v15.77.0', 'v15.76.0', 'v15.75.1',
+                        'v14.73.0', 'v14.72.0', 'v14.71.0', 'v13.54.0'
+                    ],
+                    'count': 14,
+                    'fallback': True
+                })
+        else:
+            # Return fallback versions
+            return jsonify({
+                'success': True,
+                'versions': [
+                    'v15.80.1', 'v15.80.0', 'v15.79.2', 'v15.79.1', 'v15.79.0',
+                    'v15.78.1', 'v15.78.0', 'v15.77.0', 'v15.76.0', 'v15.75.1',
+                    'v14.73.0', 'v14.72.0', 'v14.71.0', 'v13.54.0'
+                ],
+                'count': 14,
+                'fallback': True
+            })
+            
+    except Exception as e:
+        logger.error(f"Error fetching ERPNext versions: {str(e)}")
+        # Return fallback versions on error
+        return jsonify({
+            'success': True,
+            'versions': [
+                'v15.80.1', 'v15.80.0', 'v15.79.2', 'v15.79.1', 'v15.79.0',
+                'v15.78.1', 'v15.78.0', 'v15.77.0', 'v15.76.0', 'v15.75.1',
+                'v14.73.0', 'v14.72.0', 'v14.71.0', 'v13.54.0'
+            ],
+            'count': 14,
+            'fallback': True,
+            'error': str(e)
+        })
+
+def clean_ansi_codes(text):
+    """Remove all ANSI escape sequences and clean terminal output"""
+    if not text:
+        return text
+    
+    import re
+    
+    # Remove ANSI escape sequences
+    text = re.sub(r'\x1b\[[0-9;]*m', '', text)  # Standard ANSI codes
+    text = re.sub(r'\x1b\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]', '', text)  # Extended ANSI
+    text = re.sub(r'\[[0-9;]*m', '', text)  # Bracket-only codes
+    text = re.sub(r'\[0m', '', text)  # Reset codes
+    text = re.sub(r'\[0;[0-9]+m', '', text)  # Color codes
+    text = re.sub(r'\\033\[[0-9;]*m', '', text)  # Octal ANSI
+    text = re.sub(r'\[([0-9]{1,2}(;[0-9]{1,2})?)m', '', text)  # Generic color
+    text = re.sub(r'\[\d+[ABCD]', '', text)  # Cursor movement
+    text = re.sub(r'\[2K', '', text)  # Clear line
+    text = re.sub(r'\[1A', '', text)  # Move cursor up
+    text = re.sub(r'\[2A', '', text)  # Move cursor up 2
+    text = re.sub(r'\[1B', '', text)  # Move cursor down
+    text = re.sub(r'\[2B', '', text)  # Move cursor down 2
+    
+    # Remove carriage returns and normalize line endings
+    text = text.replace('\r\n', '\n').replace('\r', '')
+    
+    return text
+
+def run_site_creation_task(task_id, domain_name, erpnext_version, environment, script_path, base_dir):
+    """Background task to create a site"""
+    try:
+        # Extract site name from domain
+        site_name = domain_name.split('.')[0]
+        
+        # Update task status
+        site_creation_tasks[task_id]['status'] = 'running'
+        site_creation_tasks[task_id]['progress'] = 10
+        site_creation_tasks[task_id]['message'] = 'Starting site creation...'
+        
+        # Log the site creation attempt
+        logger.info(f"Creating new site: {site_name} ({domain_name}) with ERPNext {erpnext_version} in {environment} environment")
+        
+        # Update progress
+        site_creation_tasks[task_id]['progress'] = 20
+        site_creation_tasks[task_id]['message'] = 'Creating expect automation script...'
+        site_creation_tasks[task_id]['output'] = ''  # Initialize output
+        
+        # Create expect script to automate the interactive bash script
+        expect_script = f"""#!/usr/bin/expect -f
+set timeout 1800
+
+# Enable output logging
+log_user 1
+
+spawn bash {script_path}
+
+# Wait for version selection
+expect "Select ERPNext version"
+send "1\\r"
+
+# Wait for Traefik setup question (local only)
+expect {{
+    "Choose an option" {{
+        send "3\\r"
+        exp_continue
+    }}
+    "Do you want to continue anyway?" {{
+        send "y\\r"
+        exp_continue
+    }}
+    "Enter site name" {{
+        send "{domain_name}\\r"
+    }}
+}}
+
+# Wait for docker manager question
+expect "Do you want to access the docker-manager?"
+send "n\\r"
+
+expect eof
+"""
+        
+        # Write expect script to temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.exp', delete=False) as f:
+            expect_file = f.name
+            f.write(expect_script)
+        
+        try:
+            # Make expect script executable
+            os.chmod(expect_file, 0o755)
+            
+            # Update progress
+            site_creation_tasks[task_id]['progress'] = 30
+            site_creation_tasks[task_id]['message'] = 'Running site generation script...'
+            
+            # Execute expect script with real-time output capture
+            cmd = ['expect', expect_file]
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout
+                cwd=base_dir,
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
+            )
+            
+            # Update progress while running
+            site_creation_tasks[task_id]['progress'] = 50
+            site_creation_tasks[task_id]['message'] = 'Installing Frappe/ERPNext... This may take 5-15 minutes...'
+            
+            # Read output line by line in real-time
+            output_lines = []
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    cleaned_line = clean_ansi_codes(line.rstrip())
+                    output_lines.append(cleaned_line)
+                    # Update task with latest output (keep last 100 lines for performance)
+                    site_creation_tasks[task_id]['output'] = '\n'.join(output_lines[-100:])
+                    
+                    # Update progress based on output keywords
+                    if 'Pulling' in line or 'Downloading' in line:
+                        site_creation_tasks[task_id]['progress'] = 40
+                        site_creation_tasks[task_id]['message'] = 'Downloading Docker images...'
+                    elif 'Building' in line or 'Creating' in line:
+                        site_creation_tasks[task_id]['progress'] = 60
+                        site_creation_tasks[task_id]['message'] = 'Creating containers...'
+                    elif 'Starting' in line or 'Started' in line:
+                        site_creation_tasks[task_id]['progress'] = 75
+                        site_creation_tasks[task_id]['message'] = 'Starting containers...'
+            
+            # Wait for process to complete
+            process.wait()
+            stdout = '\n'.join(output_lines)
+            stderr = ''
+            
+            # Clean up expect script
+            os.unlink(expect_file)
+            
+            # Update progress
+            site_creation_tasks[task_id]['progress'] = 80
+            site_creation_tasks[task_id]['message'] = 'Configuring containers...'
+            
+            # Construct the docker-compose directory path and access URL
+            if environment == 'local':
+                compose_dir = f"{base_dir}/{site_name}_local"
+                # Extract port from output - look for various patterns
+                port_match = re.search(r'(?:HTTP|http|Port|port).*?:?\s*(\d{4,5})', stdout)
+                if not port_match:
+                    # Try to extract from "localhost:" or ".local:" patterns
+                    port_match = re.search(r'(?:localhost|\.local):(\d{4,5})', stdout)
+                
+                if port_match:
+                    port = port_match.group(1)
+                else:
+                    port = '8080'  # Default fallback
+                
+                # Log the port detection for debugging
+                logger.info(f"Detected port: {port} for site {site_name}")
+                
+                access_url = f"http://{domain_name}:{port}"
+            else:
+                compose_dir = f"{base_dir}/{site_name}"
+                access_url = f"https://{domain_name}"
+            
+            # Check if directory was created
+            if os.path.exists(compose_dir):
+                # Extract essential credentials from script output
+                credentials_dict = {
+                    'username': None,
+                    'password': None,
+                    'mysql': None,
+                    'redis': None
+                }
+                
+                for line in stdout.split('\n'):
+                    cleaned_line = clean_ansi_codes(line.strip())
+                    if cleaned_line:
+                        # Extract username
+                        if ('username' in cleaned_line.lower() or 'default username' in cleaned_line.lower()) and not credentials_dict['username']:
+                            match = re.search(r'(?:Username|username).*?:\s*(\w+)', cleaned_line)
+                            if match:
+                                credentials_dict['username'] = match.group(1)
+                        
+                        # Extract admin password
+                        if ('password' in cleaned_line.lower() and 'mysql' not in cleaned_line.lower() and 'redis' not in cleaned_line.lower() and 'database' not in cleaned_line.lower()) and not credentials_dict['password']:
+                            match = re.search(r'(?:Password|password).*?:\s*(\S+)', cleaned_line)
+                            if match:
+                                credentials_dict['password'] = match.group(1)
+                        
+                        # Extract MySQL password
+                        if 'mysql' in cleaned_line.lower() and 'password' in cleaned_line.lower() and not credentials_dict['mysql']:
+                            match = re.search(r':\s*([A-Za-z0-9]{20,})', cleaned_line)
+                            if match:
+                                credentials_dict['mysql'] = match.group(1)
+                        
+                        # Extract Redis password
+                        if 'redis' in cleaned_line.lower() and 'password' in cleaned_line.lower() and not credentials_dict['redis']:
+                            match = re.search(r':\s*([A-Za-z0-9]{20,})', cleaned_line)
+                            if match:
+                                credentials_dict['redis'] = match.group(1)
+                
+                # Build clean credentials info
+                cred_parts = []
+                if credentials_dict['username']:
+                    cred_parts.append(f"👤 Username: {credentials_dict['username']}")
+                if credentials_dict['password']:
+                    cred_parts.append(f"🔑 Password: {credentials_dict['password']}")
+                if credentials_dict['mysql']:
+                    cred_parts.append(f"💾 MySQL Password: {credentials_dict['mysql']}")
+                if credentials_dict['redis']:
+                    cred_parts.append(f"💾 Redis Password: {credentials_dict['redis']}")
+                
+                credentials_info = '\n'.join(cred_parts) if cred_parts else f"""Site: {domain_name}
+Access URL: {access_url}
+Container Directory: {compose_dir}
+
+Note: Check the output log below for generated passwords and credentials."""
+                
+                # Update task as completed
+                site_creation_tasks[task_id]['status'] = 'completed'
+                site_creation_tasks[task_id]['progress'] = 100
+                site_creation_tasks[task_id]['message'] = 'Site created successfully!'
+                site_creation_tasks[task_id]['result'] = {
+                    'success': True,
+                    'site_name': site_name,
+                    'domain_name': domain_name,
+                    'access_url': access_url,
+                    'credentials': credentials_info,
+                    'compose_directory': compose_dir,
+                    'output': stdout
+                }
+            else:
+                # Update task as failed
+                site_creation_tasks[task_id]['status'] = 'failed'
+                site_creation_tasks[task_id]['message'] = 'Site directory not created'
+                site_creation_tasks[task_id]['result'] = {
+                    'success': False,
+                    'error': 'Site directory not created. Check output below.',
+                    'output': stdout,
+                    'stderr': stderr
+                }
+                
+        except Exception as e:
+            # Update task as failed
+            site_creation_tasks[task_id]['status'] = 'failed'
+            site_creation_tasks[task_id]['message'] = f'Error: {str(e)}'
+            site_creation_tasks[task_id]['result'] = {
+                'success': False,
+                'error': str(e)
+            }
+        finally:
+            # Ensure expect script is cleaned up
+            if 'expect_file' in locals() and os.path.exists(expect_file):
+                os.unlink(expect_file)
+            
+    except Exception as e:
+        logger.error(f"Error in site creation task: {str(e)}")
+        site_creation_tasks[task_id]['status'] = 'failed'
+        site_creation_tasks[task_id]['message'] = f'Error: {str(e)}'
+        site_creation_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
+@app.route('/api/frappe/create-site', methods=['POST'])
+@require_auth
+def create_site():
+    """Start site creation as a background task"""
+    try:
+        data = request.json
+        domain_name = data.get('domain_name')
+        erpnext_version = data.get('erpnext_version')
+        environment = data.get('environment', 'local')
+        
+        # Validate required fields
+        if not domain_name or not erpnext_version:
+            return jsonify({'error': 'Domain name and ERPNext version are required', 'success': False}), 400
+        
+        # Extract site name from domain
+        site_name = domain_name.split('.')[0]
+        
+        # Validate extracted site name format
+        if not re.match(r'^[a-z0-9_-]+$', site_name):
+            return jsonify({
+                'error': f'Invalid domain name. Extracted site name "{site_name}" must contain only lowercase letters, numbers, underscores, and hyphens',
+                'success': False
+            }), 400
+        
+        # Determine script path based on environment (dynamic)
+        # Get the project root (parent directory of web-manager)
+        web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(web_manager_dir)
+        
+        if environment == 'local':
+            script_path = os.path.join(project_root, 'Docker-Local', 'generate_frappe_docker_local.sh')
+            base_dir = os.path.join(project_root, 'Docker-Local')
+        else:
+            script_path = os.path.join(project_root, 'Docker-on-VPS', 'generate_frappe_docker.sh')
+            base_dir = os.path.join(project_root, 'Docker-on-VPS')
+        
+        # Check if script exists
+        if not os.path.exists(script_path):
+            return jsonify({
+                'error': f'Generation script not found: {script_path}',
+                'success': False
+            }), 404
+        
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        site_creation_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'site_name': site_name,
+            'domain_name': domain_name,
+            'environment': environment,
+            'created_at': datetime.now().isoformat(),
+            'result': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_site_creation_task,
+            args=(task_id, domain_name, erpnext_version, environment, script_path, base_dir)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Site creation started in background',
+            'site_name': site_name,
+            'domain_name': domain_name
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting site creation: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/create-site/status/<task_id>', methods=['GET'])
+@require_auth
+def get_site_creation_status(task_id):
+    """Get the status of a site creation task"""
+    if task_id not in site_creation_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': site_creation_tasks[task_id]
+    })
 
 if __name__ == '__main__':
     with app.app_context():

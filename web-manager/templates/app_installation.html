@@ -268,6 +268,11 @@
                                 <i class="bi bi-journal-text"></i> Operation Log
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="new-site-tab" data-bs-toggle="tab" data-bs-target="#new-site-panel" type="button" role="tab" aria-controls="new-site-panel" aria-selected="false">
+                                <i class="bi bi-plus-circle"></i> New Site
+                            </button>
+                        </li>
                     </ul>
                     
                     <div class="tab-content mt-3" id="installTabsContent">
@@ -1356,6 +1361,128 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- New Site Creation Panel Tab -->
+                        <div class="tab-pane fade" id="new-site-panel" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-8 mx-auto">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-primary text-white">
+                                            <h5 class="mb-0">
+                                                <i class="bi bi-plus-circle-fill"></i> Create New Frappe/ERPNext Site
+                                            </h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <form id="new-site-form">
+                                                <!-- Environment Selection -->
+                                                <div class="row mb-4">
+                                                    <div class="col-md-12">
+                                                        <label class="form-label fw-bold">
+                                                            <i class="bi bi-hdd-stack"></i> Deployment Environment
+                                                        </label>
+                                                        <div class="btn-group w-100" role="group" aria-label="Environment selection">
+                                                            <input type="radio" class="btn-check" name="environment" id="env-local" value="local" checked>
+                                                            <label class="btn btn-outline-primary" for="env-local">
+                                                                <i class="bi bi-laptop"></i> Docker-Local<br>
+                                                                <small class="text-muted">Development & Testing</small>
+                                                            </label>
+                                                            
+                                                            <input type="radio" class="btn-check" name="environment" id="env-vps" value="vps">
+                                                            <label class="btn btn-outline-success" for="env-vps">
+                                                                <i class="bi bi-cloud-upload"></i> Docker-on-VPS<br>
+                                                                <small class="text-muted">Production Deployment</small>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Domain Name -->
+                                                <div class="row mb-3">
+                                                    <div class="col-md-12">
+                                                        <label for="domain-name" class="form-label fw-bold">
+                                                            <i class="bi bi-globe2"></i> Domain Name
+                                                        </label>
+                                                        <input type="text" class="form-control form-control-lg" id="domain-name" 
+                                                               placeholder="e.g., mysite.localhost or erp.yourcompany.com" required>
+                                                        <div class="form-text">
+                                                            <strong>Local:</strong> Use .localhost domain (e.g., mysite.localhost)<br>
+                                                            <strong>VPS:</strong> Use your actual domain (e.g., erp.yourcompany.com)<br>
+                                                            <small class="text-muted"><i class="bi bi-info-circle"></i> Site name will be automatically extracted from domain</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- ERPNext Version -->
+                                                <div class="row mb-3">
+                                                    <div class="col-md-12">
+                                                        <label for="erpnext-version" class="form-label fw-bold">
+                                                            <i class="bi bi-box-seam"></i> ERPNext Version
+                                                        </label>
+                                                        <div class="input-group input-group-lg">
+                                                            <select class="form-select" id="erpnext-version">
+                                                                <option value="">Loading versions...</option>
+                                                            </select>
+                                                            <button class="btn btn-outline-secondary" type="button" id="refresh-versions-btn" title="Refresh Versions">
+                                                                <i class="bi bi-arrow-clockwise"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div class="form-text">
+                                                            Frappe version will be automatically matched with ERPNext version
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Information Alert -->
+                                                <div class="alert alert-info">
+                                                    <h6><i class="bi bi-info-circle-fill"></i> What happens when you create a site?</h6>
+                                                    <ul class="mb-0">
+                                                        <li>Docker Compose configuration will be automatically generated</li>
+                                                        <li>Required containers (frappe, db, redis) will be created and started</li>
+                                                        <li>Traefik reverse proxy will be configured automatically</li>
+                                                        <li>Database and admin passwords will be auto-generated securely</li>
+                                                        <li>Site will be accessible via your domain once setup completes (5-15 minutes)</li>
+                                                    </ul>
+                                                </div>
+
+                                                <!-- Action Buttons -->
+                                                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                                    <button type="button" class="btn btn-secondary btn-lg" id="reset-site-form">
+                                                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                                                    </button>
+                                                    <button type="submit" class="btn btn-primary btn-lg" id="create-site-btn">
+                                                        <i class="bi bi-rocket-takeoff"></i> Create Site
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+
+                                    <!-- Site Creation Progress -->
+                                    <div class="frappe-cloud-card mt-4" id="site-creation-progress" style="display: none;">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-hourglass-split"></i> Site Creation Progress
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="progress mb-3" style="height: 25px;">
+                                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                     role="progressbar" id="creation-progress-bar" 
+                                                     style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                                    0%
+                                                </div>
+                                            </div>
+                                            <div id="creation-status" class="mb-2">
+                                                <strong>Status:</strong> <span id="creation-status-text">Initializing...</span>
+                                            </div>
+                                            <div class="operation-log" id="site-creation-log" style="max-height: 400px;">
+                                                <div class="text-muted">Waiting for process to start...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1553,6 +1680,18 @@ class FrappeAppManager {
         document.getElementById('view-log-btn')?.addEventListener('click', () => this.viewLog());
         document.getElementById('download-log-btn')?.addEventListener('click', () => this.downloadLog());
         document.getElementById('clear-log-viewer-btn')?.addEventListener('click', () => this.clearLogViewer());
+        
+        // New Site Creation event listeners
+        document.getElementById('new-site-form')?.addEventListener('submit', (e) => this.handleNewSiteCreation(e));
+        document.getElementById('reset-site-form')?.addEventListener('click', () => this.resetSiteForm());
+        document.getElementById('refresh-versions-btn')?.addEventListener('click', () => this.loadERPNextVersions());
+        
+        // Load ERPNext versions on tab show
+        document.getElementById('new-site-tab')?.addEventListener('shown.bs.tab', () => {
+            if (!this.versionsLoaded) {
+                this.loadERPNextVersions();
+            }
+        });
     }
     
     updateContainerInfo() {
@@ -3677,6 +3816,589 @@ class FrappeAppManager {
             }
         } catch (error) {
             this.addToLog('error', `Error downloading log: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    // New Site Creation Methods
+    versionsLoaded = false;
+
+    async loadERPNextVersions() {
+        const versionSelect = document.getElementById('erpnext-version');
+        if (!versionSelect) return;
+
+        try {
+            versionSelect.innerHTML = '<option value="">Loading versions...</option>';
+            versionSelect.disabled = true;
+
+            const response = await fetchWithLoader('/api/frappe/get-erpnext-versions', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }, 'Fetching ERPNext versions...');
+
+            const data = await response.json();
+
+            if (data.success && data.versions && data.versions.length > 0) {
+                versionSelect.innerHTML = '<option value="">-- Select ERPNext Version --</option>';
+                
+                data.versions.forEach((version, index) => {
+                    const option = document.createElement('option');
+                    option.value = version;
+                    option.textContent = version;
+                    
+                    if (index === 0) {
+                        option.textContent += ' (Latest - Recommended)';
+                    }
+                    
+                    versionSelect.appendChild(option);
+                });
+
+                this.versionsLoaded = true;
+                this.addToLog('success', `Loaded ${data.versions.length} ERPNext versions`);
+            } else {
+                // Fallback to hardcoded versions
+                this.loadFallbackVersions(versionSelect);
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading versions: ${error.message}`);
+            this.loadFallbackVersions(versionSelect);
+        } finally {
+            versionSelect.disabled = false;
+        }
+    }
+
+    loadFallbackVersions(versionSelect) {
+        const fallbackVersions = [
+            'v15.80.1', 'v15.80.0', 'v15.79.2', 'v15.79.1', 'v15.79.0',
+            'v15.78.1', 'v15.78.0', 'v15.77.0', 'v15.76.0', 'v15.75.1',
+            'v14.73.0', 'v14.72.0', 'v14.71.0', 'v13.54.0'
+        ];
+
+        versionSelect.innerHTML = '<option value="">-- Select ERPNext Version --</option>';
+        fallbackVersions.forEach((version, index) => {
+            const option = document.createElement('option');
+            option.value = version;
+            option.textContent = version;
+            
+            if (index === 0) {
+                option.textContent += ' (Latest)';
+            }
+            
+            versionSelect.appendChild(option);
+        });
+
+        this.versionsLoaded = true;
+        this.addToLog('warning', 'Using fallback version list');
+    }
+
+    resetSiteForm() {
+        const form = document.getElementById('new-site-form');
+        if (form) {
+            form.reset();
+            
+            // Hide progress section
+            const progressSection = document.getElementById('site-creation-progress');
+            if (progressSection) {
+                progressSection.style.display = 'none';
+            }
+        }
+        this.addToLog('info', 'Site creation form reset');
+    }
+
+    async handleNewSiteCreation(event) {
+        event.preventDefault();
+
+        const domainName = document.getElementById('domain-name').value.trim();
+        const erpnextVersion = document.getElementById('erpnext-version').value;
+        const environment = document.querySelector('input[name="environment"]:checked').value;
+
+        // Validate domain name
+        if (!domainName) {
+            await Swal.fire({
+                title: 'Domain Required',
+                text: 'Please enter a domain name',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        if (!erpnextVersion) {
+            await Swal.fire({
+                title: 'Version Required',
+                text: 'Please select an ERPNext version',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        // Extract site name from domain (first part before dot)
+        const siteName = domainName.split('.')[0];
+
+        // Prepare parameters - script handles all other configuration
+        const params = {
+            domain_name: domainName,
+            erpnext_version: erpnextVersion,
+            environment: environment
+        };
+
+        // Confirmation dialog
+        const result = await Swal.fire({
+            title: 'Create New Site?',
+            html: `
+                <div class="text-start">
+                    <p><strong>Domain:</strong> ${domainName}</p>
+                    <p><strong>Site Name:</strong> ${siteName} <small class="text-muted">(auto-extracted)</small></p>
+                    <p><strong>Environment:</strong> ${environment === 'local' ? 'Docker-Local (Development)' : 'Docker-on-VPS (Production)'}</p>
+                    <p><strong>ERPNext Version:</strong> ${erpnextVersion}</p>
+                    <hr>
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle"></i> 
+                        The generation script will automatically:<br>
+                        • Generate secure passwords<br>
+                        • Assign available ports<br>
+                        • Configure Traefik routing<br>
+                        • Create and start containers
+                    </div>
+                    <hr>
+                    <p class="text-warning mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        This process may take 5-15 minutes. Please do not close this page.
+                    </p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Create Site',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#007bff'
+        });
+
+        if (!result.isConfirmed) return;
+
+        // Show progress section
+        const progressSection = document.getElementById('site-creation-progress');
+        const progressBar = document.getElementById('creation-progress-bar');
+        const statusText = document.getElementById('creation-status-text');
+        const creationLog = document.getElementById('site-creation-log');
+        
+        if (progressSection) {
+            progressSection.style.display = 'block';
+            progressBar.style.width = '10%';
+            progressBar.textContent = '10%';
+            statusText.textContent = 'Starting site creation...';
+            creationLog.innerHTML = '<div class="text-info">Initializing site creation process...</div>';
+        }
+
+        try {
+            this.addToLog('info', `Starting site creation: ${siteName} (${environment})`);
+
+            // Start the site creation task
+            const response = await fetch('/api/frappe/create-site', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify(params)
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.task_id) {
+                // Task started successfully, now poll for status
+                const taskId = data.task_id;
+                this.addToLog('info', `Task ID: ${taskId}`);
+                
+                // Poll for status every 2 seconds
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`/api/frappe/create-site/status/${taskId}`, {
+                            headers: {
+                                'X-CSRFToken': this.getCSRFToken()
+                            }
+                        });
+                        
+                        const statusData = await statusResponse.json();
+                        
+                        if (statusData.success && statusData.task) {
+                            const task = statusData.task;
+                            
+                            // Update progress bar
+                            progressBar.style.width = `${task.progress}%`;
+                            progressBar.textContent = `${task.progress}%`;
+                            
+                            // Update status text
+                            statusText.textContent = task.message;
+                            
+                            // Update log with real-time output
+                            if (creationLog) {
+                                if (task.output && task.output.trim()) {
+                                    // Format output with ANSI color codes removed and proper line breaks
+                                    const formattedOutput = task.output
+                                        // Remove all ANSI escape sequences (multiple patterns)
+                                        .replace(/\\u001b\[[0-9;]*m/g, '') // Unicode escaped ANSI
+                                        .replace(/\x1b\[[0-9;]*m/g, '') // Standard ANSI codes
+                                        .replace(/\[[0-9;]*m/g, '') // Bracket-only codes
+                                        .replace(/\[0m/g, '') // Reset codes
+                                        .replace(/\[0;[0-9]+m/g, '') // Color codes
+                                        .replace(/\\033\[[0-9;]*m/g, '') // Octal ANSI codes
+                                        .replace(/\x1b\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]/g, '') // Extended ANSI
+                                        .replace(/\[([0-9]{1,2}(;[0-9]{1,2})?)m/g, '') // Generic color
+                                        .replace(/\[\d+[ABCD]/g, '') // Cursor movement codes
+                                        .replace(/\[2K/g, '') // Clear line codes
+                                        .replace(/\[1A/g, '') // Move cursor up
+                                        .replace(/\[2A/g, '') // Move cursor up 2
+                                        .replace(/\[1B/g, '') // Move cursor down
+                                        .replace(/\[2B/g, '') // Move cursor down 2
+                                        .replace(/\\r\\n/g, '\n') // Escaped line endings
+                                        .replace(/\r\n/g, '\n') // Normalize line endings
+                                        .replace(/\\n/g, '\n') // Escaped newlines
+                                        .replace(/\r/g, '') // Remove carriage returns
+                                        .split('\n')
+                                        .filter(line => line.trim()) // Remove empty lines
+                                        .map(line => {
+                                            // First handle Unicode escape sequences for emoji
+                                            let processedLine = line
+                                                .replace(/\\ud83d\\udca1/g, '💡')
+                                                .replace(/\\ud83d\\udce6/g, '📦')
+                                                .replace(/\\u2705/g, '✅')
+                                                .replace(/\\u274c/g, '❌')
+                                                .replace(/\\u26a0/g, '⚠️')
+                                                .replace(/\\ud83d\\udd0d/g, '🔍')
+                                                .replace(/\\ud83d\\ude80/g, '🚀')
+                                                .replace(/\\ud83d\\udc33/g, '🐳')
+                                                .replace(/\\ud83d\\udd27/g, '🔧')
+                                                .replace(/\\ud83c\\udf10/g, '🌐')
+                                                .replace(/\\ud83d\\udccb/g, '📋')
+                                                .replace(/\\ud83d\\udcdd/g, '📝')
+                                                .replace(/\\ud83d\\udcc1/g, '📁')
+                                                .replace(/\\ud83d\\udc64/g, '👤')
+                                                .replace(/\\ud83d\\udd11/g, '🔑')
+                                                .replace(/\\ud83d\\udd10/g, '🔐')
+                                                .replace(/\\u23f3/g, '⏳')
+                                                .replace(/\\ud83c\\udf89/g, '🎉')
+                                                .replace(/\\ud83d\\udcbe/g, '💾')
+                                                .replace(/\\ud83d\\udcc2/g, '🗂️')
+                                                .replace(/\\u2b50/g, '⭐')
+                                                .replace(/\\ud83c\\udfaf/g, '🎯')
+                                                .replace(/\\ud83d\\udd25/g, '🔥')
+                                                .replace(/\\u2022/g, '•'); // Bullet point
+                                            
+                                            // Escape HTML
+                                            let formattedLine = this.escapeHtml(processedLine);
+                                            
+                                            // Replace emoji with Bootstrap icons
+                                            formattedLine = formattedLine
+                                                .replace(/📦/g, '<i class="bi bi-box-seam text-primary"></i>')
+                                                .replace(/✅/g, '<i class="bi bi-check-circle-fill text-success"></i>')
+                                                .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
+                                                .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
+                                                .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
+                                                .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
+                                                .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
+                                                .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
+                                                .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
+                                                .replace(/📊/g, '<i class="bi bi-bar-chart-fill text-info"></i>')
+                                                .replace(/📋/g, '<i class="bi bi-clipboard-fill text-info"></i>')
+                                                .replace(/📝/g, '<i class="bi bi-pencil-square text-primary"></i>')
+                                                .replace(/📁/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                .replace(/🎉/g, '<i class="bi bi-trophy-fill text-warning"></i>')
+                                                .replace(/⏳/g, '<i class="bi bi-hourglass-split text-muted"></i>')
+                                                .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
+                                                .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
+                                                .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
+                                                .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
+                                                .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
+                                                .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
+                                                .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                            
+                                            return formattedLine;
+                                        })
+                                        .join('<br>');
+                                    
+                                    creationLog.innerHTML = `
+                                        <div class="text-info mb-2">
+                                            <i class="bi bi-activity"></i> <strong>Status:</strong> ${this.escapeHtml(task.message)}
+                                        </div>
+                                        <div class="text-muted" style="font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;">
+                                            ${formattedOutput}
+                                        </div>
+                                    `;
+                                    
+                                    // Auto-scroll to bottom
+                                    creationLog.scrollTop = creationLog.scrollHeight;
+                                } else {
+                                    creationLog.innerHTML = `<div class="text-info"><i class="bi bi-info-circle"></i> ${this.escapeHtml(task.message)}</div>`;
+                                }
+                            }
+                            
+                            // Check if completed
+                            if (task.status === 'completed' && task.result) {
+                                clearInterval(pollInterval);
+                                
+                                progressBar.classList.remove('progress-bar-animated');
+                                progressBar.classList.add('bg-success');
+                                
+                                // Show final output with success styling
+                                if (creationLog && task.result.output) {
+                                    const formattedOutput = task.result.output
+                                        // Remove all ANSI escape sequences (multiple patterns)
+                                        .replace(/\\u001b\[[0-9;]*m/g, '')
+                                        .replace(/\x1b\[[0-9;]*m/g, '')
+                                        .replace(/\[[0-9;]*m/g, '')
+                                        .replace(/\[0m/g, '')
+                                        .replace(/\[0;[0-9]+m/g, '')
+                                        .replace(/\\033\[[0-9;]*m/g, '')
+                                        .replace(/\x1b\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]/g, '')
+                                        .replace(/\[([0-9]{1,2}(;[0-9]{1,2})?)m/g, '')
+                                        .replace(/\[\d+[ABCD]/g, '')
+                                        .replace(/\[2K/g, '')
+                                        .replace(/\[1A/g, '')
+                                        .replace(/\[2A/g, '')
+                                        .replace(/\[1B/g, '')
+                                        .replace(/\[2B/g, '')
+                                        .replace(/\\r\\n/g, '\n')
+                                        .replace(/\r\n/g, '\n')
+                                        .replace(/\\n/g, '\n')
+                                        .replace(/\r/g, '')
+                                        .split('\n')
+                                        .filter(line => line.trim())
+                                        .map(line => {
+                                            // First handle Unicode escape sequences for emoji
+                                            let processedLine = line
+                                                .replace(/\\ud83d\\udca1/g, '💡')
+                                                .replace(/\\ud83d\\udce6/g, '📦')
+                                                .replace(/\\u2705/g, '✅')
+                                                .replace(/\\u274c/g, '❌')
+                                                .replace(/\\u26a0/g, '⚠️')
+                                                .replace(/\\ud83d\\udd0d/g, '🔍')
+                                                .replace(/\\ud83d\\ude80/g, '🚀')
+                                                .replace(/\\ud83d\\udc33/g, '🐳')
+                                                .replace(/\\ud83d\\udd27/g, '🔧')
+                                                .replace(/\\ud83c\\udf10/g, '🌐')
+                                                .replace(/\\ud83d\\udccb/g, '📋')
+                                                .replace(/\\ud83d\\udcdd/g, '📝')
+                                                .replace(/\\ud83d\\udcc1/g, '📁')
+                                                .replace(/\\ud83d\\udc64/g, '👤')
+                                                .replace(/\\ud83d\\udd11/g, '🔑')
+                                                .replace(/\\ud83d\\udd10/g, '🔐')
+                                                .replace(/\\u23f3/g, '⏳')
+                                                .replace(/\\ud83c\\udf89/g, '🎉')
+                                                .replace(/\\ud83d\\udcbe/g, '💾')
+                                                .replace(/\\ud83d\\udcc2/g, '🗂️')
+                                                .replace(/\\u2b50/g, '⭐')
+                                                .replace(/\\ud83c\\udfaf/g, '🎯')
+                                                .replace(/\\ud83d\\udd25/g, '🔥')
+                                                .replace(/\\u2022/g, '•');
+                                            
+                                            let formattedLine = this.escapeHtml(processedLine);
+                                            // Convert emoji to Bootstrap icons
+                                            return formattedLine
+                                                .replace(/📦/g, '<i class="bi bi-box-seam text-primary"></i>')
+                                                .replace(/✅/g, '<i class="bi bi-check-circle-fill text-success"></i>')
+                                                .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
+                                                .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
+                                                .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
+                                                .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
+                                                .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
+                                                .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
+                                                .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
+                                                .replace(/📊/g, '<i class="bi bi-bar-chart-fill text-info"></i>')
+                                                .replace(/📋/g, '<i class="bi bi-clipboard-fill text-info"></i>')
+                                                .replace(/📝/g, '<i class="bi bi-pencil-square text-primary"></i>')
+                                                .replace(/📁/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                .replace(/🎉/g, '<i class="bi bi-trophy-fill text-warning"></i>')
+                                                .replace(/⏳/g, '<i class="bi bi-hourglass-split text-muted"></i>')
+                                                .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
+                                                .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
+                                                .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
+                                                .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
+                                                .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
+                                                .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
+                                                .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                        })
+                                        .join('<br>');
+                                    
+                                    creationLog.innerHTML = `
+                                        <div class="alert alert-success mb-2">
+                                            <i class="bi bi-check-circle-fill"></i> <strong>Site Created Successfully!</strong>
+                                        </div>
+                                        <div class="text-muted" style="font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
+                                            ${formattedOutput}
+                                        </div>
+                                    `;
+                                }
+                                
+                                this.addToLog('success', `Site ${task.result.site_name} created successfully`);
+                                
+                                // Format credentials with icons
+                                let formattedCredentials = '';
+                                if (task.result.credentials) {
+                                    formattedCredentials = task.result.credentials
+                                        .split('\n')
+                                        .map(line => {
+                                            let formattedLine = this.escapeHtml(line);
+                                            return formattedLine
+                                                .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
+                                                .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
+                                                .replace(/💾/g, '<i class="bi bi-database-fill text-info"></i>');
+                                        })
+                                        .join('<br>');
+                                }
+                                
+                                await Swal.fire({
+                                    title: 'Success!',
+                                    html: `
+                                        <div class="text-center mb-3">
+                                            <h5>Site <strong class="text-primary">${task.result.domain_name}</strong> created successfully!</h5>
+                                        </div>
+                                        ${task.result.access_url ? `
+                                            <div class="alert alert-success text-start">
+                                                <i class="bi bi-globe"></i> <strong>Access URL:</strong><br>
+                                                <a href="${task.result.access_url}" target="_blank" class="text-decoration-none">
+                                                    <i class="bi bi-box-arrow-up-right"></i> ${task.result.access_url}
+                                                </a>
+                                            </div>
+                                        ` : ''}
+                                        ${formattedCredentials ? `
+                                            <div class="alert alert-info text-start">
+                                                <h6><i class="bi bi-shield-lock"></i> Credentials:</h6>
+                                                <div style="font-family: monospace; line-height: 1.8;">
+                                                    ${formattedCredentials}
+                                                </div>
+                                            </div>
+                                        ` : ''}
+                                    `,
+                                    icon: 'success',
+                                    width: '600px'
+                                });
+                                
+                                // Reset form
+                                this.resetSiteForm();
+                                
+                                // Refresh containers
+                                setTimeout(() => this.refreshContainers(), 2000);
+                                
+                            } else if (task.status === 'failed') {
+                                clearInterval(pollInterval);
+                                
+                                progressBar.classList.remove('progress-bar-animated');
+                                progressBar.classList.add('bg-danger');
+                                
+                                const errorMsg = task.result?.error || task.message;
+                                
+                                // Show error with output
+                                if (creationLog) {
+                                    let logContent = `
+                                        <div class="alert alert-danger mb-2">
+                                            <i class="bi bi-x-circle-fill"></i> <strong>Site Creation Failed</strong><br>
+                                            <small>${this.escapeHtml(errorMsg)}</small>
+                                        </div>
+                                    `;
+                                    
+                                    // Add output if available
+                                    if (task.output && task.output.trim()) {
+                                        const formattedOutput = task.output
+                                            // Remove all ANSI escape sequences
+                                            .replace(/\x1b\[[0-9;]*m/g, '')
+                                            .replace(/\[[0-9;]*m/g, '')
+                                            .replace(/\[0m/g, '')
+                                            .replace(/\[0;[0-9]+m/g, '')
+                                            .replace(/\x1b\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]/g, '')
+                                            .replace(/\[\d+[ABCD]/g, '')
+                                            .replace(/\[2K/g, '')
+                                            .replace(/\[1A/g, '')
+                                            .replace(/\r\n/g, '\n')
+                                            .replace(/\r/g, '')
+                                            .split('\n')
+                                            .filter(line => line.trim())
+                                            .map(line => {
+                                                let formattedLine = this.escapeHtml(line);
+                                                // Convert emoji to Bootstrap icons
+                                                return formattedLine
+                                                    .replace(/📦/g, '<i class="bi bi-box-seam text-primary"></i>')
+                                                    .replace(/✅/g, '<i class="bi bi-check-circle-fill text-success"></i>')
+                                                    .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
+                                                    .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
+                                                    .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
+                                                    .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
+                                                    .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                    .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
+                                                    .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
+                                                    .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
+                                                    .replace(/📊/g, '<i class="bi bi-bar-chart-fill text-info"></i>')
+                                                    .replace(/🎉/g, '<i class="bi bi-trophy-fill text-warning"></i>')
+                                                    .replace(/⏳/g, '<i class="bi bi-hourglass-split text-muted"></i>')
+                                                    .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
+                                                    .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
+                                                    .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
+                                                    .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
+                                                    .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                    .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
+                                                    .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
+                                                    .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                            })
+                                            .join('<br>');
+                                        
+                                        logContent += `
+                                            <div class="text-muted" style="font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
+                                                ${formattedOutput}
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    creationLog.innerHTML = logContent;
+                                }
+                                
+                                this.addToLog('error', `Failed: ${errorMsg}`);
+                                
+                                await Swal.fire({
+                                    title: 'Error',
+                                    text: errorMsg,
+                                    icon: 'error'
+                                });
+                            }
+                        }
+                    } catch (pollError) {
+                        console.error('Polling error:', pollError);
+                    }
+                }, 2000); // Poll every 2 seconds
+                
+            } else {
+                // Failed to start task
+                progressBar.classList.remove('progress-bar-animated');
+                progressBar.classList.add('bg-danger');
+                statusText.textContent = 'Failed to start site creation';
+                
+                this.addToLog('error', `Failed to start: ${data.error}`);
+                
+                await Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'Failed to start site creation',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-danger');
+            statusText.textContent = 'Error occurred';
+            
+            if (creationLog) {
+                creationLog.innerHTML = `<div class="text-danger">Error: ${this.escapeHtml(error.message)}</div>`;
+            }
+
+            this.addToLog('error', `Error: ${error.message}`);
+            
             await Swal.fire({
                 title: 'Error',
                 text: `Error: ${error.message}`,

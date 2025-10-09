@@ -543,6 +543,37 @@ check_system_dependencies() {
     
     local dependencies_missing=false
     
+    # Check for expect (required for site creation automation)
+    if ! command -v expect >/dev/null 2>&1; then
+        print_warning "expect not found - required for automated site creation"
+        print_info "Attempting to install expect..."
+        
+        # Check if we can use apt
+        if command -v apt >/dev/null 2>&1; then
+            if sudo apt update >/dev/null 2>&1 && sudo apt install -y expect >/dev/null 2>&1; then
+                print_success "expect installed successfully"
+            else
+                print_error "Failed to install expect automatically"
+                print_info "Please install manually: sudo apt install expect"
+                dependencies_missing=true
+            fi
+        elif command -v yum >/dev/null 2>&1; then
+            if sudo yum install -y expect >/dev/null 2>&1; then
+                print_success "expect installed successfully"
+            else
+                print_error "Failed to install expect automatically"
+                print_info "Please install manually: sudo yum install expect"
+                dependencies_missing=true
+            fi
+        else
+            print_error "Package manager not found"
+            print_info "Please install expect manually for your system"
+            dependencies_missing=true
+        fi
+    else
+        print_success "expect is available"
+    fi
+    
     # Check for socat (required for SSH forwarding)
     if ! command -v socat >/dev/null 2>&1; then
         print_warning "socat not found - required for SSH forwarding functionality"
