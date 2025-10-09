@@ -660,11 +660,9 @@ if ! is_traefik_running; then
     echo "Creating traefik-docker-compose.yml..."
     
     if [[ "$use_ssl" == true ]]; then
-        echo -e "${BLUE}SSL Configuration Options:${NC}"
-        echo "1. HTTP Challenge (works with ANY DNS provider: Namecheap, GoDaddy, etc.)"
-        echo "2. DNS Challenge (Cloudflare only - supports wildcard certificates)"
+        echo -e "${BLUE}SSL Configuration:${NC}"
+        echo "Using HTTP Challenge (works with ALL DNS providers: Namecheap, GoDaddy, Cloudflare, etc.)"
         echo ""
-        read -p "Enter your Cloudflare API token (leave blank for HTTP challenge with any DNS provider): " cf_api_token
         read -p "Enter email for Let's Encrypt notifications: " email
         
         if [[ -z "$email" ]]; then
@@ -675,26 +673,12 @@ if ! is_traefik_running; then
 
     # Generate Traefik config
     if [[ "$use_ssl" == true ]]; then
-        # Prepare ACME challenge options based on token presence
-        if [[ -n "$cf_api_token" ]]; then
-            echo -e "${GREEN}Using DNS challenge with Cloudflare...${NC}"
-            ACME_CHALLENGE_OPTIONS=(
-                "--certificatesresolvers.myresolver.acme.dnschallenge=true"
-                "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
-            )
-            ENV_SECTION=$(cat << EOF
-    environment:
-      - CF_DNS_API_TOKEN=${cf_api_token}
-EOF
-)
-        else
-            echo -e "${GREEN}Using HTTP challenge (works with any DNS provider)...${NC}"
-            ACME_CHALLENGE_OPTIONS=(
-                "--certificatesresolvers.myresolver.acme.httpchallenge=true"
-                "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-            )
-            ENV_SECTION=""
-        fi
+        echo -e "${GREEN}Using HTTP Challenge (Universal - works with any DNS provider)...${NC}"
+        ACME_CHALLENGE_OPTIONS=(
+            "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+            "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+        )
+        ENV_SECTION=""
 
         cat > "traefik-docker-compose.yml" << EOF
 version: "3"

@@ -93,12 +93,10 @@ Enter site name (e.g. example.com): your-domain.com
 
 #### 3. SSL Configuration (HTTPS only)
 ```
-Enter your Cloudflare API token (leave blank for HTTP challenge with any DNS provider): 
 Enter email for Let's Encrypt notifications: your-email@example.com
 ```
-- **Cloudflare API Token**: For DNS challenge (Cloudflare only - supports wildcard certs)
-- **Leave blank**: For HTTP challenge (works with ANY DNS provider: Namecheap, GoDaddy, etc.)
 - **Email**: Required for Let's Encrypt certificate notifications
+- **HTTP Challenge**: Automatically used (works with ALL DNS providers: Namecheap, GoDaddy, Cloudflare, etc.)
 
 ### Configuration Options
 
@@ -106,22 +104,16 @@ Enter email for Let's Encrypt notifications: your-email@example.com
 - Perfect for development environments
 - No SSL certificate required
 - Accessible via `http://your-domain.com`
-- No email or Cloudflare token required
+- No email required
 
 #### HTTPS Setup with HTTP Challenge
 - Standard SSL setup using HTTP-01 challenge
-- **Works with ANY DNS provider**: Namecheap, GoDaddy, Google Domains, etc.
+- **Works with ANY DNS provider**: Namecheap, GoDaddy, Google Domains, Cloudflare, etc.
 - Automatic certificate generation and renewal
 - Accessible via `https://your-domain.com`
 - HTTP automatically redirects to HTTPS
 - Requires valid email address
-
-#### HTTPS Setup with Cloudflare DNS Challenge
-- Advanced SSL setup using DNS-01 challenge
-- Supports wildcard certificates
-- Works behind Cloudflare proxy
-- Requires Cloudflare API token
-- More reliable for complex setups
+- **Recommended for all users** - Simple and universal
 
 ## 📂 File Structure
 
@@ -377,32 +369,31 @@ The script automatically configures:
 - **Traefik**: Reverse proxy with SSL termination
 - **Networks**: Bridge networks with Traefik proxy integration
 
-## ☁️ Cloudflare Integration
+## ☁️ Using with Cloudflare
 
-### Getting Cloudflare API Token
+If your domain uses Cloudflare DNS:
 
-1. **Login to Cloudflare Dashboard**
-2. **Go to**: My Profile → API Tokens
-3. **Create Token** with permissions:
-   - Zone: Zone: Read
-   - Zone: DNS: Edit
-4. **Zone Resources**: Include → Specific zone → your-domain.com
-
-### Benefits of Cloudflare DNS Challenge
-
-- ✅ **Wildcard Certificates**: Support for `*.your-domain.com`
-- ✅ **Behind Proxy**: Works when domain is proxied through Cloudflare
-- ✅ **Rate Limits**: Avoids Let's Encrypt HTTP challenge rate limits
-- ✅ **Private Networks**: Works on servers not directly accessible from internet
-
-### Cloudflare Proxy Configuration
-
-If using Cloudflare proxy (orange cloud):
+### Cloudflare Settings for HTTP Challenge
 
 1. **SSL/TLS Mode**: Set to "Full" or "Full (strict)"
 2. **Always Use HTTPS**: Enable this setting
-3. **HSTS**: Consider enabling for security
-4. **Real IP**: Script automatically configures real IP detection
+3. **Proxy Status**: **Disable proxy temporarily** (gray cloud) during initial SSL setup
+   - After SSL certificate is generated, you can re-enable proxy (orange cloud)
+4. **HSTS**: Consider enabling for security
+
+### Why Disable Cloudflare Proxy Initially?
+
+- HTTP Challenge needs direct access to your server on port 80
+- Cloudflare proxy can interfere with Let's Encrypt validation
+- After certificate is issued, you can safely re-enable the proxy
+
+### Steps for Cloudflare Users
+
+1. **Disable proxy** (click orange cloud to make it gray)
+2. **Run the setup script** - SSL certificate will generate
+3. **Wait for "SSL certificate generated" message**
+4. **Re-enable proxy** (click gray cloud to make it orange)
+5. **Done!** Your site now works with Cloudflare proxy + SSL
 
 ## 🔧 Management Scripts
 

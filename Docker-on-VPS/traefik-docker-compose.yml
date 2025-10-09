@@ -7,16 +7,25 @@ services:
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=admin@invento.live"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--accesslog=true"
       - "--log.level=INFO"
       - "--api.dashboard=true"
       - "--providers.docker.network=traefik_proxy"
     ports:
       - "80:80"
+      - "443:443"
       - "8080:8080"  # Traefik dashboard
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/home/ubuntu/frappe-docker/traefik-config/dynamic:/etc/traefik/dynamic:ro"
+      - "/home/ubuntu/frappe-docker/traefik-letsencrypt:/letsencrypt"
     networks:
       - traefik_proxy
     container_name: traefik
