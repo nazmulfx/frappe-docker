@@ -41,7 +41,8 @@ class Config:
     MAX_LOGIN_ATTEMPTS = 300
     LOCKOUT_DURATION = 300  # 5 minutes
     SESSION_TIMEOUT = 3600  # 1 hour
-    ALLOWED_IPS = ['127.0.0.1', '::1']
+    # ALLOWED_IPS = ['127.0.0.1', '::1']
+    ALLOWED_IPS = []  # Empty list means allow all IPs
     REQUIRE_HTTPS = False  # Set to True for production
     ENABLE_AUDIT_LOG = True
 

@@ -162,7 +162,7 @@
     padding: 1rem;
     font-family: 'Courier New', monospace;
     font-size: 0.875rem;
-    max-height: 300px;
+    max-height: 500px;
     overflow-y: auto;
 }
 
@@ -251,6 +251,16 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="ssh-panel-tab" data-bs-toggle="tab" data-bs-target="#ssh-panel" type="button" role="tab" aria-controls="ssh-panel" aria-selected="false">
                                 <i class="bi bi-shield-lock"></i> SSH Access
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="backup-restore-tab" data-bs-toggle="tab" data-bs-target="#backup-restore-panel" type="button" role="tab" aria-controls="backup-restore-panel" aria-selected="false">
+                                <i class="bi bi-archive"></i> Backup & Restore
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="bench-logs-tab" data-bs-toggle="tab" data-bs-target="#bench-logs-panel" type="button" role="tab" aria-controls="bench-logs-panel" aria-selected="false">
+                                <i class="bi bi-file-text"></i> Bench Logs
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -362,6 +372,11 @@
                                             <div class="d-grid gap-2">
                                                 <button class="btn btn-outline-success w-100 app-operation-btn" id="supervisor-status-btn">
                                                     <i class="bi bi-activity"></i> Supervisor Status
+                                                </button>
+                                            </div>
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-danger w-100 app-operation-btn" id="open-as-admin-btn">
+                                                    <i class="bi bi-shield-lock-fill"></i> Open as Administrator
                                                 </button>
                                             </div>
                                         </div>
@@ -583,6 +598,121 @@
                                     
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Bench Logs Tab -->
+                        <div class="tab-pane fade" id="bench-logs-panel" role="tabpanel">
+                            <!-- Container Selection for Logs -->
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-server"></i> Select Container
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <select class="form-select form-select-lg" id="logs-container-select">
+                                                <option value="">-- Choose a container --</option>
+                                                {% for project_name, project_containers in container_groups.items() %}
+                                                    <optgroup label="{{ project_name }}">
+                                                        {% for container in project_containers %}
+                                                            {% if container.service_type == 'App Server' %}
+                                                                <option value="{{ container.name }}">{{ container.name }}</option>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </optgroup>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-5">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-success text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-file-earmark-text"></i> Select Log File
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="input-group input-group-lg">
+                                                <select class="form-select" id="bench-log-file-select">
+                                                    <option value="">Select a log file...</option>
+                                                </select>
+                                                <button class="btn btn-outline-secondary" type="button" id="refresh-log-files-btn" title="Refresh Log Files">
+                                                    <i class="bi bi-bootstrap-reboot"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-warning text-dark">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-speedometer2"></i> Lines Limit
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <select class="form-select form-select-lg" id="log-lines-limit">
+                                                <option value="50">Last 50 lines</option>
+                                                <option value="100" selected>Last 100 lines</option>
+                                                <option value="200">Last 200 lines</option>
+                                                <option value="500">Last 500 lines</option>
+                                                <option value="1000">Last 1000 lines</option>
+                                                <option value="all">All lines (slow)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Log Viewer -->
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-file-text"></i> Log Viewer
+                                            </h6>
+                                            <div class="btn-group" role="group">
+                                                <button class="btn btn-sm btn-outline-light" id="view-log-btn">
+                                                    <i class="bi bi-eye"></i> View Log
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-light" id="download-log-btn">
+                                                    <i class="bi bi-download"></i> Download
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-light" id="clear-log-viewer-btn">
+                                                    <i class="bi bi-trash"></i> Clear View
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="card-body p-0">
+                                            <div id="bench-log-content" class="operation-log" style="background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace; padding: 15px; min-height: 400px; max-height: 600px; overflow-y: auto;">
+                                                <div class="text-muted text-center py-5">
+                                                    <i class="bi bi-info-circle"></i> Select a container, log file, and line limit, then click "View Log"
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer bg-light">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <small class="text-muted">
+                                                        <i class="bi bi-info-circle me-1"></i>
+                                                        <span id="log-info">No log loaded</span>
+                                                    </small>
+                                                </div>
+                                                <div class="col-md-6 text-end">
+                                                    <small class="text-muted">
+                                                        <span id="log-lines-count">0 lines</span>
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
 
                         <!-- Operation Log Tab -->
@@ -908,6 +1038,324 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Backup & Restore Panel Tab -->
+                        <div class="tab-pane fade" id="backup-restore-panel" role="tabpanel">
+                            <!-- Container and Site Selection - Top Section -->
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-dark text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-gear"></i> Select Container & Site
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3 mb-md-0">
+                                                        <label for="backup-container-select" class="form-label fw-bold">
+                                                            <i class="bi bi-terminal"></i> Container
+                                                        </label>
+                                                        <select class="form-select form-select-lg" id="backup-container-select">
+                                                            <option value="">-- Choose a container --</option>
+                                                            {% for project_name, project_containers in container_groups.items() %}
+                                                                <optgroup label="{{ project_name }}">
+                                                                    {% for container in project_containers %}
+                                                                        {% if container.service_type == 'App Server' %}
+                                                                            <option value="{{ container.name }}">{{ container.name }}</option>
+                                                                        {% endif %}
+                                                                    {% endfor %}
+                                                                </optgroup>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-0">
+                                                        <label for="backup-site-name" class="form-label fw-bold">
+                                                            <i class="bi bi-globe"></i> Site Name
+                                                        </label>
+                                                        <div class="input-group input-group-lg">
+                                                            <select class="form-select" id="backup-site-name">
+                                                                <option value="">Select a site...</option>
+                                                            </select>
+                                                            <button class="btn btn-outline-secondary" type="button" id="refresh-backup-sites-btn" title="Refresh Sites">
+                                                                <i class="bi bi-bootstrap-reboot"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <!-- Create Backup Card -->
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="card-header bg-primary text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-cloud-arrow-up"></i> Create Backup
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+
+                                            <div class="mb-3">
+                                                <label class="form-label">
+                                                    <i class="bi bi-file-earmark-check"></i> Backup Options
+                                                </label>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="backup-database" checked>
+                                                    <label class="form-check-label" for="backup-database">
+                                                        Database (SQL)
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="backup-private-files" checked>
+                                                    <label class="form-check-label" for="backup-private-files">
+                                                        Private Files
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="backup-public-files" checked>
+                                                    <label class="form-check-label" for="backup-public-files">
+                                                        Public Files
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-grid">
+                                                <button class="btn btn-primary" id="create-backup-btn">
+                                                    <i class="bi bi-cloud-arrow-up"></i> Create Backup
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <!-- Backup Info Card -->
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="card-header bg-info text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-info-circle"></i> Backup Information
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="alert alert-info">
+                                                <h6><i class="bi bi-lightbulb"></i> What gets backed up?</h6>
+                                                <ul class="mb-0">
+                                                    <li><strong>Database:</strong> All your site data (DocTypes, records, configurations)</li>
+                                                    <li><strong>Private Files:</strong> Uploaded files not publicly accessible</li>
+                                                    <li><strong>Public Files:</strong> Images, CSS, JS, and other public assets</li>
+                                                </ul>
+                                            </div>
+
+                                            <div class="alert alert-warning">
+                                                <h6><i class="bi bi-exclamation-triangle"></i> Important Notes</h6>
+                                                <ul class="mb-0">
+                                                    <li>Backups are stored in the site's <code>private/backups</code> directory</li>
+                                                    <li>Large sites may take several minutes to backup</li>
+                                                    <li>Download backups to external storage for safety</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Available Backups Section -->
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-archive-fill"></i> Available Backups
+                                            </h6>
+                                            <button class="btn btn-sm btn-light" id="refresh-backups-btn">
+                                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                                            </button>
+                                        </div>
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive">
+                                                <table class="table table-hover mb-0" id="backups-table">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th width="5%">
+                                                                <i class="bi bi-hash"></i>
+                                                            </th>
+                                                            <th width="35%">
+                                                                <i class="bi bi-file-earmark"></i> Filename
+                                                            </th>
+                                                            <th width="15%">
+                                                                <i class="bi bi-tag"></i> Type
+                                                            </th>
+                                                            <th width="10%">
+                                                                <i class="bi bi-hdd"></i> Size
+                                                            </th>
+                                                            <th width="20%">
+                                                                <i class="bi bi-clock"></i> Date
+                                                            </th>
+                                                            <th width="20%">
+                                                                <i class="bi bi-gear"></i> Actions
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="backups-tbody">
+                                                        <tr>
+                                                            <td colspan="6" class="text-center text-muted py-4">
+                                                                <i class="bi bi-inbox me-2"></i>
+                                                                No backups available. Select a container and site, then click "Refresh" to load backups.
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Upload External Backup Section -->
+                            <div class="row mt-4">
+                                <div class="col-6">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-info text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-cloud-upload"></i> Upload External Backup
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="alert alert-info">
+                                                <h6><i class="bi bi-info-circle"></i> Upload Backup from Your Computer</h6>
+                                                <p class="mb-0">Upload backup files from your local computer or external storage. Supported formats: .sql, .sql.gz for database, .tar for files.</p>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="upload-backup-type" class="form-label">
+                                                            <i class="bi bi-tag"></i> Backup Type
+                                                        </label>
+                                                        <select class="form-select" id="upload-backup-type">
+                                                            <option value="database">Database (.sql, .sql.gz)</option>
+                                                            <option value="private_files">Private Files (.tar)</option>
+                                                            <option value="public_files">Public Files (.tar)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="upload-backup-file" class="form-label">
+                                                            <i class="bi bi-file-earmark-arrow-up"></i> Select Backup File
+                                                        </label>
+                                                        <input type="file" class="form-control" id="upload-backup-file" accept=".sql,.sql.gz,.tar,.tar.gz">
+                                                        <div class="form-text">
+                                                            <span id="upload-file-info" class="text-muted">No file selected</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="progress mb-3" id="upload-progress" style="display: none;">
+                                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="upload-progress-bar" style="width: 0%"></div>
+                                            </div>
+
+                                            <div class="d-grid">
+                                                <button class="btn btn-info btn-lg" id="upload-backup-btn">
+                                                    <i class="bi bi-cloud-upload"></i> Upload Backup File
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Restore Backup Section -->
+                                <div class="col-6">
+                                    <div class="frappe-cloud-card">
+                                        <div class="card-header bg-warning text-dark">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-arrow-counterclockwise"></i> Restore Backup
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="alert alert-danger">
+                                                <h6><i class="bi bi-exclamation-octagon"></i> Warning!</h6>
+                                                <p class="mb-0">Restoring a backup will <strong>replace all current data</strong> on the selected site. This action cannot be undone. Make sure you have a recent backup before proceeding.</p>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="restore-database-backup" class="form-label">
+                                                            <i class="bi bi-database"></i> Database Backup
+                                                        </label>
+                                                        <div class="input-group">
+                                                            <select class="form-select" id="restore-database-backup">
+                                                                <option value="">Select database backup...</option>
+                                                            </select>
+                                                            <button class="btn btn-outline-secondary" type="button" id="refresh-restore-backups-btn" title="Refresh Backups">
+                                                                <i class="bi bi-bootstrap-reboot"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="restore-private-backup" class="form-label">
+                                                            <i class="bi bi-file-lock"></i> Private Files (Optional)
+                                                        </label>
+                                                        <select class="form-select" id="restore-private-backup">
+                                                            <option value="">None</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="restore-public-backup" class="form-label">
+                                                            <i class="bi bi-folder-open"></i> Public Files (Optional)
+                                                        </label>
+                                                        <select class="form-select" id="restore-public-backup">
+                                                            <option value="">None</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="restore-mysql-root-password" class="form-label">
+                                                            <i class="bi bi-key"></i> MySQL Root Password
+                                                        </label>
+                                                        <input type="password" class="form-control" id="restore-mysql-root-password" placeholder="Enter MySQL root password">
+                                                        <div class="form-text">Required for database restoration</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12">
+                                                    <div class="mb-3">
+                                                        <label for="restore-admin-password" class="form-label">
+                                                            <i class="bi bi-shield-lock"></i> Admin Password (Optional)
+                                                        </label>
+                                                        <input type="password" class="form-control" id="restore-admin-password" placeholder="Set new admin password">
+                                                        <div class="form-text">Leave empty to keep existing password</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-grid">
+                                                <button class="btn btn-warning btn-lg" id="restore-backup-btn">
+                                                    <i class="bi bi-arrow-counterclockwise"></i> Restore Backup
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1031,6 +1479,7 @@ class FrappeAppManager {
         document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
         document.getElementById('supervisor-status-btn')?.addEventListener('click', () => this.supervisorStatus());
         document.getElementById('bench-build-btn')?.addEventListener('click', () => this.benchBuild());
+        document.getElementById('open-as-admin-btn')?.addEventListener('click', () => this.openAsAdministrator());
         
         
         // Quick actions
@@ -1073,6 +1522,38 @@ class FrappeAppManager {
         // Add a refresh apps button or method
         document.getElementById('refresh-apps-btn')?.addEventListener('click', () => this.refreshApps());
         document.getElementById('refresh-sites-btn')?.addEventListener('click', () => this.refreshSites());
+        
+        // Backup & Restore event listeners
+        document.getElementById('backup-container-select')?.addEventListener('change', (e) => this.onBackupContainerChange(e.target.value));
+        document.getElementById('refresh-backup-sites-btn')?.addEventListener('click', () => this.loadBackupSites());
+        document.getElementById('create-backup-btn')?.addEventListener('click', () => this.createBackup());
+        document.getElementById('refresh-backups-btn')?.addEventListener('click', () => this.loadBackupsList());
+        document.getElementById('refresh-restore-backups-btn')?.addEventListener('click', () => this.loadBackupsList());
+        document.getElementById('restore-backup-btn')?.addEventListener('click', () => this.restoreBackup());
+        document.getElementById('upload-backup-btn')?.addEventListener('click', () => this.uploadBackup());
+        
+        // File input change listener
+        document.getElementById('upload-backup-file')?.addEventListener('change', (e) => {
+            const fileInfo = document.getElementById('upload-file-info');
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                fileInfo.textContent = `Selected: ${file.name} (${sizeMB} MB)`;
+                fileInfo.classList.remove('text-muted');
+                fileInfo.classList.add('text-success');
+            } else {
+                fileInfo.textContent = 'No file selected';
+                fileInfo.classList.remove('text-success');
+                fileInfo.classList.add('text-muted');
+            }
+        });
+
+        // Bench Logs event listeners
+        document.getElementById('logs-container-select')?.addEventListener('change', (e) => this.onLogsContainerChange(e.target.value));
+        document.getElementById('refresh-log-files-btn')?.addEventListener('click', () => this.loadLogFiles());
+        document.getElementById('view-log-btn')?.addEventListener('click', () => this.viewLog());
+        document.getElementById('download-log-btn')?.addEventListener('click', () => this.downloadLog());
+        document.getElementById('clear-log-viewer-btn')?.addEventListener('click', () => this.clearLogViewer());
     }
     
     updateContainerInfo() {
@@ -1520,6 +2001,305 @@ class FrappeAppManager {
         await this.executeCommand(command, 'Checking Supervisor status');
     }
     
+    async openAsAdministrator() {
+        if (!this.selectedContainer) {
+            await Swal.fire({
+                title: 'No Container Selected',
+                text: 'Please select a container first',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        // Get site name using SweetAlert with dropdown
+        const { value: siteName } = await Swal.fire({
+            title: 'Open Site as Administrator',
+            html: `
+                <div class="text-start mb-3">
+                    <label for="admin-site-select" class="form-label">Select Site:</label>
+                    <select class="form-select" id="admin-site-select">
+                        <option value="">Loading sites...</option>
+                    </select>
+                </div>
+                <div class="alert alert-info text-start mb-0">
+                    <i class="bi bi-info-circle"></i> This will open the selected site in a new browser tab. Make sure you know the administrator password.
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Open Site',
+            cancelButtonText: 'Cancel',
+            didOpen: async () => {
+                const select = document.getElementById('admin-site-select');
+                
+                try {
+                    // Load sites for the selected container
+                    const response = await fetch('/api/frappe/execute-command', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            container: this.selectedContainer,
+                            command: 'cat ~/frappe-bench/sites/currentsite.txt'
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.output && !result.error) {
+                        const sites = result.output.trim().split('\n').filter(site => {
+                            const trimmed = site.trim();
+                            return trimmed && 
+                                   !trimmed.includes('common_site_config.json') && 
+                                   !trimmed.includes('currentsite.txt') &&
+                                   !trimmed.startsWith('.');
+                        });
+                        
+                        select.innerHTML = '<option value="">-- Select a site --</option>';
+                        sites.forEach(site => {
+                            const siteName = site.trim();
+                            if (siteName) {
+                                const option = document.createElement('option');
+                                option.value = siteName;
+                                option.textContent = siteName;
+                                select.appendChild(option);
+                            }
+                        });
+                    } else {
+                        select.innerHTML = '<option value="">Failed to load sites</option>';
+                    }
+                } catch (error) {
+                    select.innerHTML = '<option value="">Error loading sites</option>';
+                }
+            },
+            preConfirm: () => {
+                const select = document.getElementById('admin-site-select');
+                const site = select.value;
+                
+                if (!site) {
+                    Swal.showValidationMessage('Please select a site');
+                    return false;
+                }
+                
+                return site;
+            }
+        });
+        
+        if (!siteName) return;
+
+        try {
+            // Check what ports are listening (since docker command not available in container)
+            const portCheckResponse = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: 'netstat -tlnp | grep ":8081\\|:8080\\|:8082\\|:8083\\|:8084\\|:8085\\|:80" | head -10'
+                })
+            }, `Checking listening ports...`);
+            
+            const portCheckResult = await portCheckResponse.json();
+            let traefikPort = '8081'; // Default to most common custom port
+            
+            this.addToLog('info', `Listening ports: ${portCheckResult.output}`);
+            
+            if (portCheckResult.output && !portCheckResult.error) {
+                const portLines = portCheckResult.output.split('\n');
+                for (const line of portLines) {
+                    // Look for custom ports first, skip port 80
+                    if (line.includes(':8081')) {
+                        traefikPort = '8081';
+                        this.addToLog('info', `Found port 8081 listening`);
+                        break;
+                    } else if (line.includes(':8080')) {
+                        traefikPort = '8080';
+                        this.addToLog('info', `Found port 8080 listening`);
+                        break;
+                    } else if (line.includes(':8082')) {
+                        traefikPort = '8082';
+                        this.addToLog('info', `Found port 8082 listening`);
+                        break;
+                    } else if (line.includes(':8083')) {
+                        traefikPort = '8083';
+                        this.addToLog('info', `Found port 8083 listening`);
+                        break;
+                    } else if (line.includes(':8084')) {
+                        traefikPort = '8084';
+                        this.addToLog('info', `Found port 8084 listening`);
+                        break;
+                    } else if (line.includes(':8085')) {
+                        traefikPort = '8085';
+                        this.addToLog('info', `Found port 8085 listening`);
+                        break;
+                    }
+                }
+            }
+            
+            this.addToLog('info', `Detected port: ${traefikPort}`);
+            
+            // Test the site with different ports using curl to find the working one
+            // Custom ports first, port 80 last (since it conflicts with Apache/Nginx)
+            const testPorts = ['8081', '8080', '8082', '8083', '8084', '8085', '80'];
+            let workingPort = traefikPort; // Start with detected port
+            
+            this.addToLog('info', `Testing site ${siteName} with different ports...`);
+            
+            for (const port of testPorts) {
+                const curlTestResponse = await fetchWithLoader('/api/frappe/execute-command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCSRFToken()
+                    },
+                    body: JSON.stringify({
+                        container: this.selectedContainer,
+                        command: `curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://${siteName}:${port}" 2>/dev/null || echo "000"`
+                    })
+                }, `Testing port ${port}...`);
+                
+                const curlResult = await curlTestResponse.json();
+                const httpCode = curlResult.output ? curlResult.output.trim() : '000';
+                
+                this.addToLog('info', `Port ${port} test result: HTTP ${httpCode}`);
+                
+                // If we get a valid HTTP response (200, 301, 302, etc.), this port works
+                if (httpCode && httpCode !== '000' && !httpCode.includes('error') && parseInt(httpCode) >= 200 && parseInt(httpCode) < 600) {
+                    workingPort = port;
+                    this.addToLog('success', `Found working port: ${port} (HTTP ${httpCode})`);
+                    break;
+                }
+            }
+            
+            this.addToLog('info', `Using port: ${workingPort}`);
+            
+            // Get the site URL configuration
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: `cat ~/frappe-bench/sites/${siteName}/site_config.json`
+                })
+            }, `Getting site configuration for ${siteName}...`);
+            
+            const result = await response.json();
+            
+            if (result.output && !result.error) {
+                try {
+                    const siteConfig = JSON.parse(result.output);
+                    let siteUrl = siteConfig.host_name || siteName;
+                    
+                    this.addToLog('info', `Site config: ${JSON.stringify(siteConfig)}`);
+                    this.addToLog('info', `Site hostname: ${siteUrl}`);
+                    
+                    // Use the working port that we tested with curl
+                    let port = workingPort;
+                    
+                    // Build the complete URL with Traefik port
+                    if (siteUrl.includes(':')) {
+                        // URL already has port or is an IP with port
+                        siteUrl = siteUrl;
+                    } else {
+                        // Add Traefik port to the URL
+                        siteUrl = siteUrl + ':' + port;
+                    }
+                    
+                    // Ensure the URL has a protocol
+                    if (!siteUrl.startsWith('http://') && !siteUrl.startsWith('https://')) {
+                        siteUrl = 'http://' + siteUrl;
+                    }
+                    
+                    this.addToLog('success', `Opening ${siteName} at ${siteUrl}`);
+                    
+                    // Force login as Administrator without password
+                    // Try multiple auto-login methods
+                    const autoLoginMethods = [
+                        `${siteUrl}/login?usr=administrator&pwd=admin`, // Default password
+                        `${siteUrl}/desk`, // Direct desk access
+                        `${siteUrl}/app` // Direct app access
+                    ];
+                    
+                    // Try the first method (most common)
+                    const loginUrl = autoLoginMethods[0];
+                    window.open(loginUrl, '_blank');
+                    
+                    await Swal.fire({
+                        title: 'Force Login as Administrator',
+                        html: `
+                            <p>Site opened with force login:</p>
+                            <p><strong>${siteUrl}</strong></p>
+                            <hr>
+                            <div class="alert alert-success text-start">
+                                <h6><i class="bi bi-shield-check"></i> Force Login Active</h6>
+                                <p class="mb-1"><strong>Username:</strong> Administrator</p>
+                                <p class="mb-1"><strong>Method:</strong> Auto-login with default password</p>
+                                <p class="mb-0"><strong>Status:</strong> Attempting automatic login...</p>
+                            </div>
+                            <div class="alert alert-info text-start mb-0">
+                                <small><i class="bi bi-info-circle"></i> If this doesn't work, try the Terminal tab to reset the admin password with "bench set-admin-password newpassword".</small>
+                            </div>
+                        `,
+                        icon: 'success'
+                    });
+                } catch (parseError) {
+                    // If we can't parse the config, just try to open the site name with working port
+                    let siteUrl = 'http://' + siteName + ':' + workingPort;
+                    this.addToLog('warning', `Could not parse site config, trying ${siteUrl}`);
+                    
+                    // Force login as Administrator
+                    const loginUrl = `${siteUrl}/login?usr=Administrator&pwd=admin`;
+                    window.open(loginUrl, '_blank');
+                    
+                    await Swal.fire({
+                        title: 'Site Opened',
+                        html: `
+                            <p>Site opened in a new tab:</p>
+                            <p><strong>${siteUrl}</strong></p>
+                            <div class="alert alert-warning text-start">
+                                <i class="bi bi-exclamation-triangle"></i> Could not determine the exact URL. If the site doesn't load, check your Traefik configuration or site settings.
+                            </div>
+                        `,
+                        icon: 'info'
+                    });
+                }
+            } else {
+                // Fallback: just try to open with the site name and working port
+                let siteUrl = 'http://' + siteName + ':' + workingPort;
+                this.addToLog('warning', `Could not get site config, trying ${siteUrl}`);
+                
+                // Force login as Administrator
+                const loginUrl = `${siteUrl}/login?usr=Administrator&pwd=admin`;
+                window.open(loginUrl, '_blank');
+                
+                await Swal.fire({
+                    title: 'Site Opened',
+                    html: `
+                        <p>Site opened in a new tab:</p>
+                        <p><strong>${siteUrl}</strong></p>
+                        <div class="alert alert-warning text-start">
+                            <i class="bi bi-exclamation-triangle"></i> Could not read site configuration. If the site doesn't load, check your Traefik configuration.
+                        </div>
+                    `,
+                    icon: 'info'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error opening site: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+    
     async benchBuild() {
         if (!this.selectedContainer) {
             this.showError('Please select a container first');
@@ -1955,6 +2735,945 @@ class FrappeAppManager {
         } catch (error) {
             this.addToLog('error', `Error testing endpoint: ${error.message}`);
             return false;
+        }
+    }
+
+    // Backup & Restore Methods
+    onBackupContainerChange(containerName) {
+        this.backupContainer = containerName;
+        if (containerName) {
+            this.loadBackupSites();
+        } else {
+            this.clearBackupSites();
+        }
+    }
+
+    async loadBackupSites() {
+        if (!this.backupContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
+        }
+
+        try {
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.backupContainer,
+                    command: 'ls -d ~/frappe-bench/sites/*/ | grep -v "assets\\|common" | xargs -n 1 basename'
+                })
+            }, 'Loading sites...');
+
+            const result = await response.json();
+
+            if (result.output && !result.error) {
+                this.populateBackupSites(result.output);
+            } else {
+                this.addToLog('error', `Failed to load sites: ${result.error || 'Unknown error'}`);
+                this.clearBackupSites();
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading sites: ${error.message}`);
+            this.clearBackupSites();
+        }
+    }
+
+    populateBackupSites(sitesOutput) {
+        const sitesSelect = document.getElementById('backup-site-name');
+        if (!sitesSelect) return;
+
+        sitesSelect.innerHTML = '<option value="">Select a site...</option>';
+
+        if (!sitesOutput || sitesOutput.trim() === '') return;
+
+        const sites = sitesOutput.trim().split('\n').filter(site => site.trim() !== '');
+
+        sites.forEach(site => {
+            const siteName = site.trim();
+            if (siteName) {
+                const option = document.createElement('option');
+                option.value = siteName;
+                option.textContent = siteName;
+                sitesSelect.appendChild(option);
+            }
+        });
+    }
+
+    clearBackupSites() {
+        const sitesSelect = document.getElementById('backup-site-name');
+        if (sitesSelect) {
+            sitesSelect.innerHTML = '<option value="">Select a site...</option>';
+        }
+    }
+
+    async createBackup() {
+        const container = document.getElementById('backup-container-select').value;
+        const siteName = document.getElementById('backup-site-name').value;
+        const includePrivateFiles = document.getElementById('backup-private-files').checked;
+        const includePublicFiles = document.getElementById('backup-public-files').checked;
+
+        if (!container || !siteName) {
+            await Swal.fire({
+                title: 'Missing Information',
+                text: 'Please select a container and site name',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        const result = await Swal.fire({
+            title: 'Create Backup',
+            html: `
+                <p>Create backup for site: <strong>${siteName}</strong></p>
+                <p>This may take several minutes for large sites.</p>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Create Backup',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#007bff'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            this.addToLog('info', `Creating backup for ${siteName}...`);
+
+            const response = await fetchWithLoader('/api/frappe/backup/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    site_name: siteName,
+                    include_files: includePrivateFiles || includePublicFiles,
+                    include_private_files: includePrivateFiles,
+                    include_public_files: includePublicFiles
+                })
+            }, `Creating backup for ${siteName}...`);
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.addToLog('success', `Backup created successfully for ${siteName}`);
+                this.addToLog('info', data.output);
+
+                await Swal.fire({
+                    title: 'Success!',
+                    text: 'Backup created successfully',
+                    icon: 'success'
+                });
+
+                // Refresh backups list
+                this.loadBackupsList();
+            } else {
+                this.addToLog('error', `Failed to create backup: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'Failed to create backup',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error creating backup: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    async loadBackupsList() {
+        const container = document.getElementById('backup-container-select').value;
+        const siteName = document.getElementById('backup-site-name').value;
+
+        if (!container || !siteName) {
+            await Swal.fire({
+                title: 'Missing Information',
+                text: 'Please select a container and site name',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        try {
+            const response = await fetchWithLoader('/api/frappe/backup/list', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    site_name: siteName
+                })
+            }, 'Loading backups...');
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.displayBackupsList(data.backups);
+                this.populateRestoreDropdowns(data.backups);
+                this.addToLog('info', `Loaded ${data.count} backup(s)`);
+            } else {
+                this.addToLog('error', `Failed to load backups: ${data.error}`);
+                this.clearBackupsList();
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading backups: ${error.message}`);
+            this.clearBackupsList();
+        }
+    }
+
+    displayBackupsList(backups) {
+        const tbody = document.getElementById('backups-tbody');
+        if (!tbody) return;
+
+        if (!backups || backups.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox me-2"></i>
+                        No backups found for this site.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = backups.map((backup, index) => {
+            const typeBadge = backup.type === 'database' ? 'bg-primary' :
+                            backup.type === 'private_files' ? 'bg-warning' :
+                            backup.type === 'public_files' ? 'bg-info' : 'bg-secondary';
+
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td><code>${backup.filename}</code></td>
+                    <td><span class="badge ${typeBadge}">${backup.type.replace('_', ' ')}</span></td>
+                    <td>${backup.size}</td>
+                    <td>${backup.date}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn btn-outline-primary" onclick="window.frappeAppManager.downloadBackup('${backup.path}', '${backup.filename}')" title="Download">
+                                <i class="bi bi-download"></i>
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="window.frappeAppManager.deleteBackup('${backup.path}', '${backup.filename}')" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    populateRestoreDropdowns(backups) {
+        const databaseSelect = document.getElementById('restore-database-backup');
+        const privateSelect = document.getElementById('restore-private-backup');
+        const publicSelect = document.getElementById('restore-public-backup');
+
+        if (databaseSelect) {
+            databaseSelect.innerHTML = '<option value="">Select database backup...</option>';
+            backups.filter(b => b.type === 'database').forEach(backup => {
+                const option = document.createElement('option');
+                option.value = backup.path;
+                option.textContent = `${backup.filename} (${backup.size})`;
+                databaseSelect.appendChild(option);
+            });
+        }
+
+        if (privateSelect) {
+            privateSelect.innerHTML = '<option value="">None</option>';
+            backups.filter(b => b.type === 'private_files').forEach(backup => {
+                const option = document.createElement('option');
+                option.value = backup.path;
+                option.textContent = `${backup.filename} (${backup.size})`;
+                privateSelect.appendChild(option);
+            });
+        }
+
+        if (publicSelect) {
+            publicSelect.innerHTML = '<option value="">None</option>';
+            backups.filter(b => b.type === 'public_files').forEach(backup => {
+                const option = document.createElement('option');
+                option.value = backup.path;
+                option.textContent = `${backup.filename} (${backup.size})`;
+                publicSelect.appendChild(option);
+            });
+        }
+    }
+
+    clearBackupsList() {
+        const tbody = document.getElementById('backups-tbody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox me-2"></i>
+                        No backups available. Select a container and site, then click "Refresh" to load backups.
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    async deleteBackup(backupPath, filename) {
+        const container = document.getElementById('backup-container-select').value;
+
+        const result = await Swal.fire({
+            title: 'Delete Backup',
+            html: `<p>Are you sure you want to delete:</p><p><code>${filename}</code></p><p>This action cannot be undone.</p>`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Delete',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc3545'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            const response = await fetchWithLoader('/api/frappe/backup/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    backup_path: backupPath
+                })
+            }, `Deleting backup ${filename}...`);
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.addToLog('success', `Backup deleted: ${filename}`);
+                await Swal.fire({
+                    title: 'Deleted!',
+                    text: 'Backup has been deleted.',
+                    icon: 'success',
+                    timer: 2000
+                });
+                this.loadBackupsList();
+            } else {
+                this.addToLog('error', `Failed to delete backup: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'Failed to delete backup',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error deleting backup: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    async restoreBackup() {
+        const container = document.getElementById('backup-container-select').value;
+        const siteName = document.getElementById('backup-site-name').value;
+        const databaseBackup = document.getElementById('restore-database-backup').value;
+        const privateBackup = document.getElementById('restore-private-backup').value;
+        const publicBackup = document.getElementById('restore-public-backup').value;
+        const mysqlPassword = document.getElementById('restore-mysql-root-password').value;
+        const adminPassword = document.getElementById('restore-admin-password').value;
+
+        if (!container || !siteName || !databaseBackup) {
+            await Swal.fire({
+                title: 'Missing Information',
+                text: 'Please select a container, site, and database backup',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        if (!mysqlPassword) {
+            await Swal.fire({
+                title: 'MySQL Password Required',
+                text: 'Please enter the MySQL root password for database restoration',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        const result = await Swal.fire({
+            title: 'Restore Backup?',
+            html: `
+                <div class="alert alert-danger text-start">
+                    <h6>⚠️ WARNING</h6>
+                    <p>This will <strong>REPLACE ALL DATA</strong> on site: <strong>${siteName}</strong></p>
+                    <p class="mb-0">This action cannot be undone!</p>
+                </div>
+                <p class="text-start">Files to restore:</p>
+                <ul class="text-start">
+                    <li>Database: <code>${databaseBackup.split('/').pop()}</code></li>
+                    ${privateBackup ? `<li>Private Files: <code>${privateBackup.split('/').pop()}</code></li>` : ''}
+                    ${publicBackup ? `<li>Public Files: <code>${publicBackup.split('/').pop()}</code></li>` : ''}
+                </ul>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Restore',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc3545'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            this.addToLog('info', `Restoring backup for ${siteName}...`);
+
+            const response = await fetchWithLoader('/api/frappe/backup/restore', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    site_name: siteName,
+                    backup_path: databaseBackup,
+                    private_files_path: privateBackup || null,
+                    public_files_path: publicBackup || null,
+                    mysql_root_password: mysqlPassword,
+                    admin_password: adminPassword || null
+                })
+            }, `Restoring backup for ${siteName}...`);
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.addToLog('success', `Backup restored successfully for ${siteName}`);
+                this.addToLog('info', data.output);
+
+                await Swal.fire({
+                    title: 'Success!',
+                    text: 'Backup restored successfully',
+                    icon: 'success'
+                });
+            } else {
+                this.addToLog('error', `Failed to restore backup: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'Failed to restore backup',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error restoring backup: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    async downloadBackup(backupPath, filename) {
+        const container = document.getElementById('backup-container-select').value;
+
+        if (!container) {
+            await Swal.fire({
+                title: 'Error',
+                text: 'No container selected',
+                icon: 'error'
+            });
+            return;
+        }
+
+        try {
+            this.addToLog('info', `Preparing download for ${filename}...`);
+
+            // First, prepare the backup for download (copy from container to host)
+            const response = await fetchWithLoader('/api/frappe/backup/prepare-download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    backup_path: backupPath
+                })
+            }, `Preparing ${filename} for download...`);
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.addToLog('success', `Download ready: ${filename}`);
+
+                // Create a temporary link and trigger download
+                const downloadLink = document.createElement('a');
+                downloadLink.href = data.download_url;
+                downloadLink.download = data.filename;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                await Swal.fire({
+                    title: 'Download Started',
+                    text: `Downloading ${filename}...`,
+                    icon: 'success',
+                    timer: 2000
+                });
+            } else {
+                this.addToLog('error', `Failed to prepare download: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'Failed to prepare download',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error downloading backup: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    async uploadBackup() {
+        const container = document.getElementById('backup-container-select').value;
+        const siteName = document.getElementById('backup-site-name').value;
+        const backupType = document.getElementById('upload-backup-type').value;
+        const fileInput = document.getElementById('upload-backup-file');
+        
+        if (!container || !siteName) {
+            await Swal.fire({
+                title: 'Missing Information',
+                text: 'Please select a container and site name first',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            await Swal.fire({
+                title: 'No File Selected',
+                text: 'Please select a backup file to upload',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        const file = fileInput.files[0];
+        
+        // Validate file type
+        const validExtensions = {
+            'database': ['.sql', '.sql.gz'],
+            'private_files': ['.tar', '.tar.gz'],
+            'public_files': ['.tar', '.tar.gz']
+        };
+
+        const fileExt = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        const isValidType = validExtensions[backupType].some(ext => file.name.endsWith(ext));
+
+        if (!isValidType) {
+            await Swal.fire({
+                title: 'Invalid File Type',
+                text: `Please select a valid ${backupType.replace('_', ' ')} file (${validExtensions[backupType].join(', ')})`,
+                icon: 'error'
+            });
+            return;
+        }
+
+        const result = await Swal.fire({
+            title: 'Upload Backup',
+            html: `
+                <p>Upload backup file:</p>
+                <p><strong>${file.name}</strong></p>
+                <p>Size: ${(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                <p>Type: ${backupType.replace('_', ' ')}</p>
+                <p>To: ${siteName}</p>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Upload',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#17a2b8'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            this.addToLog('info', `Uploading ${file.name}...`);
+
+            // Show progress bar
+            const progressBar = document.getElementById('upload-progress');
+            const progressBarInner = document.getElementById('upload-progress-bar');
+            progressBar.style.display = 'block';
+            progressBarInner.style.width = '0%';
+
+            // Create FormData
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('container', container);
+            formData.append('site_name', siteName);
+            formData.append('backup_type', backupType);
+
+            // Upload with progress
+            const xhr = new XMLHttpRequest();
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBarInner.style.width = percentComplete + '%';
+                    progressBarInner.textContent = Math.round(percentComplete) + '%';
+                }
+            });
+
+            xhr.addEventListener('load', async () => {
+                progressBar.style.display = 'none';
+                
+                if (xhr.status === 200) {
+                    const data = JSON.parse(xhr.responseText);
+                    
+                    if (data.success) {
+                        this.addToLog('success', `Backup uploaded successfully: ${file.name}`);
+                        
+                        await Swal.fire({
+                            title: 'Success!',
+                            text: `Backup file uploaded successfully to ${siteName}`,
+                            icon: 'success'
+                        });
+
+                        // Clear file input
+                        fileInput.value = '';
+                        document.getElementById('upload-file-info').textContent = 'No file selected';
+                        document.getElementById('upload-file-info').classList.remove('text-success');
+                        document.getElementById('upload-file-info').classList.add('text-muted');
+
+                        // Refresh backups list
+                        this.loadBackupsList();
+                    } else {
+                        this.addToLog('error', `Upload failed: ${data.error}`);
+                        await Swal.fire({
+                            title: 'Error',
+                            text: data.error || 'Upload failed',
+                            icon: 'error'
+                        });
+                    }
+                } else {
+                    const errorText = xhr.responseText || 'Upload failed';
+                    this.addToLog('error', `Upload failed: ${errorText}`);
+                    await Swal.fire({
+                        title: 'Error',
+                        text: errorText,
+                        icon: 'error'
+                    });
+                }
+            });
+
+            xhr.addEventListener('error', async () => {
+                progressBar.style.display = 'none';
+                this.addToLog('error', 'Network error during upload');
+                await Swal.fire({
+                    title: 'Error',
+                    text: 'Network error occurred during upload',
+                    icon: 'error'
+                });
+            });
+
+            xhr.open('POST', '/api/frappe/backup/upload', true);
+            xhr.send(formData);
+
+        } catch (error) {
+            this.addToLog('error', `Error uploading backup: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    // Bench Logs Methods
+    onLogsContainerChange(containerName) {
+        this.logsContainer = containerName;
+        if (containerName) {
+            this.loadLogFiles();
+        } else {
+            this.clearLogFiles();
+        }
+    }
+
+    async loadLogFiles() {
+        if (!this.logsContainer) {
+            this.addToLog('error', 'Please select a container first');
+            return;
+        }
+
+        try {
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.logsContainer,
+                    command: 'ls -1 ~/frappe-bench/logs/'
+                })
+            }, 'Loading log files...');
+
+            const result = await response.json();
+
+            if (result.output && !result.error) {
+                this.populateLogFiles(result.output);
+                this.addToLog('info', 'Log files loaded successfully');
+            } else {
+                this.addToLog('error', `Failed to load log files: ${result.error || 'Unknown error'}`);
+                this.clearLogFiles();
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading log files: ${error.message}`);
+            this.clearLogFiles();
+        }
+    }
+
+    populateLogFiles(logOutput) {
+        const logSelect = document.getElementById('bench-log-file-select');
+        if (!logSelect) return;
+
+        logSelect.innerHTML = '<option value="">Select a log file...</option>';
+
+        if (!logOutput || logOutput.trim() === '') return;
+
+        const logFiles = logOutput.trim().split('\n').filter(file => file.trim() !== '');
+
+        logFiles.forEach(file => {
+            const fileName = file.trim();
+            if (fileName) {
+                const option = document.createElement('option');
+                option.value = fileName;
+                option.textContent = fileName;
+                logSelect.appendChild(option);
+            }
+        });
+    }
+
+    clearLogFiles() {
+        const logSelect = document.getElementById('bench-log-file-select');
+        if (logSelect) {
+            logSelect.innerHTML = '<option value="">Select a log file...</option>';
+        }
+    }
+
+    async viewLog() {
+        const container = this.logsContainer || document.getElementById('logs-container-select').value;
+        const logFile = document.getElementById('bench-log-file-select').value;
+        const linesLimit = document.getElementById('log-lines-limit').value;
+
+        if (!container) {
+            await Swal.fire({
+                title: 'No Container Selected',
+                text: 'Please select a container first',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        if (!logFile) {
+            await Swal.fire({
+                title: 'No Log File Selected',
+                text: 'Please select a log file to view',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        try {
+            // Build command based on line limit
+            let command;
+            let loadingMessage;
+            
+            if (linesLimit === 'all') {
+                command = `cat ~/frappe-bench/logs/${logFile}`;
+                loadingMessage = `Loading entire ${logFile}... (this may take time)`;
+            } else {
+                command = `tail -${linesLimit} ~/frappe-bench/logs/${logFile}`;
+                loadingMessage = `Loading last ${linesLimit} lines of ${logFile}...`;
+            }
+
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    command: command
+                })
+            }, loadingMessage);
+
+            const result = await response.json();
+
+            if (result.output && !result.error) {
+                const displayInfo = linesLimit === 'all' ? 'all lines' : `last ${linesLimit} lines`;
+                this.displayLogContent(result.output, logFile, displayInfo);
+                this.addToLog('success', `Loaded ${logFile} (${displayInfo})`);
+            } else {
+                this.addToLog('error', `Failed to load log: ${result.error || 'Unknown error'}`);
+                await Swal.fire({
+                    title: 'Error',
+                    text: result.error || 'Failed to load log file',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error loading log: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
+        }
+    }
+
+    displayLogContent(content, logFile, displayInfo = '') {
+        const logContent = document.getElementById('bench-log-content');
+        const logInfo = document.getElementById('log-info');
+        const logLinesCount = document.getElementById('log-lines-count');
+
+        if (!logContent) return;
+
+        // Format log content with line numbers and syntax highlighting
+        const lines = content.split('\n');
+        const formattedLines = lines.map((line, index) => {
+            let lineClass = '';
+            if (line.toLowerCase().includes('error') || line.toLowerCase().includes('exception')) {
+                lineClass = 'style="color: #ff6b6b;"';
+            } else if (line.toLowerCase().includes('warning') || line.toLowerCase().includes('warn')) {
+                lineClass = 'style="color: #ffa500;"';
+            } else if (line.toLowerCase().includes('info')) {
+                lineClass = 'style="color: #4dabf7;"';
+            } else if (line.toLowerCase().includes('success')) {
+                lineClass = 'style="color: #51cf66;"';
+            }
+            
+            return `<div ${lineClass}>${this.escapeHtml(line)}</div>`;
+        }).join('');
+
+        logContent.innerHTML = formattedLines || '<div class="text-muted text-center py-3">Log file is empty</div>';
+        logContent.scrollTop = logContent.scrollHeight; // Scroll to bottom
+
+        // Update info
+        if (logInfo) {
+            logInfo.textContent = `${logFile}${displayInfo ? ` (${displayInfo})` : ''}`;
+        }
+        if (logLinesCount) {
+            logLinesCount.textContent = `${lines.length} lines`;
+        }
+    }
+
+    escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    clearLogViewer() {
+        const logContent = document.getElementById('bench-log-content');
+        const logInfo = document.getElementById('log-info');
+        const logLinesCount = document.getElementById('log-lines-count');
+
+        if (logContent) {
+            logContent.innerHTML = '<div class="text-muted text-center py-5"><i class="bi bi-info-circle"></i> Select a container, log file, and line limit, then click "View Log"</div>';
+        }
+        if (logInfo) {
+            logInfo.textContent = 'No log loaded';
+        }
+        if (logLinesCount) {
+            logLinesCount.textContent = '0 lines';
+        }
+    }
+
+    async downloadLog() {
+        const container = this.logsContainer || document.getElementById('logs-container-select').value;
+        const logFile = document.getElementById('bench-log-file-select').value;
+
+        if (!container || !logFile) {
+            await Swal.fire({
+                title: 'Missing Information',
+                text: 'Please select a container and log file',
+                icon: 'warning'
+            });
+            return;
+        }
+
+        try {
+            this.addToLog('info', `Preparing ${logFile} for download...`);
+
+            // Copy log file from container to host
+            const logPath = `/home/frappe/frappe-bench/logs/${logFile}`;
+            const tempPath = `/tmp/${logFile}`;
+            
+            const response = await fetchWithLoader('/api/frappe/backup/prepare-download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: container,
+                    backup_path: logPath
+                })
+            }, `Preparing ${logFile} for download...`);
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.addToLog('success', `Download ready: ${logFile}`);
+
+                // Trigger download
+                const downloadLink = document.createElement('a');
+                downloadLink.href = data.download_url;
+                downloadLink.download = logFile;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                await Swal.fire({
+                    title: 'Download Started',
+                    text: `Downloading ${logFile}...`,
+                    icon: 'success',
+                    timer: 2000
+                });
+            } else {
+                this.addToLog('error', `Failed to prepare download: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'Failed to prepare download',
+                    icon: 'error'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error downloading log: ${error.message}`);
+            await Swal.fire({
+                title: 'Error',
+                text: `Error: ${error.message}`,
+                icon: 'error'
+            });
         }
     }
 }

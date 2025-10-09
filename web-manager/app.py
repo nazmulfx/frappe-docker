@@ -1942,6 +1942,418 @@ def clear_terminal_logs():
             'error': str(e)
         })
 
+# Backup and Restore API Endpoints
+@app.route('/api/frappe/backup/create', methods=['POST'])
+@require_auth
+def create_backup():
+    """Create a backup of a Frappe site"""
+    try:
+        data = request.json
+        container = data.get('container')
+        site_name = data.get('site_name')
+        include_files = data.get('include_files', True)
+        include_private_files = data.get('include_private_files', True)
+        include_public_files = data.get('include_public_files', True)
+        
+        if not container or not site_name:
+            return jsonify({'error': 'Container and site_name are required'}), 400
+        
+        # Build the bench backup command
+        backup_command = f"bench --site {site_name} backup"
+        
+        if include_files:
+            if include_private_files and include_public_files:
+                backup_command += " --with-files"
+            elif include_private_files:
+                backup_command += " --with-private-files"
+            elif include_public_files:
+                backup_command += " --with-public-files"
+        
+        # Execute the backup command
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", backup_command]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            output_lines.append(line.rstrip())
+        
+        process.wait()
+        output = '\n'.join(output_lines)
+        
+        if process.returncode == 0:
+            # Get the backup file paths from output
+            backup_info = {
+                'database': None,
+                'private_files': None,
+                'public_files': None
+            }
+            
+            for line in output_lines:
+                if 'database' in line.lower() and ('.sql' in line or '.gz' in line):
+                    # Extract backup file path
+                    import re
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.(sql\.gz|sql)', line)
+                    if path_match:
+                        backup_info['database'] = path_match.group(0)
+                elif 'private' in line.lower() and '.tar' in line:
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
+                    if path_match:
+                        backup_info['private_files'] = path_match.group(0)
+                elif 'public' in line.lower() and '.tar' in line:
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
+                    if path_match:
+                        backup_info['public_files'] = path_match.group(0)
+            
+            log_command_execution(backup_command, container, True, None)
+            
+            return jsonify({
+                'success': True,
+                'output': output,
+                'backup_info': backup_info,
+                'message': 'Backup created successfully'
+            })
+        else:
+            log_command_execution(backup_command, container, False, output)
+            return jsonify({
+                'error': output or 'Backup failed',
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error creating backup: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/backup/list', methods=['POST'])
+@require_auth
+def list_backups():
+    """List all available backups for a site"""
+    try:
+        data = request.json
+        container = data.get('container')
+        site_name = data.get('site_name')
+        
+        if not container or not site_name:
+            return jsonify({'error': 'Container and site_name are required'}), 400
+        
+        # List backups in the site's backup directory
+        backup_dir = f"/home/frappe/frappe-bench/sites/{site_name}/private/backups"
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", 
+               f"ls -lth {backup_dir} | grep -E '(database|files|private-files|public-files)' || echo 'No backups found'"]
+        
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode == 0:
+            # Parse the backup list
+            backups = []
+            for line in stdout.strip().split('\n'):
+                if line and not line.startswith('total') and 'No backups found' not in line:
+                    parts = line.split()
+                    if len(parts) >= 9:
+                        filename = parts[-1]
+                        size = parts[4]
+                        date = ' '.join(parts[5:8])
+                        
+                        backup_type = 'database' if 'database' in filename else \
+                                    'private_files' if 'private' in filename else \
+                                    'public_files' if 'public' in filename else \
+                                    'files' if 'files' in filename else 'unknown'
+                        
+                        backups.append({
+                            'filename': filename,
+                            'size': size,
+                            'date': date,
+                            'type': backup_type,
+                            'path': f"{backup_dir}/{filename}"
+                        })
+            
+            return jsonify({
+                'success': True,
+                'backups': backups,
+                'count': len(backups)
+            })
+        else:
+            return jsonify({
+                'error': stderr or 'Failed to list backups',
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error listing backups: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/backup/restore', methods=['POST'])
+@require_auth
+def restore_backup():
+    """Restore a backup for a Frappe site"""
+    try:
+        data = request.json
+        container = data.get('container')
+        site_name = data.get('site_name')
+        backup_path = data.get('backup_path')  # Path to database backup
+        private_files_path = data.get('private_files_path')
+        public_files_path = data.get('public_files_path')
+        mysql_root_password = data.get('mysql_root_password')
+        admin_password = data.get('admin_password')
+        
+        if not container or not site_name or not backup_path:
+            return jsonify({'error': 'Container, site_name, and backup_path are required'}), 400
+        
+        if not mysql_root_password:
+            return jsonify({'error': 'MySQL root password is required'}), 400
+        
+        # Escape single quotes in password for shell safety
+        escaped_password = mysql_root_password.replace("'", "'\\''")
+        
+        # Create a temporary MySQL config file with password to avoid prompts
+        mysql_config_content = f"""[client]
+user=root
+password={escaped_password}
+host=db
+"""
+        
+        # Create the config file in the container
+        create_config_cmd = f"cat > /tmp/mysql_restore.cnf << 'EOFMYSQL'\n{mysql_config_content}\nEOFMYSQL"
+        cmd_create = ["sudo", "docker", "exec", container, "bash", "-c", create_config_cmd]
+        subprocess.run(cmd_create, capture_output=True)
+        
+        # Build the restore command using the config file
+        # Use --defaults-file to specify MySQL config with password
+        restore_command = f"bench --site {site_name} --force restore {backup_path} --mariadb-root-password '{escaped_password}'"
+        
+        # Add file restore options
+        restore_options = []
+        if private_files_path:
+            restore_options.append(f"--with-private-files {private_files_path}")
+        if public_files_path:
+            restore_options.append(f"--with-public-files {public_files_path}")
+        
+        if restore_options:
+            restore_command += " " + " ".join(restore_options)
+        
+        # Add admin password option if provided
+        if admin_password:
+            escaped_admin_password = admin_password.replace("'", "'\\''")
+            restore_command += f" --admin-password '{escaped_admin_password}'"
+        
+        # Execute the restore command
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", restore_command]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            output_lines.append(line.rstrip())
+        
+        process.wait()
+        output = '\n'.join(output_lines)
+        
+        # Clean up the temporary config file
+        cleanup_cmd = ["sudo", "docker", "exec", container, "bash", "-c", "rm -f /tmp/mysql_restore.cnf"]
+        subprocess.run(cleanup_cmd, capture_output=True)
+        
+        if process.returncode == 0:
+            log_command_execution(f"bench restore (site: {site_name})", container, True, None)
+            
+            return jsonify({
+                'success': True,
+                'output': output,
+                'message': 'Backup restored successfully'
+            })
+        else:
+            log_command_execution(f"bench restore (site: {site_name})", container, False, output)
+            return jsonify({
+                'error': output or 'Restore failed',
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error restoring backup: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/backup/download/<path:filename>', methods=['GET'])
+@require_auth
+def download_backup_file(filename):
+    """Download a backup file directly"""
+    try:
+        # Security check - ensure filename doesn't contain path traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+        
+        temp_path = f"/tmp/{filename}"
+        
+        if not os.path.exists(temp_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Send file for download
+        from flask import send_file
+        return send_file(
+            temp_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/octet-stream'
+        )
+            
+    except Exception as e:
+        logger.error(f"Error downloading backup file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/frappe/backup/prepare-download', methods=['POST'])
+@require_auth
+def prepare_backup_download():
+    """Prepare a backup file for download by copying from container to host"""
+    try:
+        data = request.json
+        container = data.get('container')
+        backup_path = data.get('backup_path')
+        
+        if not container or not backup_path:
+            return jsonify({'error': 'Container and backup_path are required'}), 400
+        
+        # Get the backup file from container
+        filename = os.path.basename(backup_path)
+        temp_path = f"/tmp/{filename}"
+        
+        # Copy file from container to host
+        cmd = ["sudo", "docker", "cp", f"{container}:{backup_path}", temp_path]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode == 0:
+            # Get file size
+            file_size = os.path.getsize(temp_path)
+            
+            # Return the download URL
+            return jsonify({
+                'success': True,
+                'download_url': f'/api/frappe/backup/download/{filename}',
+                'filename': filename,
+                'size': file_size,
+                'message': 'Backup file ready for download'
+            })
+        else:
+            return jsonify({
+                'error': stderr.decode() or 'Failed to copy backup file',
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error preparing backup download: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/backup/upload', methods=['POST'])
+@require_auth
+def upload_backup():
+    """Upload a backup file from external source"""
+    try:
+        container = request.form.get('container')
+        site_name = request.form.get('site_name')
+        backup_type = request.form.get('backup_type')  # database, private_files, public_files
+        
+        if not container or not site_name or not backup_type:
+            return jsonify({'error': 'Container, site_name, and backup_type are required'}), 400
+        
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Validate file extension based on backup type
+        allowed_extensions = {
+            'database': ['.sql', '.sql.gz'],
+            'private_files': ['.tar', '.tar.gz'],
+            'public_files': ['.tar', '.tar.gz']
+        }
+        
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if backup_type == 'database' and not any(file.filename.endswith(ext) for ext in allowed_extensions['database']):
+            return jsonify({'error': 'Invalid file type for database backup. Expected .sql or .sql.gz'}), 400
+        elif backup_type in ['private_files', 'public_files'] and not any(file.filename.endswith(ext) for ext in allowed_extensions[backup_type]):
+            return jsonify({'error': f'Invalid file type for {backup_type}. Expected .tar or .tar.gz'}), 400
+        
+        # Save file temporarily
+        temp_filename = f"{secrets.token_hex(8)}_{file.filename}"
+        temp_path = f"/tmp/{temp_filename}"
+        file.save(temp_path)
+        
+        # Copy file to container's backup directory
+        backup_dir = f"/home/frappe/frappe-bench/sites/{site_name}/private/backups"
+        container_path = f"{backup_dir}/{file.filename}"
+        
+        # Create backup directory if it doesn't exist
+        cmd_mkdir = ["sudo", "docker", "exec", container, "bash", "-c", f"mkdir -p {backup_dir}"]
+        subprocess.run(cmd_mkdir, capture_output=True)
+        
+        # Copy file to container
+        cmd_copy = ["sudo", "docker", "cp", temp_path, f"{container}:{container_path}"]
+        process = subprocess.Popen(cmd_copy, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        # Clean up temp file
+        os.remove(temp_path)
+        
+        if process.returncode == 0:
+            log_command_execution(f"Uploaded backup {file.filename}", container, True, None)
+            
+            return jsonify({
+                'success': True,
+                'filename': file.filename,
+                'container_path': container_path,
+                'message': f'Backup file uploaded successfully to {site_name}'
+            })
+        else:
+            log_command_execution(f"Failed to upload backup {file.filename}", container, False, stderr.decode())
+            return jsonify({
+                'error': stderr.decode() or 'Failed to copy file to container',
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error uploading backup: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/backup/delete', methods=['POST'])
+@require_auth
+def delete_backup():
+    """Delete a backup file"""
+    try:
+        data = request.json
+        container = data.get('container')
+        backup_path = data.get('backup_path')
+        
+        if not container or not backup_path:
+            return jsonify({'error': 'Container and backup_path are required'}), 400
+        
+        # Delete the backup file
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", f"rm -f {backup_path}"]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode == 0:
+            log_command_execution(f"rm -f {backup_path}", container, True, None)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Backup deleted successfully'
+            })
+        else:
+            log_command_execution(f"rm -f {backup_path}", container, False, stderr.decode())
+            return jsonify({
+                'error': stderr.decode() or 'Failed to delete backup',
+                'success': False
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error deleting backup: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
 if __name__ == '__main__':
     with app.app_context():
         create_default_admin()

@@ -1035,7 +1035,28 @@ echo -e "${GREEN}🌐 Access your site at: https://${site_name}${NC}"
 echo -e "${GREEN}👤 Username: Administrator${NC}"
 echo -e "${GREEN}🔑 Password: admin${NC}"
 echo ""
+
+
+echo ""
+echo "===================== 🔹 Frappe Setup Info 🔹 ====================="
+echo ""
+echo "📌 Frappe Version      : ${erpnext_version}"
+echo "👤 Default Username    : Administrator"
+echo "🔑 Default Password    : admin"
+echo ""
+echo "💾 MySQL Password      : ${DB_PASSWORD}"
+echo "💾 Redis Password      : ${REDIS_PASSWORD}"
+echo ""
+echo "⚠️  Please save these credentials securely."
+echo "   They will be required for future updates, backups, and system access."
+echo ""
+echo "=================================================================="
+
+echo ""
 echo -e "${BLUE}💡 Your containers will automatically start after system reboot!${NC}"
+echo ""
+echo ""
+
 
 
 
