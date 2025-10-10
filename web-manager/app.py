@@ -1371,7 +1371,14 @@ def app_installation():
         formatted_name = SecureDockerManager.format_project_name(project_name)
         formatted_container_groups[formatted_name] = containers
     
-    return render_template('app_installation.html', container_groups=formatted_container_groups)
+    # Get base directory dynamically (parent of web-manager directory)
+    import os
+    web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(web_manager_dir)
+    
+    return render_template('app_installation.html', 
+                         container_groups=formatted_container_groups,
+                         base_dir=base_dir)
 
 @require_auth
 @app.route('/api/frappe/execute-command', methods=['POST'])
@@ -2797,6 +2804,485 @@ def get_site_creation_status(task_id):
     return jsonify({
         'success': True,
         'task': site_creation_tasks[task_id]
+    })
+
+# ==================== REBUILD OPERATIONS WITH THREADING ====================
+# Store rebuild tasks (similar to site_creation_tasks)
+rebuild_tasks = {}
+
+def run_rebuild_task(task_id, site_name, base_dir):
+    """Background task to rebuild containers with apps preservation"""
+    try:
+        rebuild_tasks[task_id]['status'] = 'running'
+        rebuild_tasks[task_id]['progress'] = 5
+        rebuild_tasks[task_id]['output'] = ''
+        
+        def append_output(msg):
+            rebuild_tasks[task_id]['output'] += msg + '\n'
+        
+        append_output(f'🔄 Starting rebuild for {site_name}...')
+        append_output(f'📍 Base directory: {base_dir}')
+        
+        # Detect docker compose command
+        try:
+            subprocess.run(['docker', 'compose', 'version'], capture_output=True, check=True)
+            docker_compose_cmd = 'docker compose'
+        except:
+            docker_compose_cmd = 'docker-compose'
+        
+        append_output(f'✅ Using: {docker_compose_cmd}')
+        rebuild_tasks[task_id]['progress'] = 10
+        
+        # Find compose file
+        compose_file_local = f"{base_dir}/Docker-Local/{site_name}/{site_name}-docker-compose.yml"
+        compose_file_vps = f"{base_dir}/Docker-on-VPS/{site_name}/{site_name}-docker-compose.yml"
+        
+        compose_file = None
+        work_dir = None
+        
+        if os.path.exists(compose_file_local):
+            compose_file = compose_file_local
+            work_dir = f"{base_dir}/Docker-Local/{site_name}"
+            append_output(f'📁 Found in: Docker-Local/{site_name}/')
+        elif os.path.exists(compose_file_vps):
+            compose_file = compose_file_vps
+            work_dir = f"{base_dir}/Docker-on-VPS/{site_name}"
+            append_output(f'📁 Found in: Docker-on-VPS/{site_name}/')
+        else:
+            rebuild_tasks[task_id]['status'] = 'failed'
+            rebuild_tasks[task_id]['error'] = f'Docker compose file not found for {site_name}'
+            return
+        
+        container_name = f"{site_name}-app"
+        rebuild_tasks[task_id]['progress'] = 20
+        
+        # Backup apps list
+        append_output('\n💾 Backing up apps list...')
+        try:
+            backup_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && cat sites/apps.txt"'
+            result = subprocess.run(backup_cmd, shell=True, capture_output=True, text=True, timeout=30)
+            apps_backup = result.stdout
+            if apps_backup:
+                append_output('✅ Apps backed up')
+        except Exception as e:
+            apps_backup = None
+            append_output(f'⚠️  Could not backup apps: {str(e)}')
+        
+        rebuild_tasks[task_id]['progress'] = 30
+        
+        # Stop containers
+        append_output('\n⏹️  Stopping containers...')
+        stop_cmd = f'{docker_compose_cmd} -f "{compose_file}" down'
+        result = subprocess.run(stop_cmd, shell=True, cwd=work_dir, capture_output=True, text=True, timeout=120)
+        append_output(result.stdout)
+        if result.stderr:
+            append_output(result.stderr)
+        
+        rebuild_tasks[task_id]['progress'] = 50
+        
+        # Rebuild and start
+        append_output('\n🔨 Rebuilding containers...')
+        rebuild_cmd = f'{docker_compose_cmd} -f "{compose_file}" up -d --build'
+        process = subprocess.Popen(rebuild_cmd, shell=True, cwd=work_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        
+        for line in process.stdout:
+            append_output(line.rstrip())
+            
+        process.wait()
+        rebuild_tasks[task_id]['progress'] = 80
+        
+        # Wait for container to be ready
+        append_output('\n⏳ Waiting for container to be ready...')
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            check_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && bench --version"'
+            result = subprocess.run(check_cmd, shell=True, capture_output=True, timeout=10)
+            if result.returncode == 0:
+                append_output('✅ Container is ready!')
+                break
+            append_output(f'   Attempt {attempt + 1}/{max_attempts} - Waiting...')
+            time.sleep(10)
+            rebuild_tasks[task_id]['progress'] = 80 + (attempt * 0.5)
+        else:
+            rebuild_tasks[task_id]['status'] = 'failed'
+            rebuild_tasks[task_id]['error'] = 'Container did not become ready in time'
+            return
+        
+        # Restore apps list
+        if apps_backup:
+            append_output('\n📋 Restoring apps list...')
+            restore_cmd = f'echo "{apps_backup}" | docker exec -i {container_name} bash -c "cat > /home/frappe/frappe-bench/sites/apps.txt"'
+            subprocess.run(restore_cmd, shell=True, timeout=30)
+            append_output('✅ Apps list restored')
+        
+        rebuild_tasks[task_id]['progress'] = 100
+        rebuild_tasks[task_id]['status'] = 'completed'
+        append_output('\n🎉 Rebuild completed successfully!')
+        
+    except Exception as e:
+        logger.error(f"Error in rebuild task: {str(e)}")
+        rebuild_tasks[task_id]['status'] = 'failed'
+        rebuild_tasks[task_id]['error'] = str(e)
+        rebuild_tasks[task_id]['output'] += f'\n❌ Error: {str(e)}'
+
+@app.route('/api/frappe/rebuild-with-apps', methods=['POST'])
+@require_auth
+def rebuild_with_apps():
+    """Start rebuild task as a background thread"""
+    try:
+        data = request.json
+        site_name = data.get('site_name')
+        
+        if not site_name:
+            return jsonify({'error': 'Site name is required', 'success': False}), 400
+        
+        # Get base directory
+        web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(web_manager_dir)
+        
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        rebuild_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'output': '',
+            'error': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_rebuild_task,
+            args=(task_id, site_name, base_dir)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Rebuild started in background',
+            'site_name': site_name
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting rebuild: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/rebuild-with-apps/status/<task_id>', methods=['GET'])
+@require_auth
+def get_rebuild_status(task_id):
+    """Get status of rebuild task"""
+    if task_id not in rebuild_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': rebuild_tasks[task_id]
+    })
+
+# ==================== FIX RESTART POLICIES WITH THREADING ====================
+restart_policy_tasks = {}
+
+def run_fix_restart_policies_task(task_id):
+    """Background task to fix restart policies for all containers"""
+    try:
+        restart_policy_tasks[task_id]['status'] = 'running'
+        restart_policy_tasks[task_id]['progress'] = 10
+        restart_policy_tasks[task_id]['output'] = ''
+        
+        def append_output(msg):
+            restart_policy_tasks[task_id]['output'] += msg + '\n'
+        
+        append_output('🔧 Starting restart policy fix for all containers...')
+        append_output('')
+        
+        # Get all unique site names
+        cmd = "docker ps -a --format '{{.Names}}' | grep -E '.*-(db|redis|app)$' | sed 's/-(db|redis|app)$//' | sort -u"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            restart_policy_tasks[task_id]['status'] = 'failed'
+            restart_policy_tasks[task_id]['error'] = 'Failed to get container list'
+            return
+        
+        sites = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        
+        if not sites:
+            append_output('ℹ️  No Frappe containers found')
+            restart_policy_tasks[task_id]['status'] = 'completed'
+            restart_policy_tasks[task_id]['progress'] = 100
+            return
+        
+        total_sites = len(sites)
+        append_output(f'📋 Found {total_sites} site(s) to process')
+        append_output('')
+        
+        for idx, site in enumerate(sites):
+            if not site:
+                continue
+                
+            append_output(f'🔄 Processing {site}...')
+            progress = 10 + (idx * 80 // total_sites)
+            restart_policy_tasks[task_id]['progress'] = progress
+            
+            for container in [f'{site}-db', f'{site}-redis', f'{site}-app']:
+                # Check if container exists
+                check_cmd = f"docker ps -a --format '{{{{.Names}}}}' | grep -q '^{container}$'"
+                check_result = subprocess.run(check_cmd, shell=True, capture_output=True, timeout=10)
+                
+                if check_result.returncode != 0:
+                    continue
+                
+                # Get current policy
+                policy_cmd = f'docker inspect {container} --format="{{{{.HostConfig.RestartPolicy.Name}}}}"'
+                policy_result = subprocess.run(policy_cmd, shell=True, capture_output=True, text=True, timeout=10)
+                current_policy = policy_result.stdout.strip() if policy_result.returncode == 0 else 'unknown'
+                
+                # Update if not already unless-stopped
+                if current_policy != 'unless-stopped':
+                    append_output(f'  ✏️  Updating {container} restart policy...')
+                    update_cmd = f'docker update --restart=unless-stopped {container}'
+                    subprocess.run(update_cmd, shell=True, capture_output=True, timeout=30)
+                
+                # Check if stopped and start it
+                status_cmd = f'docker inspect {container} --format="{{{{.State.Status}}}}"'
+                status_result = subprocess.run(status_cmd, shell=True, capture_output=True, text=True, timeout=10)
+                status = status_result.stdout.strip() if status_result.returncode == 0 else ''
+                
+                if status != 'running':
+                    append_output(f'  ▶️  Starting {container}...')
+                    start_cmd = f'docker start {container}'
+                    subprocess.run(start_cmd, shell=True, capture_output=True, timeout=30)
+            
+            append_output(f'  ✅ {site} done')
+            append_output('')
+        
+        restart_policy_tasks[task_id]['progress'] = 100
+        restart_policy_tasks[task_id]['status'] = 'completed'
+        append_output('🎉 All restart policies fixed!')
+        append_output('✅ Containers will now start automatically after system restart')
+        
+    except Exception as e:
+        logger.error(f"Error in fix restart policies task: {str(e)}")
+        restart_policy_tasks[task_id]['status'] = 'failed'
+        restart_policy_tasks[task_id]['error'] = str(e)
+        restart_policy_tasks[task_id]['output'] += f'\n❌ Error: {str(e)}'
+
+@app.route('/api/frappe/fix-restart-policies', methods=['POST'])
+@require_auth
+def fix_restart_policies():
+    """Start fix restart policies task as a background thread"""
+    try:
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        restart_policy_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'created_at': datetime.now().isoformat(),
+            'output': '',
+            'error': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_fix_restart_policies_task,
+            args=(task_id,)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Restart policy fix started in background'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting restart policy fix: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/fix-restart-policies/status/<task_id>', methods=['GET'])
+@require_auth
+def get_restart_policy_status(task_id):
+    """Get status of restart policy fix task"""
+    if task_id not in restart_policy_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': restart_policy_tasks[task_id]
+    })
+
+# ==================== COMPLETE SITE REMOVAL WITH THREADING ====================
+site_removal_tasks = {}
+
+def run_site_removal_task(task_id, site_name, base_dir):
+    """Background task to completely remove a site"""
+    try:
+        site_removal_tasks[task_id]['status'] = 'running'
+        site_removal_tasks[task_id]['progress'] = 5
+        site_removal_tasks[task_id]['output'] = ''
+        
+        def append_output(msg):
+            site_removal_tasks[task_id]['output'] += msg + '\n'
+        
+        append_output(f'🗑️  Starting complete removal of {site_name}...')
+        append_output(f'📍 Base directory: {base_dir}')
+        append_output('')
+        
+        # Stop and remove containers
+        append_output('⏹️  Stopping containers...')
+        stop_cmd = f'docker stop $(docker ps --filter "name=^{site_name}-" --format "{{{{.Names}}}}") 2>/dev/null || true'
+        subprocess.run(stop_cmd, shell=True, capture_output=True, timeout=120)
+        site_removal_tasks[task_id]['progress'] = 20
+        
+        append_output('🗑️  Removing containers...')
+        rm_cmd = f'docker rm $(docker ps -a --filter "name=^{site_name}-" --format "{{{{.Names}}}}") 2>/dev/null || true'
+        subprocess.run(rm_cmd, shell=True, capture_output=True, timeout=60)
+        append_output('✅ All containers removed')
+        site_removal_tasks[task_id]['progress'] = 40
+        
+        # Remove site folders
+        append_output('')
+        append_output('📁 Removing site folders...')
+        
+        site_folder_local = f"{base_dir}/Docker-Local/{site_name}"
+        site_folder_vps = f"{base_dir}/Docker-on-VPS/{site_name}"
+        
+        if os.path.exists(site_folder_local):
+            append_output(f'  🗑️  Removing: {site_folder_local}')
+            rm_local_cmd = f'sudo rm -rf "{site_folder_local}"'
+            subprocess.run(rm_local_cmd, shell=True, timeout=60)
+            append_output('  ✅ Docker-Local folder removed')
+        
+        if os.path.exists(site_folder_vps):
+            append_output(f'  🗑️  Removing: {site_folder_vps}')
+            rm_vps_cmd = f'sudo rm -rf "{site_folder_vps}"'
+            subprocess.run(rm_vps_cmd, shell=True, timeout=60)
+            append_output('  ✅ Docker-on-VPS folder removed')
+        
+        site_removal_tasks[task_id]['progress'] = 60
+        
+        # Remove development folder
+        append_output('')
+        append_output('💻 Removing development folder...')
+        
+        # Detect actual user home directory (same logic as docker-manager.sh)
+        if os.environ.get('SUDO_USER'):
+            home_dir = os.path.expanduser(f"~{os.environ['SUDO_USER']}")
+        else:
+            home_dir = os.path.expanduser("~")
+        
+        dev_folder = f"{home_dir}/frappe-docker/{site_name}-frappe-bench"
+        
+        if os.path.exists(dev_folder):
+            append_output(f'  🗑️  Removing: {dev_folder}')
+            rm_dev_cmd = f'sudo rm -rf "{dev_folder}"'
+            subprocess.run(rm_dev_cmd, shell=True, timeout=60)
+            append_output('  ✅ Development folder removed')
+        else:
+            append_output(f'  ℹ️  Development folder not found: {dev_folder}')
+        
+        site_removal_tasks[task_id]['progress'] = 80
+        
+        # Update hosts file
+        append_output('')
+        append_output('📝 Updating hosts file...')
+        site_domain = site_name.replace('_', '.')
+        
+        # Check if entry exists
+        check_hosts_cmd = f'grep "{site_domain}" /etc/hosts 2>/dev/null'
+        check_result = subprocess.run(check_hosts_cmd, shell=True, capture_output=True)
+        
+        if check_result.returncode == 0:
+            append_output(f'  🗑️  Removing hosts entry for {site_domain}')
+            sed_cmd = f'sudo sed -i "/{site_domain}/d" /etc/hosts'
+            subprocess.run(sed_cmd, shell=True, timeout=30)
+            append_output('  ✅ Hosts file updated')
+        else:
+            append_output('  ℹ️  No hosts entry found')
+        
+        site_removal_tasks[task_id]['progress'] = 100
+        site_removal_tasks[task_id]['status'] = 'completed'
+        append_output('')
+        append_output('🎉 Complete cleanup completed successfully!')
+        append_output(f'✅ All traces of {site_name} have been removed')
+        
+    except Exception as e:
+        logger.error(f"Error in site removal task: {str(e)}")
+        site_removal_tasks[task_id]['status'] = 'failed'
+        site_removal_tasks[task_id]['error'] = str(e)
+        site_removal_tasks[task_id]['output'] += f'\n❌ Error: {str(e)}'
+
+@app.route('/api/frappe/remove-site', methods=['POST'])
+@require_auth
+def remove_site_completely():
+    """Start complete site removal task as a background thread"""
+    try:
+        data = request.json
+        site_name = data.get('site_name')
+        
+        if not site_name:
+            return jsonify({'error': 'Site name is required', 'success': False}), 400
+        
+        # Get base directory
+        web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(web_manager_dir)
+        
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        site_removal_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'output': '',
+            'error': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_site_removal_task,
+            args=(task_id, site_name, base_dir)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Site removal started in background',
+            'site_name': site_name
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting site removal: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/remove-site/status/<task_id>', methods=['GET'])
+@require_auth
+def get_site_removal_status(task_id):
+    """Get status of site removal task"""
+    if task_id not in site_removal_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': site_removal_tasks[task_id]
     })
 
 if __name__ == '__main__':

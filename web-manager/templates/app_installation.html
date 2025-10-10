@@ -263,6 +263,11 @@
                                 <i class="bi bi-plus-circle"></i> New Site
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link text-danger fw-bold" id="danger-zone-tab" data-bs-toggle="tab" data-bs-target="#danger-zone-panel" type="button" role="tab" aria-controls="danger-zone-panel" aria-selected="false">
+                                <i class="bi bi-exclamation-triangle-fill"></i> Danger Zone
+                            </button>
+                        </li>
                     </ul>
                     
                     <div class="tab-content mt-3" id="installTabsContent">
@@ -1524,6 +1529,145 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Danger Zone Panel Tab -->
+                        <div class="tab-pane fade" id="danger-zone-panel" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="alert alert-danger border-danger" style="border-width: 3px;">
+                                        <h4 class="alert-heading">
+                                            <i class="bi bi-exclamation-triangle-fill"></i> ⚠️ DANGER ZONE ⚠️
+                                        </h4>
+                                        <p class="mb-0">
+                                            <strong>Warning:</strong> The operations in this section are <strong>irreversible</strong> and may result in data loss. 
+                                            Please proceed with extreme caution and ensure you have backups before performing any actions.
+                                        </p>
+                                    </div>
+                                    
+                                    <!-- Site Selection for Danger Operations -->
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="card-header bg-danger text-white">
+                                            <h5 class="mb-0">
+                                                <i class="bi bi-server"></i> Select Site/Container
+                                            </h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <select class="form-select form-select-lg" id="danger-site-select">
+                                                <option value="">-- Choose a site --</option>
+                                                {% for project_name, project_containers in container_groups.items() %}
+                                                    {% if project_containers %}
+                                                        {% set actual_name = project_containers[0].name.rsplit('-', 1)[0] %}
+                                                        <option value="{{ actual_name }}" data-display-name="{{ project_name }}">{{ project_name }}</option>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </select>
+                                            <div class="form-text text-danger">
+                                                <i class="bi bi-exclamation-circle"></i> <strong>Select carefully!</strong> All operations below will affect this site.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Dangerous Operations -->
+                                    <div class="row">
+                                        <!-- Rebuild with Custom Apps Preservation -->
+                                        <div class="col-md-4">
+                                            <div class="card border-warning mb-3">
+                                                <div class="card-header bg-warning text-dark">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-arrow-clockwise"></i> Rebuild with Apps Preservation
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <p class="card-text">
+                                                        <small>
+                                                            Rebuild containers while preserving custom apps. This will:
+                                                            <ul class="small mt-2">
+                                                                <li>Backup custom apps</li>
+                                                                <li>Rebuild containers</li>
+                                                                <li>Restore custom apps</li>
+                                                                <li>Update apps.txt</li>
+                                                            </ul>
+                                                        </small>
+                                                    </p>
+                                                    <button class="btn btn-warning w-100" id="rebuild-with-apps-btn">
+                                                        <i class="bi bi-hammer"></i> Rebuild with Apps
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Fix Restart Policies -->
+                                        <div class="col-md-4">
+                                            <div class="card border-info mb-3">
+                                                <div class="card-header bg-info text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-arrow-repeat"></i> Fix Restart Policies
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <p class="card-text">
+                                                        <small>
+                                                            Set containers to auto-restart after system reboot:
+                                                            <ul class="small mt-2">
+                                                                <li>Updates all Frappe containers</li>
+                                                                <li>Sets restart=unless-stopped</li>
+                                                                <li>Starts stopped containers</li>
+                                                            </ul>
+                                                        </small>
+                                                    </p>
+                                                    <button class="btn btn-info w-100" id="fix-restart-policies-btn">
+                                                        <i class="bi bi-gear"></i> Fix Restart Policies
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Complete Site Removal -->
+                                        <div class="col-md-4">
+                                            <div class="card border-danger mb-3">
+                                                <div class="card-header bg-danger text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-trash-fill"></i> Complete Site Removal
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <p class="card-text">
+                                                        <small class="text-danger">
+                                                            <strong>⚠️ IRREVERSIBLE!</strong> This will permanently delete:
+                                                            <ul class="small mt-2">
+                                                                <li>All containers</li>
+                                                                <li>Site folders</li>
+                                                                <li>VS Code folders</li>
+                                                                <li>Hosts file entries</li>
+                                                            </ul>
+                                                        </small>
+                                                    </p>
+                                                    <button class="btn btn-danger w-100" id="complete-site-removal-btn">
+                                                        <i class="bi bi-x-octagon"></i> Complete Removal
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Output Display -->
+                                    <div class="frappe-cloud-card mt-4">
+                                        <div class="card-header bg-dark text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-terminal"></i> Operation Output
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="operation-log" id="danger-zone-output" style="min-height: 400px; max-height: 600px; background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace;">
+                                                <div class="text-muted text-center py-5">
+                                                    <i class="bi bi-shield-exclamation"></i> Select a site and choose an operation above...
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1555,7 +1699,10 @@
 {% block custom_js %}
 <script src="{{ url_for('static', filename='js/ssh-manager.js') }}"></script>
 <script>
-// Global Loader Management
+  // Global configuration
+  const FRAPPE_BASE_DIR = "{{ base_dir }}";
+  
+  // Global Loader Management
 class LoaderManager {
     static show(message = 'Processing...') {
         const loader = document.getElementById('globalLoader');
@@ -4859,5 +5006,373 @@ function createToastContainer() {
     document.body.appendChild(container);
     return container;
 }
+
+// ==================== DANGER ZONE OPERATIONS ====================
+{% raw %}
+// 1. Rebuild with Custom Apps Preservation
+document.getElementById('rebuild-with-apps-btn')?.addEventListener('click', async function() {
+    const siteName = document.getElementById('danger-site-select').value;
+    
+    if (!siteName) {
+        showToast('Please select a site first', 'error');
+        return;
+    }
+    
+    const result = await Swal.fire({
+        title: 'Rebuild with Apps Preservation?',
+        html: `
+            <div class="text-start">
+                <p>This will rebuild <strong>${siteName}</strong> while preserving custom apps:</p>
+                <div class="alert alert-info">
+                    <h6>Process Steps:</h6>
+                    <ol>
+                        <li>Backup all custom apps (except frappe & erpnext)</li>
+                        <li>Stop all containers</li>
+                        <li>Rebuild containers</li>
+                        <li>Wait for containers to be ready</li>
+                        <li>Reinstall all custom apps</li>
+                        <li>Update apps.txt</li>
+                    </ol>
+                </div>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> <strong>Note:</strong> This process may take 5-15 minutes depending on the number of apps.
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ffc107',
+        confirmButtonText: 'Yes, Rebuild with Apps',
+        cancelButtonText: 'Cancel'
+    });
+    
+    if (result.isConfirmed) {
+        // Use threading + polling (like site creation)
+        const outputElement = document.getElementById('danger-zone-output');
+        outputElement.innerHTML = '<div class="text-info"><i class="bi bi-arrow-repeat spin"></i> Starting rebuild process...</div>';
+        LoaderManager.show('Rebuilding containers...');
+        
+        // Start rebuild task
+        fetch('/api/frappe/rebuild-with-apps', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ site_name: siteName })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                // Start polling for status
+                pollDangerZoneStatus(data.task_id, 'rebuild', outputElement);
+            } else {
+                LoaderManager.hide();
+                outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start rebuild'}</div>`;
+                showToast('Failed to start rebuild', 'error');
+            }
+        })
+        .catch(error => {
+            LoaderManager.hide();
+            outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
+            showToast('Failed to start rebuild', 'error');
+        });
+    }
+});
+
+function getCSRFToken() {
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    return csrfInput ? csrfInput.value : '';
+}
+
+// Universal Danger Zone polling function
+function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = null) {
+    const endpoints = {
+        'rebuild': '/api/frappe/rebuild-with-apps/status/',
+        'restart-policy': '/api/frappe/fix-restart-policies/status/',
+        'site-removal': '/api/frappe/remove-site/status/'
+    };
+    
+    const endpoint = endpoints[operationType] + taskId;
+    
+    const pollInterval = setInterval(() => {
+        fetch(endpoint)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.task) {
+                    const task = data.task;
+                    
+                    // Update output
+                    if (task.output) {
+                        outputElement.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + 
+                            task.output.replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
+                            '</pre>';
+                        outputElement.scrollTop = outputElement.scrollHeight;
+                    }
+                    
+                    // Check if completed
+                    if (task.status === 'completed') {
+                        clearInterval(pollInterval);
+                        LoaderManager.hide();
+                        
+                        if (operationType === 'rebuild') {
+                            showToast('Rebuild completed successfully!', 'success');
+                            Swal.fire({
+                                title: 'Success!',
+                                text: `Rebuild completed successfully for ${task.site_name}`,
+                                icon: 'success',
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                location.reload();
+                            });
+                        } else if (operationType === 'restart-policy') {
+                            showToast('Restart policies fixed successfully!', 'success');
+                            Swal.fire({
+                                title: 'Success!',
+                                text: 'All restart policies have been fixed',
+                                icon: 'success',
+                                confirmButtonText: 'OK'
+                            });
+                        } else if (operationType === 'site-removal') {
+                            showToast('Site removed successfully!', 'success');
+                            Swal.fire({
+                                title: 'Site Removed',
+                                html: `
+                                    <div class="alert alert-success">
+                                        <h5><i class="bi bi-check-circle-fill"></i> Complete Removal Successful</h5>
+                                        <p>Site <strong>${siteName}</strong> has been completely removed from the system.</p>
+                                    </div>
+                                    <p>All containers, folders, and configuration have been deleted.</p>
+                                `,
+                                icon: 'success',
+                                confirmButtonColor: '#28a745'
+                            }).then(() => {
+                                location.reload();
+                            });
+                        }
+                    } else if (task.status === 'failed') {
+                        clearInterval(pollInterval);
+                        LoaderManager.hide();
+                        const errorMsg = task.error || 'Unknown error';
+                        outputElement.innerHTML += `<br><div class="text-danger"><strong>❌ Error:</strong> ${errorMsg}</div>`;
+                        showToast(`${operationType.replace('-', ' ')} failed`, 'error');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Polling error:', error);
+            });
+    }, 2000); // Poll every 2 seconds
+}
+
+// 2. Fix Restart Policies (with threading + polling)
+document.getElementById('fix-restart-policies-btn')?.addEventListener('click', async function() {
+    const result = await Swal.fire({
+        title: 'Fix Restart Policies?',
+        html: `
+            <div class="text-start">
+                <p>This will fix restart policies for <strong>ALL Frappe containers</strong>:</p>
+                <div class="alert alert-info">
+                    <h6>What will happen:</h6>
+                    <ul>
+                        <li>Find all containers ending with -db, -redis, -app</li>
+                        <li>Update restart policy to "unless-stopped"</li>
+                        <li>Start any stopped containers</li>
+                        <li>Containers will auto-start after system reboot</li>
+                    </ul>
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#17a2b8',
+        confirmButtonText: 'Yes, Fix Policies',
+        cancelButtonText: 'Cancel'
+    });
+    
+    if (result.isConfirmed) {
+        const outputElement = document.getElementById('danger-zone-output');
+        outputElement.innerHTML = '<div class="text-info"><i class="bi bi-gear-fill spin"></i> Starting restart policy fix...</div>';
+        LoaderManager.show('Fixing restart policies...');
+        
+        // Start fix task
+        fetch('/api/frappe/fix-restart-policies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                // Start polling for status
+                pollDangerZoneStatus(data.task_id, 'restart-policy', outputElement);
+            } else {
+                LoaderManager.hide();
+                outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start task'}</div>`;
+                showToast('Failed to start restart policy fix', 'error');
+            }
+        })
+        .catch(error => {
+            LoaderManager.hide();
+            outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
+            showToast('Failed to start restart policy fix', 'error');
+        });
+    }
+});
+
+// 3. Complete Site Removal (with double confirmation)
+document.getElementById('complete-site-removal-btn')?.addEventListener('click', async function() {
+    const siteName = document.getElementById('danger-site-select').value;
+    
+    if (!siteName) {
+        showToast('Please select a site first', 'error');
+        return;
+    }
+    
+    // First, show what will be removed
+    const outputElement = document.getElementById('danger-zone-output');
+    outputElement.innerHTML = '<div class="text-info"><i class="bi bi-hourglass-split"></i> Checking containers and folders...</div>';
+    
+    try {
+        // Convert underscores to dots for domain name (JavaScript replacement)
+        const siteDomain = siteName.replace(/_/g, '.');
+        
+        const checkCommand = `
+BASE_DIR="${FRAPPE_BASE_DIR}"
+echo "📍 Base directory: $BASE_DIR"
+echo ""
+echo "=== Containers that will be removed ==="
+docker ps -a --filter "name=^${siteName}-" --format "table {{.Names}}\\t{{.Status}}"
+echo ""
+echo "=== Folders that will be checked ==="
+ls -ld "$BASE_DIR/Docker-Local/${siteName}" 2>/dev/null || echo "Docker-Local: Not found"
+ls -ld "$BASE_DIR/Docker-on-VPS/${siteName}" 2>/dev/null || echo "Docker-on-VPS: Not found"
+ls -ld ~/frappe-docker/${siteName}-frappe-bench 2>/dev/null || echo "Development folder: Not found"
+echo ""
+echo "=== Hosts file entries ==="
+grep "${siteDomain}" /etc/hosts 2>/dev/null || echo "No hosts entry found"
+        `;
+        
+        const checkData = await executeDangerCommand(checkCommand, 'danger-zone-output', false);
+        
+        // First confirmation
+        const firstConfirm = await Swal.fire({
+            title: '⚠️ COMPLETE SITE REMOVAL ⚠️',
+            html: `
+                <div class="text-start">
+                    <div class="alert alert-danger">
+                        <h5><i class="bi bi-exclamation-octagon-fill"></i> CRITICAL WARNING!</h5>
+                        <p><strong>This will PERMANENTLY remove ALL data for:</strong></p>
+                        <h4 class="text-center my-3">${siteName}</h4>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <h6>What will be deleted:</h6>
+                        <ul>
+                            <li>✗ All Docker containers (app, db, redis)</li>
+                            <li>✗ All database data</li>
+                            <li>✗ Site folder: <code>${siteName}/</code></li>
+                            <li>✗ Development folder: <code>~/frappe-docker/${siteName}-frappe-bench/</code></li>
+                            <li>✗ Hosts file entries</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="alert alert-danger">
+                        <p class="mb-0"><strong>⚠️ THIS ACTION CANNOT BE UNDONE!</strong></p>
+                        <p class="mb-0">Make sure you have backups before proceeding.</p>
+                    </div>
+                    
+                    <p class="text-center mt-3">Check the output below to see what will be removed.</p>
+                </div>
+            `,
+            icon: 'error',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            confirmButtonText: 'I Understand, Continue',
+            cancelButtonText: 'Cancel',
+            width: '700px'
+        });
+        
+        if (!firstConfirm.isConfirmed) {
+            outputElement.innerHTML = '<div class="text-warning"><i class="bi bi-x-circle"></i> Operation cancelled by user</div>';
+            return;
+        }
+        
+        // Second confirmation - Type DELETE
+        const secondConfirm = await Swal.fire({
+            title: 'FINAL CONFIRMATION REQUIRED',
+            html: `
+                <div class="text-start">
+                    <div class="alert alert-danger text-center">
+                        <h4>⚠️ LAST CHANCE TO CANCEL ⚠️</h4>
+                        <p class="mb-0">You are about to permanently delete:</p>
+                        <h3 class="my-3">${siteName}</h3>
+                    </div>
+                    
+                    <p class="text-danger text-center mb-3">
+                        <strong>Type exactly:</strong> <code class="fs-5">DELETE</code>
+                    </p>
+                </div>
+            `,
+            input: 'text',
+            inputPlaceholder: 'Type DELETE to confirm',
+            icon: 'error',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            confirmButtonText: 'Permanently Delete Everything',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (value !== 'DELETE') {
+                    return 'You must type DELETE exactly (in capital letters)';
+                }
+            },
+            width: '600px'
+        });
+        
+        if (!secondConfirm.isConfirmed) {
+            outputElement.innerHTML = '<div class="text-warning"><i class="bi bi-x-circle"></i> Operation cancelled - confirmation failed</div>';
+            return;
+        }
+        
+        // Execute site removal with threading + polling
+        outputElement.innerHTML = '<div class="text-danger"><i class="bi bi-trash-fill spin"></i> Starting complete site removal...</div>';
+        LoaderManager.show('Removing site completely...');
+        
+        // Start removal task
+        fetch('/api/frappe/remove-site', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ site_name: siteName })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                // Start polling for status
+                pollDangerZoneStatus(data.task_id, 'site-removal', outputElement, siteName);
+            } else {
+                LoaderManager.hide();
+                outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start removal'}</div>`;
+                showToast('Failed to start site removal', 'error');
+            }
+        })
+        .catch(error => {
+            LoaderManager.hide();
+            outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
+            showToast('Failed to start site removal', 'error');
+        });
+        
+    } catch (error) {
+        showToast('Error during site removal', 'error');
+        LoaderManager.hide();
+    }
+});
+
+console.log('✅ Danger Zone operations initialized');
+{% endraw %}
 </script>
 {% endblock %}
