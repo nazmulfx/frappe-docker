@@ -290,17 +290,15 @@
                                                 <select class="form-select" id="app-container-select">
                                                     <option value="">-- Choose a container --</option>
                                                     {% for project_name, project_containers in container_groups.items() %}
-                                                        <optgroup label="{{ project_name }}">
-                                                            {% for container in project_containers %}
-                                                                {% if container.service_type == 'App Server' %}
-                                                                    <option value="{{ container.name }}" 
-                                                                            data-status="{{ container.status }}"
-                                                                            data-image="{{ container.image }}">
-                                                                        {{ container.name }}
-                                                                    </option>
-                                                                {% endif %}
-                                                            {% endfor %}
-                                                        </optgroup>
+                                                        {% for container in project_containers %}
+                                                            {% if container.service_type == 'App Server' %}
+                                                                <option value="{{ container.name }}" 
+                                                                        data-status="{{ container.status }}"
+                                                                        data-image="{{ container.image }}">
+                                                                    {{ container.name }}
+                                                                </option>
+                                                            {% endif %}
+                                                        {% endfor %}
                                                     {% endfor %}
                                                 </select>
                                             </div>
@@ -1954,17 +1952,167 @@ class FrappeAppManager {
             
             const data = await response.json();
             
-            if (data.error) {
+            // Check if this is a background task
+            if (data.is_background_task && data.task_id) {
+                // Show progress modal and track task
+                await this.trackBackgroundTask(data.task_id, description);
+            } else if (data.error) {
                 this.addToLog('error', `Error: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    html: `<pre style="text-align: left; max-height: 400px; overflow-y: auto;">${data.error}</pre>`,
+                    icon: 'error',
+                    width: '600px'
+                });
             } else {
                 this.addToLog('success', `Success: ${description}`);
                 if (data.output) {
                     this.addToLog('info', data.output);
+                    await Swal.fire({
+                        title: 'Success',
+                        html: `<div style="text-align: left;"><strong>${description}</strong><pre style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px;">${data.output}</pre></div>`,
+                        icon: 'success',
+                        width: '700px',
+                        confirmButtonText: 'OK'
+                    });
                 }
             }
         } catch (error) {
             this.addToLog('error', `Network error: ${error.message}`);
+            await Swal.fire({
+                title: 'Network Error',
+                text: error.message,
+                icon: 'error'
+            });
         }
+    }
+    
+    async trackBackgroundTask(taskId, description) {
+        // Show progress modal with SweetAlert
+        let timerInterval;
+        const swalInstance = Swal.fire({
+            title: description,
+            html: `
+                <div style="text-align: center; padding: 20px;">
+                    <div class="progress" style="height: 30px; margin-bottom: 15px;">
+                        <div id="task-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%; background-color: #007bff;" 
+                             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            <span id="task-progress-text" style="font-weight: bold; line-height: 30px;">0%</span>
+                        </div>
+                    </div>
+                    <div id="task-status-message" style="margin-bottom: 15px; font-weight: bold; color: #333;">
+                        Initializing...
+                    </div>
+                    <div id="task-output-container" style="max-height: 300px; overflow-y: auto; text-align: left; background: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; padding: 10px; border-radius: 5px; font-size: 12px; white-space: pre-wrap;">
+                        Waiting for output...
+                    </div>
+                </div>
+            `,
+            width: '800px',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            showCancelButton: true,
+            cancelButtonText: 'Close',
+            didOpen: () => {
+                // Start polling for task status
+                const pollTaskStatus = async () => {
+                    try {
+                        const response = await fetch(`/api/tasks/status/${taskId}`);
+                        const result = await response.json();
+                        
+                        if (result.success && result.task) {
+                            const task = result.task;
+                            
+                            // Update progress bar
+                            const progressBar = document.getElementById('task-progress-bar');
+                            const progressText = document.getElementById('task-progress-text');
+                            if (progressBar && progressText) {
+                                progressBar.style.width = `${task.progress}%`;
+                                progressBar.setAttribute('aria-valuenow', task.progress);
+                                progressText.textContent = `${task.progress}%`;
+                                
+                                // Change color based on status
+                                if (task.status === 'completed') {
+                                    progressBar.style.backgroundColor = '#28a745';
+                                } else if (task.status === 'failed') {
+                                    progressBar.style.backgroundColor = '#dc3545';
+                                }
+                            }
+                            
+                            // Update status message
+                            const statusMessage = document.getElementById('task-status-message');
+                            if (statusMessage) {
+                                statusMessage.textContent = task.message || 'Processing...';
+                                
+                                // Color based on status
+                                if (task.status === 'completed') {
+                                    statusMessage.style.color = '#28a745';
+                                } else if (task.status === 'failed') {
+                                    statusMessage.style.color = '#dc3545';
+                                } else if (task.status === 'running') {
+                                    statusMessage.style.color = '#007bff';
+                                }
+                            }
+                            
+                            // Update output
+                            const outputContainer = document.getElementById('task-output-container');
+                            if (outputContainer && task.output) {
+                                outputContainer.textContent = task.output;
+                                // Auto-scroll to bottom
+                                outputContainer.scrollTop = outputContainer.scrollHeight;
+                            }
+                            
+                            // Check if task is complete
+                            if (task.status === 'completed') {
+                                clearInterval(timerInterval);
+                                this.addToLog('success', `${description} completed successfully`);
+                                
+                                // Show completion
+                                Swal.update({
+                                    title: '✅ Completed Successfully!',
+                                    icon: 'success',
+                                    showConfirmButton: true,
+                                    showCancelButton: false,
+                                    confirmButtonText: 'OK'
+                                });
+                            } else if (task.status === 'failed') {
+                                clearInterval(timerInterval);
+                                this.addToLog('error', `${description} failed: ${task.error}`);
+                                
+                                // Show error
+                                Swal.update({
+                                    title: '❌ Task Failed',
+                                    icon: 'error',
+                                    showConfirmButton: true,
+                                    showCancelButton: false,
+                                    confirmButtonText: 'OK'
+                                });
+                            }
+                        } else {
+                            clearInterval(timerInterval);
+                            throw new Error('Failed to get task status');
+                        }
+                    } catch (error) {
+                        clearInterval(timerInterval);
+                        console.error('Error polling task:', error);
+                        this.addToLog('error', `Error tracking task: ${error.message}`);
+                    }
+                };
+                
+                // Poll immediately, then every second
+                pollTaskStatus();
+                timerInterval = setInterval(pollTaskStatus, 1000);
+            },
+            willClose: () => {
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                }
+            }
+        });
+        
+        return swalInstance;
     }
     
     addToLog(type, message) {
@@ -2334,16 +2482,26 @@ class FrappeAppManager {
             this.addToLog('info', 'Fixing apps.txt file...');
             
             // Create Python script to fix the file
-            const fixScript = `
+            const fixScript = `#!/usr/bin/env python3
 # Fix apps.txt file
 import re
 import os
+import sys
 
 apps_txt_path = '/home/frappe/frappe-bench/sites/apps.txt'
 
+# Check if file exists
+if not os.path.exists(apps_txt_path):
+    print(f"❌ Error: apps.txt file not found at {apps_txt_path}")
+    sys.exit(1)
+
 # Read current content
-with open(apps_txt_path, 'r') as f:
-    content = f.read()
+try:
+    with open(apps_txt_path, 'r') as f:
+        content = f.read()
+except Exception as e:
+    print(f"❌ Error reading apps.txt: {e}")
+    sys.exit(1)
 
 print("Current apps.txt content:")
 print(content)
@@ -2386,20 +2544,44 @@ for app in fixed_apps:
 
 # Write back with proper formatting
 if unique_apps:
-    with open(apps_txt_path, 'w') as f:
+    try:
+        with open(apps_txt_path, 'w') as f:
+            for app in unique_apps:
+                f.write(app + '\\n')
+        
+        print("✅ Fixed apps.txt successfully!")
+        print("\\nFixed apps list:")
         for app in unique_apps:
-            f.write(app + '\\n')
-    
-    print("✅ Fixed apps.txt successfully!")
-    print("\\nFixed apps list:")
-    for app in unique_apps:
-        print(f"  - {app}")
+            print(f"  - {app}")
+    except Exception as e:
+        print(f"❌ Error writing apps.txt: {e}")
+        sys.exit(1)
 else:
     print("⚠️ No apps found in apps.txt")
+    sys.exit(1)
 `;
 
-            const command = `python3 -c "${fixScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+            // Create a temporary file with the script and execute it
+            const tempFile = `/tmp/fix_apps_txt_${Date.now()}.py`;
             
+            // First, write the script to a file
+            const writeCommand = `cat > ${tempFile} << 'EOFPYTHON'
+${fixScript}
+EOFPYTHON`;
+            
+            await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: writeCommand
+                })
+            }, 'Creating fix script...');
+            
+            // Then execute the script
             const response = await fetchWithLoader('/api/frappe/execute-command', {
                 method: 'POST',
                 headers: {
@@ -2408,13 +2590,21 @@ else:
                 },
                 body: JSON.stringify({
                     container: this.selectedContainer,
-                    command: command
+                    command: `python3 ${tempFile} && rm -f ${tempFile}`
                 })
             }, 'Fixing apps.txt...');
             
             const data = await response.json();
             
-            if (data.output && !data.error) {
+            if (data.error) {
+                this.addToLog('error', `Failed to fix apps.txt: ${data.error}`);
+                Swal.fire({
+                    title: 'Error',
+                    html: `<pre style="text-align: left; max-height: 300px; overflow-y: auto;">${data.error}</pre>`,
+                    icon: 'error',
+                    confirmButtonColor: '#dc3545'
+                });
+            } else if (data.output) {
                 this.addToLog('success', '✅ apps.txt file has been fixed!');
                 this.addToLog('info', data.output);
                 
@@ -2423,15 +2613,16 @@ else:
                 
                 Swal.fire({
                     title: 'Success!',
-                    text: 'apps.txt file has been fixed successfully.',
+                    html: `<div style="text-align: left;"><strong>apps.txt file has been fixed successfully.</strong><pre style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px;">${data.output}</pre></div>`,
                     icon: 'success',
+                    width: '700px',
                     confirmButtonColor: '#28a745'
                 });
             } else {
-                this.addToLog('error', `Failed to fix apps.txt: ${data.error || 'Unknown error'}`);
+                this.addToLog('error', 'No output received from fix operation');
                 Swal.fire({
                     title: 'Error',
-                    text: 'Failed to fix apps.txt file. Check the logs for details.',
+                    text: 'No output received. The operation may have failed.',
                     icon: 'error',
                     confirmButtonColor: '#dc3545'
                 });
@@ -3345,19 +3536,13 @@ else:
 
             const data = await response.json();
 
-            if (data.success) {
-                this.addToLog('success', `Backup created successfully for ${siteName}`);
-                this.addToLog('info', data.output);
-
-                await Swal.fire({
-                    title: 'Success!',
-                    text: 'Backup created successfully',
-                    icon: 'success'
-                });
-
-                // Refresh backups list
+            if (data.success && data.task_id) {
+                // Show progress modal and track task
+                await this.trackBackgroundTask(data.task_id, `Creating Backup: ${siteName}`);
+                
+                // Refresh backups list after completion
                 this.loadBackupsList();
-            } else {
+            } else if (data.error) {
                 this.addToLog('error', `Failed to create backup: ${data.error}`);
                 await Swal.fire({
                     title: 'Error',
@@ -3640,16 +3825,10 @@ else:
 
             const data = await response.json();
 
-            if (data.success) {
-                this.addToLog('success', `Backup restored successfully for ${siteName}`);
-                this.addToLog('info', data.output);
-
-                await Swal.fire({
-                    title: 'Success!',
-                    text: 'Backup restored successfully',
-                    icon: 'success'
-                });
-            } else {
+            if (data.success && data.task_id) {
+                // Show progress modal and track task
+                await this.trackBackgroundTask(data.task_id, `Restoring Backup: ${siteName}`);
+            } else if (data.error) {
                 this.addToLog('error', `Failed to restore backup: ${data.error}`);
                 await Swal.fire({
                     title: 'Error',

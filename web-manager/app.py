@@ -67,6 +67,9 @@ blocked_ips = {}
 # Global dictionary to store site creation tasks status
 site_creation_tasks = {}
 
+# Global dictionary to store background tasks (backup, restore, migrate, etc.)
+background_tasks = {}
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1488,6 +1491,47 @@ def execute_command_api():
         # Use -w flag for working directory and -it for interactive TTY
         cmd = ["sudo", "docker", "exec", "-w", current_dir, container, "bash", "-c", command]
         
+        # Detect heavy commands that should run in background
+        heavy_commands = ['bench migrate', 'bench get-app', 'bench install-app', 'bench build', 'bench update', 'bench backup', 'bench restore']
+        is_heavy_command = any(command.lower().strip().startswith(hc) for hc in heavy_commands)
+        
+        # For heavy commands, use threading for background execution
+        if is_heavy_command:
+            # Generate unique task ID
+            task_id = str(uuid.uuid4())
+            
+            # Initialize task in background_tasks
+            background_tasks[task_id] = {
+                'type': 'command',
+                'status': 'pending',
+                'progress': 0,
+                'message': f'Initializing command: {command}',
+                'output': '',
+                'error': None,
+                'container': container,
+                'command': command,
+                'current_dir': current_dir,
+                'created_at': datetime.now().isoformat(),
+                'result': None
+            }
+            
+            # Start background thread
+            thread = threading.Thread(
+                target=run_heavy_command_task,
+                args=(task_id, container, command, current_dir)
+            )
+            thread.daemon = True
+            thread.start()
+            
+            # Return task ID immediately
+            return jsonify({
+                'success': True,
+                'task_id': task_id,
+                'message': f'Heavy command started in background. Use /api/tasks/status/{task_id} to check progress.',
+                'current_dir': current_dir,
+                'is_background_task': True
+            })
+        
         # For bench commands, use streaming approach
         if command.lower().startswith('bench '):
             try:
@@ -1958,7 +2002,7 @@ def clear_terminal_logs():
 @app.route('/api/frappe/backup/create', methods=['POST'])
 @require_auth
 def create_backup():
-    """Create a backup of a Frappe site"""
+    """Create a backup of a Frappe site (using threading for background processing)"""
     try:
         data = request.json
         container = data.get('container')
@@ -1970,69 +2014,37 @@ def create_backup():
         if not container or not site_name:
             return jsonify({'error': 'Container and site_name are required'}), 400
         
-        # Build the bench backup command
-        backup_command = f"bench --site {site_name} backup"
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
         
-        if include_files:
-            if include_private_files and include_public_files:
-                backup_command += " --with-files"
-            elif include_private_files:
-                backup_command += " --with-private-files"
-            elif include_public_files:
-                backup_command += " --with-public-files"
+        # Initialize task in background_tasks
+        background_tasks[task_id] = {
+            'type': 'backup',
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Initializing backup task...',
+            'output': '',
+            'error': None,
+            'container': container,
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'result': None
+        }
         
-        # Execute the backup command
-        cmd = ["sudo", "docker", "exec", container, "bash", "-c", backup_command]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        # Start background thread
+        thread = threading.Thread(
+            target=run_backup_task,
+            args=(task_id, container, site_name, include_files, include_private_files, include_public_files)
+        )
+        thread.daemon = True
+        thread.start()
         
-        output_lines = []
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
-            output_lines.append(line.rstrip())
-        
-        process.wait()
-        output = '\n'.join(output_lines)
-        
-        if process.returncode == 0:
-            # Get the backup file paths from output
-            backup_info = {
-                'database': None,
-                'private_files': None,
-                'public_files': None
-            }
-            
-            for line in output_lines:
-                if 'database' in line.lower() and ('.sql' in line or '.gz' in line):
-                    # Extract backup file path
-                    import re
-                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.(sql\.gz|sql)', line)
-                    if path_match:
-                        backup_info['database'] = path_match.group(0)
-                elif 'private' in line.lower() and '.tar' in line:
-                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
-                    if path_match:
-                        backup_info['private_files'] = path_match.group(0)
-                elif 'public' in line.lower() and '.tar' in line:
-                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
-                    if path_match:
-                        backup_info['public_files'] = path_match.group(0)
-            
-            log_command_execution(backup_command, container, True, None)
-            
-            return jsonify({
-                'success': True,
-                'output': output,
-                'backup_info': backup_info,
-                'message': 'Backup created successfully'
-            })
-        else:
-            log_command_execution(backup_command, container, False, output)
-            return jsonify({
-                'error': output or 'Backup failed',
-                'success': False
-            }), 500
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Backup task started. Use /api/tasks/status/<task_id> to check progress.'
+        })
             
     except Exception as e:
         logger.error(f"Error creating backup: {str(e)}")
@@ -2100,7 +2112,7 @@ def list_backups():
 @app.route('/api/frappe/backup/restore', methods=['POST'])
 @require_auth
 def restore_backup():
-    """Restore a backup for a Frappe site"""
+    """Restore a backup for a Frappe site (using threading for background processing)"""
     try:
         data = request.json
         container = data.get('container')
@@ -2117,72 +2129,37 @@ def restore_backup():
         if not mysql_root_password:
             return jsonify({'error': 'MySQL root password is required'}), 400
         
-        # Escape single quotes in password for shell safety
-        escaped_password = mysql_root_password.replace("'", "'\\''")
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
         
-        # Create a temporary MySQL config file with password to avoid prompts
-        mysql_config_content = f"""[client]
-user=root
-password={escaped_password}
-host=db
-"""
+        # Initialize task in background_tasks
+        background_tasks[task_id] = {
+            'type': 'restore',
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Initializing restore task...',
+            'output': '',
+            'error': None,
+            'container': container,
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'result': None
+        }
         
-        # Create the config file in the container
-        create_config_cmd = f"cat > /tmp/mysql_restore.cnf << 'EOFMYSQL'\n{mysql_config_content}\nEOFMYSQL"
-        cmd_create = ["sudo", "docker", "exec", container, "bash", "-c", create_config_cmd]
-        subprocess.run(cmd_create, capture_output=True)
+        # Start background thread
+        thread = threading.Thread(
+            target=run_restore_task,
+            args=(task_id, container, site_name, backup_path, private_files_path, public_files_path, mysql_root_password, admin_password)
+        )
+        thread.daemon = True
+        thread.start()
         
-        # Build the restore command using the config file
-        # Use --defaults-file to specify MySQL config with password
-        restore_command = f"bench --site {site_name} --force restore {backup_path} --mariadb-root-password '{escaped_password}'"
-        
-        # Add file restore options
-        restore_options = []
-        if private_files_path:
-            restore_options.append(f"--with-private-files {private_files_path}")
-        if public_files_path:
-            restore_options.append(f"--with-public-files {public_files_path}")
-        
-        if restore_options:
-            restore_command += " " + " ".join(restore_options)
-        
-        # Add admin password option if provided
-        if admin_password:
-            escaped_admin_password = admin_password.replace("'", "'\\''")
-            restore_command += f" --admin-password '{escaped_admin_password}'"
-        
-        # Execute the restore command
-        cmd = ["sudo", "docker", "exec", container, "bash", "-c", restore_command]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        
-        output_lines = []
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
-            output_lines.append(line.rstrip())
-        
-        process.wait()
-        output = '\n'.join(output_lines)
-        
-        # Clean up the temporary config file
-        cleanup_cmd = ["sudo", "docker", "exec", container, "bash", "-c", "rm -f /tmp/mysql_restore.cnf"]
-        subprocess.run(cleanup_cmd, capture_output=True)
-        
-        if process.returncode == 0:
-            log_command_execution(f"bench restore (site: {site_name})", container, True, None)
-            
-            return jsonify({
-                'success': True,
-                'output': output,
-                'message': 'Backup restored successfully'
-            })
-        else:
-            log_command_execution(f"bench restore (site: {site_name})", container, False, output)
-            return jsonify({
-                'error': output or 'Restore failed',
-                'success': False
-            }), 500
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Restore task started. Use /api/tasks/status/<task_id> to check progress.'
+        })
             
     except Exception as e:
         logger.error(f"Error restoring backup: {str(e)}")
@@ -2366,6 +2343,163 @@ def delete_backup():
         logger.error(f"Error deleting backup: {str(e)}")
         return jsonify({'error': str(e), 'success': False}), 500
 
+
+# ============================================================================
+# BACKGROUND TASK STATUS API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/tasks/status/<task_id>', methods=['GET'])
+@require_auth
+def get_task_status(task_id):
+    """Get the status of a background task"""
+    try:
+        # Check both background_tasks and site_creation_tasks
+        if task_id in background_tasks:
+            task = background_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'task': task
+            })
+        elif task_id in site_creation_tasks:
+            task = site_creation_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'task': task
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Task not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting task status: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@app.route('/api/tasks/list', methods=['GET'])
+@require_auth
+def list_tasks():
+    """List all background tasks"""
+    try:
+        # Get task type filter from query params
+        task_type = request.args.get('type')
+        status = request.args.get('status')
+        
+        # Combine all tasks
+        all_tasks = {}
+        
+        # Add background_tasks
+        for task_id, task in background_tasks.items():
+            if task_type and task.get('type') != task_type:
+                continue
+            if status and task.get('status') != status:
+                continue
+            all_tasks[task_id] = task
+        
+        # Add site_creation_tasks
+        for task_id, task in site_creation_tasks.items():
+            if task_type and task_type != 'site_creation':
+                continue
+            if status and task.get('status') != status:
+                continue
+            # Add type for consistency
+            task_copy = task.copy()
+            task_copy['type'] = 'site_creation'
+            all_tasks[task_id] = task_copy
+        
+        return jsonify({
+            'success': True,
+            'tasks': all_tasks,
+            'count': len(all_tasks)
+        })
+            
+    except Exception as e:
+        logger.error(f"Error listing tasks: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@app.route('/api/tasks/delete/<task_id>', methods=['DELETE'])
+@require_auth
+def delete_task(task_id):
+    """Delete a completed or failed task from the list"""
+    try:
+        # Check both background_tasks and site_creation_tasks
+        if task_id in background_tasks:
+            task = background_tasks[task_id]
+            # Only allow deletion of completed or failed tasks
+            if task.get('status') not in ['completed', 'failed', 'cancelled']:
+                return jsonify({
+                    'success': False,
+                    'error': 'Cannot delete running tasks'
+                }), 400
+            
+            del background_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'message': 'Task deleted successfully'
+            })
+        elif task_id in site_creation_tasks:
+            task = site_creation_tasks[task_id]
+            # Only allow deletion of completed or failed tasks
+            if task.get('status') not in ['completed', 'failed', 'cancelled']:
+                return jsonify({
+                    'success': False,
+                    'error': 'Cannot delete running tasks'
+                }), 400
+            
+            del site_creation_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'message': 'Task deleted successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Task not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting task: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@app.route('/api/tasks/clear', methods=['POST'])
+@require_auth
+def clear_completed_tasks():
+    """Clear all completed and failed tasks"""
+    try:
+        # Clear from background_tasks
+        tasks_to_delete = [
+            task_id for task_id, task in background_tasks.items()
+            if task.get('status') in ['completed', 'failed', 'cancelled']
+        ]
+        
+        for task_id in tasks_to_delete:
+            del background_tasks[task_id]
+        
+        # Clear from site_creation_tasks
+        site_tasks_to_delete = [
+            task_id for task_id, task in site_creation_tasks.items()
+            if task.get('status') in ['completed', 'failed', 'cancelled']
+        ]
+        
+        for task_id in site_tasks_to_delete:
+            del site_creation_tasks[task_id]
+        
+        total_cleared = len(tasks_to_delete) + len(site_tasks_to_delete)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleared {total_cleared} completed/failed tasks',
+            'count': total_cleared
+        })
+            
+    except Exception as e:
+        logger.error(f"Error clearing tasks: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
 @app.route('/api/frappe/get-erpnext-versions', methods=['GET'])
 @require_auth
 def get_erpnext_versions():
@@ -2467,6 +2601,367 @@ def clean_ansi_codes(text):
     text = text.replace('\r\n', '\n').replace('\r', '')
     
     return text
+
+# ============================================================================
+# BACKGROUND TASK FUNCTIONS FOR HEAVY OPERATIONS
+# ============================================================================
+
+def run_backup_task(task_id, container, site_name, include_files, include_private_files, include_public_files):
+    """Background task to create a backup"""
+    try:
+        # Update task status
+        background_tasks[task_id]['status'] = 'running'
+        background_tasks[task_id]['progress'] = 10
+        background_tasks[task_id]['message'] = 'Starting backup process...'
+        
+        # Build the bench backup command
+        backup_command = f"bench --site {site_name} backup"
+        
+        if include_files:
+            if include_private_files and include_public_files:
+                backup_command += " --with-files"
+            elif include_private_files:
+                backup_command += " --with-private-files"
+            elif include_public_files:
+                backup_command += " --with-public-files"
+        
+        background_tasks[task_id]['progress'] = 20
+        background_tasks[task_id]['message'] = 'Executing backup command...'
+        
+        # Execute the backup command
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", backup_command]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            output_lines.append(line.rstrip())
+            # Update output in real-time
+            background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Update progress based on output
+            if 'Backing up' in line or 'backup' in line.lower():
+                if background_tasks[task_id]['progress'] < 60:
+                    background_tasks[task_id]['progress'] = 50
+                    background_tasks[task_id]['message'] = 'Creating database backup...'
+            elif 'files' in line.lower():
+                if background_tasks[task_id]['progress'] < 80:
+                    background_tasks[task_id]['progress'] = 70
+                    background_tasks[task_id]['message'] = 'Backing up files...'
+        
+        process.wait()
+        output = '\n'.join(output_lines)
+        
+        if process.returncode == 0:
+            # Get the backup file paths from output
+            backup_info = {
+                'database': None,
+                'private_files': None,
+                'public_files': None
+            }
+            
+            for line in output_lines:
+                if 'database' in line.lower() and ('.sql' in line or '.gz' in line):
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.(sql\.gz|sql)', line)
+                    if path_match:
+                        backup_info['database'] = path_match.group(0)
+                elif 'private' in line.lower() and '.tar' in line:
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
+                    if path_match:
+                        backup_info['private_files'] = path_match.group(0)
+                elif 'public' in line.lower() and '.tar' in line:
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
+                    if path_match:
+                        backup_info['public_files'] = path_match.group(0)
+            
+            log_command_execution(backup_command, container, True, None)
+            
+            background_tasks[task_id]['status'] = 'completed'
+            background_tasks[task_id]['progress'] = 100
+            background_tasks[task_id]['message'] = 'Backup created successfully!'
+            background_tasks[task_id]['result'] = {
+                'success': True,
+                'output': output,
+                'backup_info': backup_info
+            }
+        else:
+            log_command_execution(backup_command, container, False, output)
+            background_tasks[task_id]['status'] = 'failed'
+            background_tasks[task_id]['error'] = output or 'Backup failed'
+            background_tasks[task_id]['result'] = {
+                'success': False,
+                'error': output or 'Backup failed'
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in backup task {task_id}: {str(e)}")
+        background_tasks[task_id]['status'] = 'failed'
+        background_tasks[task_id]['error'] = str(e)
+        background_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def run_restore_task(task_id, container, site_name, backup_path, private_files_path, public_files_path, mysql_root_password, admin_password):
+    """Background task to restore a backup"""
+    try:
+        # Update task status
+        background_tasks[task_id]['status'] = 'running'
+        background_tasks[task_id]['progress'] = 10
+        background_tasks[task_id]['message'] = 'Starting restore process...'
+        
+        # Escape single quotes in password for shell safety
+        escaped_password = mysql_root_password.replace("'", "'\\''")
+        
+        # Create a temporary MySQL config file with password to avoid prompts
+        mysql_config_content = f"""[client]
+user=root
+password={escaped_password}
+host=db
+"""
+        
+        background_tasks[task_id]['progress'] = 20
+        background_tasks[task_id]['message'] = 'Creating MySQL configuration...'
+        
+        # Create the config file in the container
+        create_config_cmd = f"cat > /tmp/mysql_restore.cnf << 'EOFMYSQL'\n{mysql_config_content}\nEOFMYSQL"
+        cmd_create = ["sudo", "docker", "exec", container, "bash", "-c", create_config_cmd]
+        subprocess.run(cmd_create, capture_output=True)
+        
+        # Build the restore command
+        restore_command = f"bench --site {site_name} --force restore {backup_path} --mariadb-root-password '{escaped_password}'"
+        
+        # Add file restore options
+        restore_options = []
+        if private_files_path:
+            restore_options.append(f"--with-private-files {private_files_path}")
+        if public_files_path:
+            restore_options.append(f"--with-public-files {public_files_path}")
+        
+        if restore_options:
+            restore_command += " " + " ".join(restore_options)
+        
+        # Add admin password option if provided
+        if admin_password:
+            escaped_admin_password = admin_password.replace("'", "'\\''")
+            restore_command += f" --admin-password '{escaped_admin_password}'"
+        
+        background_tasks[task_id]['progress'] = 30
+        background_tasks[task_id]['message'] = 'Executing restore command...'
+        
+        # Execute the restore command
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", restore_command]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            output_lines.append(line.rstrip())
+            # Update output in real-time
+            background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Update progress based on output
+            if 'database' in line.lower() or 'restoring' in line.lower():
+                if background_tasks[task_id]['progress'] < 70:
+                    background_tasks[task_id]['progress'] = 50
+                    background_tasks[task_id]['message'] = 'Restoring database...'
+            elif 'files' in line.lower():
+                if background_tasks[task_id]['progress'] < 90:
+                    background_tasks[task_id]['progress'] = 80
+                    background_tasks[task_id]['message'] = 'Restoring files...'
+        
+        process.wait()
+        output = '\n'.join(output_lines)
+        
+        # Clean up the temporary config file
+        cleanup_cmd = ["sudo", "docker", "exec", container, "bash", "-c", "rm -f /tmp/mysql_restore.cnf"]
+        subprocess.run(cleanup_cmd, capture_output=True)
+        
+        if process.returncode == 0:
+            log_command_execution(f"bench restore (site: {site_name})", container, True, None)
+            
+            background_tasks[task_id]['status'] = 'completed'
+            background_tasks[task_id]['progress'] = 100
+            background_tasks[task_id]['message'] = 'Backup restored successfully!'
+            background_tasks[task_id]['result'] = {
+                'success': True,
+                'output': output
+            }
+        else:
+            log_command_execution(f"bench restore (site: {site_name})", container, False, output)
+            background_tasks[task_id]['status'] = 'failed'
+            background_tasks[task_id]['error'] = output or 'Restore failed'
+            background_tasks[task_id]['result'] = {
+                'success': False,
+                'error': output or 'Restore failed'
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in restore task {task_id}: {str(e)}")
+        background_tasks[task_id]['status'] = 'failed'
+        background_tasks[task_id]['error'] = str(e)
+        background_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def run_heavy_command_task(task_id, container, command, current_dir):
+    """Background task for heavy commands like bench migrate"""
+    try:
+        # Update task status
+        background_tasks[task_id]['status'] = 'running'
+        background_tasks[task_id]['progress'] = 10
+        background_tasks[task_id]['message'] = f'Executing: {command}'
+        
+        # Execute command
+        cmd = ["sudo", "docker", "exec", "-w", current_dir, container, "bash", "-c", command]
+        
+        background_tasks[task_id]['progress'] = 20
+        background_tasks[task_id]['message'] = 'Processing command...'
+        
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+        
+        output_lines = []
+        
+        # Special handling for bench migrate command
+        if command.lower().strip() == 'bench migrate':
+            current_app = None
+            last_progress = 0
+            
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                line = line.rstrip()
+                
+                # Extract meaningful information from migrate output
+                if 'Migrating' in line and 'local' in line:
+                    site_name = line.split('Migrating ')[1].split('\n')[0]
+                    output_lines.append(f"🔄 Starting migration for site: {site_name}")
+                    background_tasks[task_id]['progress'] = 30
+                    background_tasks[task_id]['message'] = f'Migrating site: {site_name}'
+                
+                elif 'Updating DocTypes for' in line and '%' in line:
+                    parts = line.split('Updating DocTypes for ')
+                    if len(parts) > 1:
+                        app_part = parts[1].split(' : ')[0]
+                        progress_part = parts[1].split(' : ')[1] if ' : ' in parts[1] else ''
+                        
+                        if '%' in progress_part:
+                            percent = progress_part.split('%')[0].split()[-1]
+                            try:
+                                percent_int = int(percent)
+                                if percent_int >= last_progress + 10:
+                                    output_lines.append(f"📊 Updating DocTypes for {app_part}: {percent_int}%")
+                                    last_progress = percent_int
+                                    # Map progress to 40-80 range
+                                    background_tasks[task_id]['progress'] = min(40 + int(percent_int * 0.4), 80)
+                                    background_tasks[task_id]['message'] = f'Updating DocTypes: {percent_int}%'
+                            except ValueError:
+                                pass
+                
+                elif 'Updating Dashboard for' in line:
+                    app_name = line.split('Updating Dashboard for ')[1]
+                    output_lines.append(f"📈 Updating Dashboard for {app_name}")
+                    background_tasks[task_id]['progress'] = 85
+                    background_tasks[task_id]['message'] = 'Updating dashboards...'
+                
+                elif 'Updating customizations for' in line:
+                    doctype = line.split('Updating customizations for ')[1]
+                    output_lines.append(f"🔧 Updating customizations for {doctype}")
+                
+                elif 'Executing `after_migrate` hooks' in line:
+                    output_lines.append("⚡ Executing post-migration hooks...")
+                    background_tasks[task_id]['progress'] = 90
+                    background_tasks[task_id]['message'] = 'Executing post-migration hooks...'
+                
+                elif 'Queued rebuilding of search index' in line:
+                    site_name = line.split('Queued rebuilding of search index for ')[1]
+                    output_lines.append(f"🔍 Queued search index rebuild for {site_name}")
+                
+                elif line.strip() and not any(x in line for x in ['[', ']', '=']):
+                    output_lines.append(line)
+                
+                # Update output in real-time
+                background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Get final output
+            output = '\n'.join(output_lines)
+            
+            # Check if process completed successfully
+            process.wait()
+            if process.returncode != 0:
+                background_tasks[task_id]['status'] = 'failed'
+                background_tasks[task_id]['error'] = f"Migration failed with exit code {process.returncode}"
+                background_tasks[task_id]['result'] = {
+                    'success': False,
+                    'error': f"Migration failed with exit code {process.returncode}"
+                }
+            else:
+                output += "\n\n✅ Migration completed successfully!"
+                background_tasks[task_id]['status'] = 'completed'
+                background_tasks[task_id]['progress'] = 100
+                background_tasks[task_id]['message'] = 'Migration completed successfully!'
+                background_tasks[task_id]['output'] = output
+                background_tasks[task_id]['result'] = {
+                    'success': True,
+                    'output': output
+                }
+        
+        else:
+            # For other commands, use standard approach
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                output_lines.append(line.rstrip())
+                # Update output in real-time
+                background_tasks[task_id]['output'] = '\n'.join(output_lines)
+                
+                # Update progress gradually
+                current_progress = background_tasks[task_id]['progress']
+                if current_progress < 90:
+                    background_tasks[task_id]['progress'] = min(current_progress + 5, 90)
+            
+            # Get final output
+            output = '\n'.join(output_lines)
+            
+            # Check if process completed successfully
+            process.wait()
+            if process.returncode != 0:
+                background_tasks[task_id]['status'] = 'failed'
+                background_tasks[task_id]['error'] = f"Command failed with exit code {process.returncode}"
+                background_tasks[task_id]['result'] = {
+                    'success': False,
+                    'output': output,
+                    'error': f"Command failed with exit code {process.returncode}"
+                }
+            else:
+                background_tasks[task_id]['status'] = 'completed'
+                background_tasks[task_id]['progress'] = 100
+                background_tasks[task_id]['message'] = 'Command completed successfully!'
+                background_tasks[task_id]['output'] = output
+                background_tasks[task_id]['result'] = {
+                    'success': True,
+                    'output': output
+                }
+            
+    except Exception as e:
+        logger.error(f"Error in command task {task_id}: {str(e)}")
+        background_tasks[task_id]['status'] = 'failed'
+        background_tasks[task_id]['error'] = str(e)
+        background_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
 
 def run_site_creation_task(task_id, domain_name, erpnext_version, environment, script_path, base_dir):
     """Background task to create a site"""
