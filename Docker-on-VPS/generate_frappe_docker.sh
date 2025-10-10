@@ -648,11 +648,24 @@ if ! is_traefik_running; then
     fi
 fi
 
-# Check and create traefik_proxy network
+# Check and create traefik_proxy network (safe for existing sites)
+echo -e "${BLUE}🌐 Checking Docker network configuration...${NC}"
+
+# Check if traefik_proxy network exists
 if ! docker network ls | grep -q traefik_proxy; then
-    echo "Creating traefik_proxy network..."
-    docker network create traefik_proxy
+    echo -e "${BLUE}Creating traefik_proxy network...${NC}"
+    docker network create traefik_proxy --driver bridge
+    echo -e "${GREEN}✅ Created traefik_proxy network${NC}"
+else
+    # Network exists, verify it's accessible (don't remove it!)
+    if docker network inspect traefik_proxy >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ traefik_proxy network is healthy${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Network exists but can't be inspected${NC}"
+        echo -e "${YELLOW}⚠️  Manual fix may be needed: docker network rm traefik_proxy && docker network create traefik_proxy${NC}"
+    fi
 fi
+echo ""
 
 # Check and configure Traefik
 if ! is_traefik_running; then
@@ -832,14 +845,53 @@ EOF
 # Generate docker-compose
 generate_docker_compose "$safe_site_name" "$site_name" "$use_ssl" "$erpnext_version"
 
-# Start containers
+# Start containers with network fix
 echo -e "${GREEN}Starting your minimal Frappe/ERPNext site...${NC}"
 DOCKER_COMPOSE_CMD=$(detect_docker_compose)
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Failed to detect docker compose command${NC}"
     exit 1
 fi
+
+# Verify network exists before starting containers
+if ! docker network ls | grep -q traefik_proxy; then
+    echo -e "${YELLOW}⚠️  traefik_proxy network missing, recreating...${NC}"
+    docker network create traefik_proxy --driver bridge
+fi
+
+# Start containers
+echo -e "${BLUE}🚀 Starting containers...${NC}"
 $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+
+# Check if containers started successfully
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Containers started successfully${NC}"
+    
+    # Verify network connectivity
+    sleep 5
+    echo -e "${BLUE}🔍 Verifying network connectivity...${NC}"
+    
+    # Check if containers are connected to traefik_proxy
+    CONNECTED=$(docker network inspect traefik_proxy -f '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null | grep -o "${safe_site_name}-app")
+    
+    if [ -n "$CONNECTED" ]; then
+        echo -e "${GREEN}✅ Containers properly connected to traefik_proxy network${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Reconnecting containers to network...${NC}"
+        docker network connect traefik_proxy ${safe_site_name}-app 2>/dev/null
+    fi
+else
+    echo -e "${RED}❌ Failed to start containers${NC}"
+    echo -e "${YELLOW}Checking for common issues...${NC}"
+    
+    # Check if it's a network issue
+    if ! docker network inspect traefik_proxy >/dev/null 2>&1; then
+        echo -e "${RED}Network issue detected. Fixing...${NC}"
+        docker network create traefik_proxy --driver bridge
+        echo -e "${YELLOW}Retrying container start...${NC}"
+        $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+    fi
+fi
 
 # Ensure Frappe apps are available in the mounted directory
 echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"

@@ -27,6 +27,8 @@ echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}     Traefik Local Environment Setup Script    ${NC}"
 echo -e "${BLUE}===============================================${NC}"
 echo ""
+echo -e "${GREEN}✅ Includes automatic fix for net::ERR_NETWORK_CHANGED errors${NC}"
+echo ""
 
 # Function to check if a port is in use
 is_port_in_use() {
@@ -81,12 +83,45 @@ if docker ps --filter "name=traefik" --format "{{.Names}}" | grep -q "traefik"; 
     sleep 2
 fi
 
-# Create traefik_proxy network if it doesn't exist
+# Check and create traefik_proxy network (safe for existing sites)
+echo -e "${BLUE}🌐 Checking Docker network configuration...${NC}"
+
+# Check if traefik_proxy network exists
 if ! docker network ls | grep -q traefik_proxy; then
     echo -e "${GREEN}Creating traefik_proxy network...${NC}"
-    docker network create traefik_proxy
+    docker network create traefik_proxy --driver bridge
+    echo -e "${GREEN}✅ Created traefik_proxy network${NC}"
 else
-    echo -e "${GREEN}✅ traefik_proxy network already exists${NC}"
+    # Network exists, verify it's accessible (don't remove it!)
+    if docker network inspect traefik_proxy >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ traefik_proxy network is healthy and ready${NC}"
+    else
+        echo -e "${RED}⚠️  Network exists but appears corrupted${NC}"
+        echo -e "${YELLOW}   This requires manual intervention to avoid breaking existing sites${NC}"
+        read -p "   Remove and recreate network? This will temporarily disconnect all sites (y/n): " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            # Store running containers
+            RUNNING_CONTAINERS=$(docker ps --filter "network=traefik_proxy" --format "{{.Names}}")
+            
+            # Disconnect and remove
+            CONNECTED=$(docker network inspect traefik_proxy -f '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null)
+            for container in $CONNECTED; do
+                docker network disconnect -f traefik_proxy "$container" 2>/dev/null
+            done
+            docker network rm traefik_proxy 2>/dev/null
+            
+            # Recreate
+            docker network create traefik_proxy --driver bridge
+            
+            # Reconnect
+            for container in $RUNNING_CONTAINERS; do
+                docker network connect traefik_proxy "$container" 2>/dev/null
+            done
+            echo -e "${GREEN}✅ Network fixed and containers reconnected${NC}"
+        else
+            echo -e "${YELLOW}   Skipping network fix. You may need to fix this manually.${NC}"
+        fi
+    fi
 fi
 
 # Create Traefik directories

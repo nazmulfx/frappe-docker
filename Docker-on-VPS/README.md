@@ -2,6 +2,21 @@
 
 A comprehensive collection of scripts to automatically deploy Frappe/ERPNext with Docker on VPS/cloud servers, supporting both HTTP and HTTPS configurations with Cloudflare integration and automatic SSL certificate management.
 
+## ⚠️ Network Error Fix
+
+✅ **Automatic Prevention:** Scripts only create the network if missing - they **never remove working networks**.
+
+**If you have a broken network** (existing sites can't connect):
+```bash
+# Run the manual fix from project root
+cd frappe-docker
+sudo ./fix-traefik-network.sh
+```
+
+This will safely fix the network and reconnect all your sites.
+
+---
+
 ## 📁 Available Scripts
 
 ### Main Deployment Script
