@@ -289,7 +289,7 @@
                                 <div class="btn-group btn-group-sm" role="group">
                                     
                                     {% if 'Up' in container.status %}
-                                        <button class="btn btn-warning btn-sm" onclick="confirmContainerAction('{{ container.name }}', 'stop')" title="Stop" 
+                                        <button class="btn btn-warning btn-sm" onclick="containerAction('{{ container.name }}', 'stop')" title="Stop" 
                                                 data-bs-toggle="tooltip" data-bs-placement="top">
                                             <i class="bi bi-stop-fill"></i>
                                         </button>
@@ -308,7 +308,7 @@
                                         <i class="bi bi-file-text"></i>
                                     </button>
                                     
-                                    <button class="btn btn-danger btn-sm" onclick="confirmContainerAction('{{ container.name }}', 'remove')" title="Remove" 
+                                    <button class="btn btn-danger btn-sm" onclick="containerAction('{{ container.name }}', 'remove')" title="Remove" 
                                             data-bs-toggle="tooltip" data-bs-placement="top">
                                         <i class="bi bi-trash"></i>
                                     </button>
@@ -358,28 +358,6 @@
     </div>
 </div>
 
-<!-- Confirmation Modal -->
-<div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
-    <div class="modal-dialog model-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p id="confirmationMessage">Are you sure you want to perform this action?</p>
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle-fill"></i> 
-                    <span id="confirmationWarning">This action cannot be undone.</span>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmActionBtn">Confirm</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block custom_js %}
@@ -452,18 +430,6 @@ async function containerAction(containerName, action) {
     }
 }
 
-// Confirmation dialog for stop/remove actions
-async function confirmContainerAction(containerName, action) {
-    const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
-    document.getElementById('confirmationMessage').textContent = `Are you sure you want to ${action} container "${containerName}"?`;
-    document.getElementById('confirmationWarning').textContent = `This action cannot be undone.`;
-    document.getElementById('confirmActionBtn').textContent = `Confirm ${action}`;
-    document.getElementById('confirmActionBtn').onclick = () => {
-        modal.hide();
-        containerAction(containerName, action);
-    };
-    modal.show();
-}
 
 // Load container logs
 async function loadLogs(containerName) {
