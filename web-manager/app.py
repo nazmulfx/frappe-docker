@@ -2469,14 +2469,14 @@ def run_site_creation_task(task_id, domain_name, erpnext_version, environment, s
         
         # Update task status
         site_creation_tasks[task_id]['status'] = 'running'
-        site_creation_tasks[task_id]['progress'] = 10
+        site_creation_tasks[task_id]['progress'] = 2
         site_creation_tasks[task_id]['message'] = 'Starting site creation...'
         
         # Log the site creation attempt
         logger.info(f"Creating new site: {site_name} ({domain_name}) with ERPNext {erpnext_version} in {environment} environment")
         
         # Update progress
-        site_creation_tasks[task_id]['progress'] = 20
+        site_creation_tasks[task_id]['progress'] = 5
         site_creation_tasks[task_id]['message'] = 'Creating expect automation script...'
         site_creation_tasks[task_id]['output'] = ''  # Initialize output
         
@@ -2526,7 +2526,7 @@ expect eof
             os.chmod(expect_file, 0o755)
             
             # Update progress
-            site_creation_tasks[task_id]['progress'] = 30
+            site_creation_tasks[task_id]['progress'] = 20
             site_creation_tasks[task_id]['message'] = 'Running site generation script...'
             
             # Execute expect script with real-time output capture
@@ -2542,8 +2542,8 @@ expect eof
             )
             
             # Update progress while running
-            site_creation_tasks[task_id]['progress'] = 50
-            site_creation_tasks[task_id]['message'] = 'Installing Frappe/ERPNext... This may take 5-15 minutes...'
+            site_creation_tasks[task_id]['progress'] = 25
+            site_creation_tasks[task_id]['message'] = 'Installing Frappe/ERPNext... This may take 5 minutes...'
             
             # Read output line by line in real-time
             output_lines = []
@@ -2554,16 +2554,25 @@ expect eof
                     # Update task with latest output (keep last 100 lines for performance)
                     site_creation_tasks[task_id]['output'] = '\n'.join(output_lines[-100:])
                     
-                    # Update progress based on output keywords
-                    if 'Pulling' in line or 'Downloading' in line:
-                        site_creation_tasks[task_id]['progress'] = 40
+                    # Get current progress to ensure it never goes backward
+                    current_progress = site_creation_tasks[task_id]['progress']
+                    
+                    # Update progress based on output keywords (only increase, never decrease)
+                    if ('Pulling' in line or 'Downloading' in line or 'Download' in line) and current_progress < 45:
+                        site_creation_tasks[task_id]['progress'] = 35
                         site_creation_tasks[task_id]['message'] = 'Downloading Docker images...'
-                    elif 'Building' in line or 'Creating' in line:
-                        site_creation_tasks[task_id]['progress'] = 60
+                    elif ('Building' in line or 'Built' in line) and current_progress < 55:
+                        site_creation_tasks[task_id]['progress'] = 40
+                        site_creation_tasks[task_id]['message'] = 'Building Docker images...'
+                    elif ('Creating' in line and 'container' in line.lower()) and current_progress < 65:
+                        site_creation_tasks[task_id]['progress'] = 50
                         site_creation_tasks[task_id]['message'] = 'Creating containers...'
-                    elif 'Starting' in line or 'Started' in line:
-                        site_creation_tasks[task_id]['progress'] = 75
+                    elif ('Starting' in line or 'Started' in line) and current_progress < 75:
+                        site_creation_tasks[task_id]['progress'] = 55
                         site_creation_tasks[task_id]['message'] = 'Starting containers...'
+                    elif ('done' in line.lower() or 'complete' in line.lower()) and current_progress < 85:
+                        site_creation_tasks[task_id]['progress'] = 65
+                        site_creation_tasks[task_id]['message'] = 'Finalizing setup...'
             
             # Wait for process to complete
             process.wait()

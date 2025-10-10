@@ -245,12 +245,7 @@
                         </li>
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="console-panel-tab" data-bs-toggle="tab" data-bs-target="#console-panel" type="button" role="tab" aria-controls="console-panel" aria-selected="false">
-                                <i class="bi bi-terminal"></i> Terminal Access
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="ssh-panel-tab" data-bs-toggle="tab" data-bs-target="#ssh-panel" type="button" role="tab" aria-controls="ssh-panel" aria-selected="false">
-                                <i class="bi bi-shield-lock"></i> SSH Access
+                                <i class="bi bi-terminal"></i> Access To Container
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -259,13 +254,8 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="bench-logs-tab" data-bs-toggle="tab" data-bs-target="#bench-logs-panel" type="button" role="tab" aria-controls="bench-logs-panel" aria-selected="false">
-                                <i class="bi bi-file-text"></i> Bench Logs
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="operation-log-tab" data-bs-toggle="tab" data-bs-target="#operation-log-panel" type="button" role="tab" aria-controls="operation-log-panel" aria-selected="false">
-                                <i class="bi bi-journal-text"></i> Operation Log
+                            <button class="nav-link" id="logs-operations-tab" data-bs-toggle="tab" data-bs-target="#logs-operations-panel" type="button" role="tab" aria-controls="logs-operations-panel" aria-selected="false">
+                                <i class="bi bi-journal-text"></i> Logs & Operations
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -367,6 +357,11 @@
                                             <div class="d-grid gap-2">
                                                 <button class="btn btn-outline-info w-100 app-operation-btn" id="list-apps-btn">
                                                     <i class="bi bi-list"></i> List Apps
+                                                </button>
+                                            </div>
+                                            <div class="d-grid gap-2">
+                                                <button class="btn btn-outline-warning w-100 app-operation-btn" id="fix-apps-txt-btn">
+                                                    <i class="bi bi-tools"></i> Fix apps.txt
                                                 </button>
                                             </div>
                                             <div class="d-grid gap-2">
@@ -605,144 +600,160 @@
                             </div>
                         </div>
 
-                        <!-- Bench Logs Tab -->
-                        <div class="tab-pane fade" id="bench-logs-panel" role="tabpanel">
-                            <!-- Container Selection for Logs -->
-                            <div class="row mb-3">
-                                <div class="col-md-4">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-primary text-white">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-server"></i> Select Container
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <select class="form-select form-select-lg" id="logs-container-select">
-                                                <option value="">-- Choose a container --</option>
-                                                {% for project_name, project_containers in container_groups.items() %}
-                                                    <optgroup label="{{ project_name }}">
-                                                        {% for container in project_containers %}
-                                                            {% if container.service_type == 'App Server' %}
-                                                                <option value="{{ container.name }}">{{ container.name }}</option>
-                                                            {% endif %}
+                        <!-- Logs & Operations Panel Tab -->
+                        <div class="tab-pane fade" id="logs-operations-panel" role="tabpanel">
+                            <ul class="nav nav-pills nav-fill mb-3" id="logsOperationsTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="bench-logs-subtab" data-bs-toggle="pill" data-bs-target="#bench-logs-content" type="button" role="tab" aria-controls="bench-logs-content" aria-selected="true">
+                                        <i class="bi bi-file-text"></i> Bench Logs
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="operation-log-subtab" data-bs-toggle="pill" data-bs-target="#operation-log-content" type="button" role="tab" aria-controls="operation-log-content" aria-selected="false">
+                                        <i class="bi bi-journal-text"></i> Operation Log
+                                    </button>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content" id="logsOperationsTabsContent">
+                                <!-- Bench Logs Sub-Tab -->
+                                <div class="tab-pane fade show active" id="bench-logs-content" role="tabpanel">
+                                    <!-- Container Selection for Logs -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-primary text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-server"></i> Select Container
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <select class="form-select form-select-lg" id="logs-container-select">
+                                                        <option value="">-- Choose a container --</option>
+                                                        {% for project_name, project_containers in container_groups.items() %}
+                                                            <optgroup label="{{ project_name }}">
+                                                                {% for container in project_containers %}
+                                                                    {% if container.service_type == 'App Server' %}
+                                                                        <option value="{{ container.name }}">{{ container.name }}</option>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </optgroup>
                                                         {% endfor %}
-                                                    </optgroup>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-5">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-success text-white">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-file-earmark-text"></i> Select Log File
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="input-group input-group-lg">
-                                                <select class="form-select" id="bench-log-file-select">
-                                                    <option value="">Select a log file...</option>
-                                                </select>
-                                                <button class="btn btn-outline-secondary" type="button" id="refresh-log-files-btn" title="Refresh Log Files">
-                                                    <i class="bi bi-bootstrap-reboot"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-warning text-dark">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-speedometer2"></i> Lines Limit
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <select class="form-select form-select-lg" id="log-lines-limit">
-                                                <option value="50">Last 50 lines</option>
-                                                <option value="100" selected>Last 100 lines</option>
-                                                <option value="200">Last 200 lines</option>
-                                                <option value="500">Last 500 lines</option>
-                                                <option value="1000">Last 1000 lines</option>
-                                                <option value="all">All lines (slow)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Log Viewer -->
-                            <div class="row">
-                                <div class="col-12">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-file-text"></i> Log Viewer
-                                            </h6>
-                                            <div class="btn-group" role="group">
-                                                <button class="btn btn-sm btn-outline-light" id="view-log-btn">
-                                                    <i class="bi bi-eye"></i> View Log
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-light" id="download-log-btn">
-                                                    <i class="bi bi-download"></i> Download
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-light" id="clear-log-viewer-btn">
-                                                    <i class="bi bi-trash"></i> Clear View
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="card-body p-0">
-                                            <div id="bench-log-content" class="operation-log" style="background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace; padding: 15px; min-height: 400px; max-height: 600px; overflow-y: auto;">
-                                                <div class="text-muted text-center py-5">
-                                                    <i class="bi bi-info-circle"></i> Select a container, log file, and line limit, then click "View Log"
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="card-footer bg-light">
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <small class="text-muted">
-                                                        <i class="bi bi-info-circle me-1"></i>
-                                                        <span id="log-info">No log loaded</span>
-                                                    </small>
+                                        <div class="col-md-5">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-success text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-file-earmark-text"></i> Select Log File
+                                                    </h6>
                                                 </div>
-                                                <div class="col-md-6 text-end">
-                                                    <small class="text-muted">
-                                                        <span id="log-lines-count">0 lines</span>
-                                                    </small>
+                                                <div class="card-body">
+                                                    <div class="input-group input-group-lg">
+                                                        <select class="form-select" id="bench-log-file-select">
+                                                            <option value="">Select a log file...</option>
+                                                        </select>
+                                                        <button class="btn btn-outline-secondary" type="button" id="refresh-log-files-btn" title="Refresh Log Files">
+                                                            <i class="bi bi-bootstrap-reboot"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-warning text-dark">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-speedometer2"></i> Lines Limit
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <select class="form-select form-select-lg" id="log-lines-limit">
+                                                        <option value="50">Last 50 lines</option>
+                                                        <option value="100" selected>Last 100 lines</option>
+                                                        <option value="200">Last 200 lines</option>
+                                                        <option value="500">Last 500 lines</option>
+                                                        <option value="1000">Last 1000 lines</option>
+                                                        <option value="all">All lines (slow)</option>
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
 
-                        </div>
-
-                        <!-- Operation Log Tab -->
-                        <div class="tab-pane fade" id="operation-log-panel" role="tabpanel">
-                            <div class="row">
-                                <div class="col-12">
-                                    <!-- Operation Log -->
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-journal-text"></i> Operation Log
-                                            </h6>
-                                            <div>
-                                                <button class="btn btn-sm btn-outline-light" id="clear-log-btn">
-                                                    <i class="bi bi-trash"></i> Clear
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-light" id="refresh-log-btn">
-                                                    <i class="bi bi-arrow-clockwise"></i> Refresh
-                                                </button>
+                                    <!-- Log Viewer -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-file-text"></i> Bench Log Viewer
+                                                    </h6>
+                                                    <div class="btn-group" role="group">
+                                                        <button class="btn btn-sm btn-outline-light" id="view-log-btn">
+                                                            <i class="bi bi-eye"></i> View Log
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-light" id="download-log-btn">
+                                                            <i class="bi bi-download"></i> Download
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-light" id="clear-log-viewer-btn">
+                                                            <i class="bi bi-trash"></i> Clear View
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="card-body p-0">
+                                                    <div id="bench-log-content" class="operation-log" style="background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace; padding: 15px; min-height: 400px; max-height: 600px; overflow-y: auto;">
+                                                        <div class="text-muted text-center py-5">
+                                                            <i class="bi bi-info-circle"></i> Select a container, log file, and line limit, then click "View Log"
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="card-footer bg-light">
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <small class="text-muted">
+                                                                <i class="bi bi-info-circle me-1"></i>
+                                                                <span id="log-info">No log loaded</span>
+                                                            </small>
+                                                        </div>
+                                                        <div class="col-md-6 text-end">
+                                                            <small class="text-muted">
+                                                                <span id="log-lines-count">0 lines</span>
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="card-body p-0">
-                                            <div id="operation-log" class="operation-log">
-                                                <div class="text-muted text-center py-3">
-                                                    <i class="bi bi-info-circle"></i> Select a container and perform operations to see logs here
+                                    </div>
+                                </div>
+                                
+                                <!-- Operation Log Sub-Tab -->
+                                <div class="tab-pane fade" id="operation-log-content" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-journal-text"></i> Operation Log
+                                                    </h6>
+                                                    <div>
+                                                        <button class="btn btn-sm btn-outline-light" id="clear-log-btn">
+                                                            <i class="bi bi-trash"></i> Clear
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-light" id="refresh-log-btn">
+                                                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="card-body p-0">
+                                                    <div id="operation-log" class="operation-log">
+                                                        <div class="text-muted text-center py-3">
+                                                            <i class="bi bi-info-circle"></i> Select a container and perform operations to see logs here
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -751,12 +762,17 @@
                             </div>
                         </div>
 
-                        <!-- Console Panel Tab -->
+                        <!-- Access To Container Panel Tab -->
                         <div class="tab-pane fade" id="console-panel" role="tabpanel">
                             <ul class="nav nav-pills nav-fill mb-3" id="terminalTabs" role="tablist">
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link active" id="terminal-console-tab" data-bs-toggle="pill" data-bs-target="#terminal-console" type="button" role="tab" aria-controls="terminal-console" aria-selected="true">
-                                        <i class="bi bi-terminal"></i> Terminal Console
+                                        <i class="bi bi-terminal"></i> Web Terminal
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="ssh-access-tab" data-bs-toggle="pill" data-bs-target="#ssh-access" type="button" role="tab" aria-controls="ssh-access" aria-selected="false">
+                                        <i class="bi bi-shield-lock"></i> SSH Access
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
@@ -767,10 +783,11 @@
                             </ul>
                             
                             <div class="tab-content" id="terminalTabsContent">
+                                <!-- Web Terminal Tab -->
                                 <div class="tab-pane fade show active" id="terminal-console" role="tabpanel">
                                     <div class="container-selector mb-3">
                                         <label for="container-select" class="form-label fw-bold">
-                                            <i class="bi bi-terminal"></i> Select Container for Terminal Access
+                                            <i class="bi bi-terminal"></i> Select Container for Web Terminal
                                         </label>
                                         <select class="form-select form-select-lg" id="container-select">
                                             <option value="">-- Choose a container --</option>
@@ -785,7 +802,7 @@
                                             {% endfor %}
                                         </select>
                                         <div class="form-text">
-                                            <i class="bi bi-info-circle"></i> Select a container to access its terminal for advanced operations
+                                            <i class="bi bi-info-circle"></i> Select a container to access its web terminal for command execution
                                         </div>
                                     </div>
                                     
@@ -793,7 +810,7 @@
                                         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                                             <div>
                                                 <i class="bi bi-terminal-fill me-2"></i>
-                                                <span id="terminal-title">AWS Console-like Terminal</span>
+                                                <span id="terminal-title">Web Terminal Console</span>
                                             </div>
                                             <div>
                                                 <button class="btn btn-sm btn-outline-light" id="terminal-clear-btn">
@@ -803,6 +820,164 @@
                                         </div>
                                         <div class="card-body p-0">
                                             <div id="terminal-container" class="terminal-container"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- SSH Access Tab -->
+                                <div class="tab-pane fade" id="ssh-access" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header bg-primary text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-shield-lock me-2"></i> Temporary SSH Access Setup
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <form id="temp-ssh-form">
+                                                        <div class="mb-3">
+                                                            <label for="temp-container-select" class="form-label">
+                                                                <i class="bi bi-terminal"></i> Select Container
+                                                            </label>
+                                                            <select class="form-select" id="temp-container-select">
+                                                                <option value="">-- Choose a container --</option>
+                                                                {% for project_name, project_containers in container_groups.items() %}
+                                                                    <optgroup label="{{ project_name }}">
+                                                                        {% for container in project_containers %}
+                                                                            {% if container.service_type == 'App Server' %}
+                                                                                <option value="{{ container.name }}">{{ container.name }}</option>
+                                                                            {% endif %}
+                                                                        {% endfor %}
+                                                                    </optgroup>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-username" class="form-label">
+                                                                <i class="bi bi-person"></i> SSH Username
+                                                            </label>
+                                                            <input type="text" class="form-control" id="temp-username" value="frappe" placeholder="e.g., frappe, root, ubuntu">
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-duration" class="form-label">
+                                                                <i class="bi bi-clock"></i> Access Duration
+                                                            </label>
+                                                            <select class="form-select" id="temp-duration">
+                                                                <option value="1">1 Hour</option>
+                                                                <option value="6">6 Hours</option>
+                                                                <option value="24" selected>24 Hours</option>
+                                                                <option value="72">3 Days</option>
+                                                                <option value="168">1 Week</option>
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-port" class="form-label">
+                                                                <i class="bi bi-ethernet"></i> SSH Port (Auto-assigned if empty)
+                                                            </label>
+                                                            <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
+                                                            <div class="form-text">Leave empty for auto-assignment</div>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-description" class="form-label">
+                                                                <i class="bi bi-chat-text"></i> Description (Optional)
+                                                            </label>
+                                                            <input type="text" class="form-control" id="temp-description" placeholder="e.g., Development access, Debug session">
+                                                        </div>
+                                                        
+                                                        <div class="d-grid gap-2">
+                                                            <button type="submit" class="btn btn-success">
+                                                                <i class="bi bi-key"></i> Generate Temporary Access
+                                                            </button>
+                                                            <button type="button" class="btn btn-outline-info" id="check-ssh-status">
+                                                                <i class="bi bi-check-circle"></i> Check SSH Status
+                                                            </button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header bg-success text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-info-circle"></i> SSH Connection Details
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div id="access-info" class="alert alert-info">
+                                                        <i class="bi bi-info-circle"></i> No active SSH access configured
+                                                    </div>
+                                                    
+                                                    <div id="ssh-connection-details" style="display: none;">
+                                                        <h6><i class="bi bi-terminal"></i> SSH Connection Details:</h6>
+                                                        <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace;">
+                                                            <div id="ssh-host-info"></div>
+                                                            <div id="ssh-port-info"></div>
+                                                            <div id="ssh-username-info"></div>
+                                                            <div id="ssh-key-info"></div>
+                                                        </div>
+                                                        
+                                                        <h6><i class="bi bi-download"></i> Download SSH Key:</h6>
+                                                        <div class="d-grid gap-2">
+                                                            <button class="btn btn-outline-primary" id="download-private-key">
+                                                                <i class="bi bi-download"></i> Download Private Key (.pem)
+                                                            </button>
+                                                            <button class="btn btn-outline-secondary" id="copy-ssh-command">
+                                                                <i class="bi bi-clipboard"></i> Copy SSH Command
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="mt-3">
+                                                        <button class="btn btn-outline-danger btn-sm" id="revoke-access" style="display: none;">
+                                                            <i class="bi bi-x-circle"></i> Revoke Access
+                                                        </button>
+                                                        <button class="btn btn-outline-warning btn-sm" id="extend-access" style="display: none;">
+                                                            <i class="bi bi-clock"></i> Extend Access
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row mt-3">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header bg-warning text-dark">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-list-check"></i> Active SSH Sessions
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="table-responsive">
+                                                        <table class="table table-striped" id="ssh-sessions-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Container</th>
+                                                                    <th>Username</th>
+                                                                    <th>Port</th>
+                                                                    <th>Created</th>
+                                                                    <th>Expires</th>
+                                                                    <th>Status</th>
+                                                                    <th>Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="ssh-sessions-tbody">
+                                                                <tr>
+                                                                    <td colspan="7" class="text-center text-muted">No active SSH sessions</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -879,164 +1054,6 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- SSH Panel Tab -->
-                        <div class="tab-pane fade" id="ssh-panel" role="tabpanel">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-shield-lock me-2"></i> Temporary SSH Access Setup
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <form id="temp-ssh-form">
-                                                <div class="mb-3">
-                                                    <label for="temp-container-select" class="form-label">
-                                                        <i class="bi bi-terminal"></i> Select Container
-                                                    </label>
-                                                    <select class="form-select" id="temp-container-select">
-                                                        <option value="">-- Choose a container --</option>
-                                                        {% for project_name, project_containers in container_groups.items() %}
-                                                            <optgroup label="{{ project_name }}">
-                                                                {% for container in project_containers %}
-                                                                    {% if container.service_type == 'App Server' %}
-                                                                        <option value="{{ container.name }}">{{ container.name }}</option>
-                                                                    {% endif %}
-                                                                {% endfor %}
-                                                            </optgroup>
-                                                        {% endfor %}
-                                                    </select>
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-username" class="form-label">
-                                                        <i class="bi bi-person"></i> SSH Username
-                                                    </label>
-                                                    <input type="text" class="form-control" id="temp-username" value="frappe" placeholder="e.g., frappe, root, ubuntu">
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-duration" class="form-label">
-                                                        <i class="bi bi-clock"></i> Access Duration
-                                                    </label>
-                                                    <select class="form-select" id="temp-duration">
-                                                        <option value="1">1 Hour</option>
-                                                        <option value="6">6 Hours</option>
-                                                        <option value="24" selected>24 Hours</option>
-                                                        <option value="72">3 Days</option>
-                                                        <option value="168">1 Week</option>
-                                                    </select>
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-port" class="form-label">
-                                                        <i class="bi bi-ethernet"></i> SSH Port (Auto-assigned if empty)
-                                                    </label>
-                                                    <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
-                                                    <div class="form-text">Leave empty for auto-assignment</div>
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-description" class="form-label">
-                                                        <i class="bi bi-chat-text"></i> Description (Optional)
-                                                    </label>
-                                                    <input type="text" class="form-control" id="temp-description" placeholder="e.g., Development access, Debug session">
-                                                </div>
-                                                
-                                                <div class="d-grid gap-2">
-                                                    <button type="submit" class="btn btn-success">
-                                                        <i class="bi bi-key"></i> Generate Temporary Access
-                                                    </button>
-                                                    <button type="button" class="btn btn-outline-info" id="check-ssh-status">
-                                                        <i class="bi bi-check-circle"></i> Check SSH Status
-                                                    </button>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-info-circle"></i> Access Information
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div id="access-info" class="alert alert-info">
-                                                <i class="bi bi-info-circle"></i> No active SSH access configured
-                                            </div>
-                                            
-                                            <div id="ssh-connection-details" style="display: none;">
-                                                <h6><i class="bi bi-terminal"></i> SSH Connection Details:</h6>
-                                                <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace;">
-                                                    <div id="ssh-host-info"></div>
-                                                    <div id="ssh-port-info"></div>
-                                                    <div id="ssh-username-info"></div>
-                                                    <div id="ssh-key-info"></div>
-                                                </div>
-                                                
-                                                <h6><i class="bi bi-download"></i> Download SSH Key:</h6>
-                                                <div class="d-grid gap-2">
-                                                    <button class="btn btn-outline-primary" id="download-private-key">
-                                                        <i class="bi bi-download"></i> Download Private Key (.pem)
-                                                    </button>
-                                                    <button class="btn btn-outline-secondary" id="copy-ssh-command">
-                                                        <i class="bi bi-clipboard"></i> Copy SSH Command
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="mt-3">
-                                                <button class="btn btn-outline-danger btn-sm" id="revoke-access" style="display: none;">
-                                                    <i class="bi bi-x-circle"></i> Revoke Access
-                                                </button>
-                                                <button class="btn btn-outline-warning btn-sm" id="extend-access" style="display: none;">
-                                                    <i class="bi bi-clock"></i> Extend Access
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="row mt-3">
-                                <div class="col-12">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-list-check"></i> Active SSH Sessions
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="table-responsive">
-                                                <table class="table table-striped" id="ssh-sessions-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Container</th>
-                                                            <th>Username</th>
-                                                            <th>Port</th>
-                                                            <th>Created</th>
-                                                            <th>Expires</th>
-                                                            <th>Status</th>
-                                                            <th>Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody id="ssh-sessions-tbody">
-                                                        <tr>
-                                                            <td colspan="7" class="text-center text-muted">No active SSH sessions</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
                                             </div>
                                         </div>
                                     </div>
@@ -1365,7 +1382,7 @@
                         <!-- New Site Creation Panel Tab -->
                         <div class="tab-pane fade" id="new-site-panel" role="tabpanel">
                             <div class="row">
-                                <div class="col-md-8 mx-auto">
+                                <div class="col-md-4">
                                     <div class="frappe-cloud-card">
                                         <div class="card-header bg-primary text-white">
                                             <h5 class="mb-0">
@@ -1384,13 +1401,13 @@
                                                             <input type="radio" class="btn-check" name="environment" id="env-local" value="local" checked>
                                                             <label class="btn btn-outline-primary" for="env-local">
                                                                 <i class="bi bi-laptop"></i> Docker-Local<br>
-                                                                <small class="text-muted">Development & Testing</small>
+                                                                <small>Development & Testing</small>
                                                             </label>
                                                             
                                                             <input type="radio" class="btn-check" name="environment" id="env-vps" value="vps">
                                                             <label class="btn btn-outline-success" for="env-vps">
                                                                 <i class="bi bi-cloud-upload"></i> Docker-on-VPS<br>
-                                                                <small class="text-muted">Production Deployment</small>
+                                                                <small>Production Deployment</small>
                                                             </label>
                                                         </div>
                                                     </div>
@@ -1440,7 +1457,7 @@
                                                         <li>Required containers (frappe, db, redis) will be created and started</li>
                                                         <li>Traefik reverse proxy will be configured automatically</li>
                                                         <li>Database and admin passwords will be auto-generated securely</li>
-                                                        <li>Site will be accessible via your domain once setup completes (5-15 minutes)</li>
+                                                        <li>Site will be accessible via your domain once setup completes (5 minutes)</li>
                                                     </ul>
                                                 </div>
 
@@ -1456,30 +1473,54 @@
                                             </form>
                                         </div>
                                     </div>
+                                </div>
+                                <div class="col-md-8">
 
                                     <!-- Site Creation Progress -->
-                                    <div class="frappe-cloud-card mt-4" id="site-creation-progress" style="display: none;">
+                                    <div class="frappe-cloud-card" id="site-creation-progress" style="display: none;">
                                         <div class="card-header bg-success text-white">
                                             <h6 class="mb-0">
-                                                <i class="bi bi-hourglass-split"></i> Site Creation Progress
+                                                <i class="bi bi-gear-fill spin-icon"></i> Site Creation in Progress
                                             </h6>
                                         </div>
                                         <div class="card-body">
-                                            <div class="progress mb-3" style="height: 25px;">
+                                            <div class="progress mb-3" style="height: 30px; border-radius: 10px; box-shadow: inset 0 1px 2px rgba(0,0,0,.1);">
                                                 <div class="progress-bar progress-bar-striped progress-bar-animated" 
                                                      role="progressbar" id="creation-progress-bar" 
-                                                     style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                                     style="width: 0%; font-weight: 600; font-size: 14px; transition: width 0.5s ease-in-out;" 
+                                                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                                     0%
                                                 </div>
                                             </div>
-                                            <div id="creation-status" class="mb-2">
-                                                <strong>Status:</strong> <span id="creation-status-text">Initializing...</span>
+                                            <div id="creation-status" class="mb-3 p-3 bg-light rounded">
+                                                <div class="d-flex align-items-center">
+                                                    <i class="bi bi-info-circle text-primary me-2"></i>
+                                                    <strong>Status:</strong> <span id="creation-status-text" class="ms-2 text-muted">Initializing...</span>
+                                                </div>
                                             </div>
                                             <div class="operation-log" id="site-creation-log" style="max-height: 400px;">
                                                 <div class="text-muted">Waiting for process to start...</div>
                                             </div>
                                         </div>
                                     </div>
+                                    <style>
+                                        @keyframes spin {
+                                            from { transform: rotate(0deg); }
+                                            to { transform: rotate(360deg); }
+                                        }
+                                        .spin-icon {
+                                            animation: spin 2s linear infinite;
+                                            display: inline-block;
+                                        }
+                                        .progress {
+                                            background-color: #e9ecef;
+                                        }
+                                        .progress-bar {
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                        }
+                                    </style>
                                 </div>
                             </div>
                         </div>
@@ -1603,6 +1644,7 @@ class FrappeAppManager {
         document.getElementById('uninstall-app-btn')?.addEventListener('click', () => this.uninstallApp());
         document.getElementById('update-app-btn')?.addEventListener('click', () => this.updateApp());
         document.getElementById('list-apps-btn')?.addEventListener('click', () => this.listApps());
+        document.getElementById('fix-apps-txt-btn')?.addEventListener('click', () => this.fixAppsTxt());
         document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
         document.getElementById('supervisor-status-btn')?.addEventListener('click', () => this.supervisorStatus());
         document.getElementById('bench-build-btn')?.addEventListener('click', () => this.benchBuild());
@@ -2106,6 +2148,156 @@ class FrappeAppManager {
         }
         const command = 'bench list-apps';
         await this.executeCommand(command, 'Listing installed apps');
+    }
+    
+    async fixAppsTxt() {
+        if (!this.selectedContainer) {
+            this.showError('Please select a container first');
+            return;
+        }
+        
+        const result = await Swal.fire({
+            title: 'Fix apps.txt File',
+            html: `
+                <div class="text-start">
+                    <p>This will fix common issues with apps.txt file:</p>
+                    <ul>
+                        <li>Fix concatenated app names (e.g., "frappefrappe")</li>
+                        <li>Remove duplicate entries</li>
+                        <li>Ensure proper line breaks</li>
+                        <li>Format file correctly</li>
+                    </ul>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Note:</strong> This will overwrite your apps.txt file.
+                        Make sure you have the correct apps installed.
+                    </div>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Fix It',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#ffc107'
+        });
+        
+        if (!result.isConfirmed) return;
+        
+        try {
+            this.addToLog('info', 'Fixing apps.txt file...');
+            
+            // Create Python script to fix the file
+            const fixScript = `
+# Fix apps.txt file
+import re
+import os
+
+apps_txt_path = '/home/frappe/frappe-bench/sites/apps.txt'
+
+# Read current content
+with open(apps_txt_path, 'r') as f:
+    content = f.read()
+
+print("Current apps.txt content:")
+print(content)
+print("\\n" + "="*50 + "\\n")
+
+# Known common app names
+common_apps = ['frappe', 'erpnext', 'hrms', 'payments', 'wiki', 'helpdesk', 
+               'ecommerce', 'insights', 'webshop', 'builder', 'crm', 'lms',
+               'healthcare', 'education', 'agriculture', 'non_profit']
+
+# Parse and fix
+fixed_apps = []
+lines = content.replace('\\r\\n', '\\n').replace('\\r', '\\n').split('\\n')
+
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    
+    # Check for concatenated apps
+    for app in common_apps:
+        duplicated = app + app
+        if duplicated in line:
+            # Found duplication like 'frappefrappe'
+            line = line.replace(duplicated, app + '\\n' + app)
+    
+    # Add fixed line(s)
+    for subline in line.split('\\n'):
+        subline = subline.strip()
+        if subline:
+            fixed_apps.append(subline)
+
+# Remove duplicates while preserving order
+seen = set()
+unique_apps = []
+for app in fixed_apps:
+    if app and app not in seen:
+        seen.add(app)
+        unique_apps.append(app)
+
+# Write back with proper formatting
+if unique_apps:
+    with open(apps_txt_path, 'w') as f:
+        for app in unique_apps:
+            f.write(app + '\\n')
+    
+    print("✅ Fixed apps.txt successfully!")
+    print("\\nFixed apps list:")
+    for app in unique_apps:
+        print(f"  - {app}")
+else:
+    print("⚠️ No apps found in apps.txt")
+`;
+
+            const command = `python3 -c "${fixScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+            
+            const response = await fetchWithLoader('/api/frappe/execute-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCSRFToken()
+                },
+                body: JSON.stringify({
+                    container: this.selectedContainer,
+                    command: command
+                })
+            }, 'Fixing apps.txt...');
+            
+            const data = await response.json();
+            
+            if (data.output && !data.error) {
+                this.addToLog('success', '✅ apps.txt file has been fixed!');
+                this.addToLog('info', data.output);
+                
+                // Reload the apps list
+                await this.loadAppsForContainer();
+                
+                Swal.fire({
+                    title: 'Success!',
+                    text: 'apps.txt file has been fixed successfully.',
+                    icon: 'success',
+                    confirmButtonColor: '#28a745'
+                });
+            } else {
+                this.addToLog('error', `Failed to fix apps.txt: ${data.error || 'Unknown error'}`);
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Failed to fix apps.txt file. Check the logs for details.',
+                    icon: 'error',
+                    confirmButtonColor: '#dc3545'
+                });
+            }
+        } catch (error) {
+            this.addToLog('error', `Error fixing apps.txt: ${error.message}`);
+            Swal.fire({
+                title: 'Error',
+                text: error.message,
+                icon: 'error',
+                confirmButtonColor: '#dc3545'
+            });
+        }
     }
     
     async restartBench() {
@@ -3968,7 +4160,7 @@ class FrappeAppManager {
                     <hr>
                     <p class="text-warning mb-0">
                         <i class="bi bi-exclamation-triangle"></i> 
-                        This process may take 5-15 minutes. Please do not close this page.
+                        This process may take 5 minutes. Please do not close this page.
                     </p>
                 </div>
             `,
@@ -3990,9 +4182,11 @@ class FrappeAppManager {
         if (progressSection) {
             progressSection.style.display = 'block';
             progressBar.style.width = '10%';
+            progressBar.setAttribute('aria-valuenow', 10);
             progressBar.textContent = '10%';
+            progressBar.classList.add('bg-info');
             statusText.textContent = 'Starting site creation...';
-            creationLog.innerHTML = '<div class="text-info">Initializing site creation process...</div>';
+            creationLog.innerHTML = '<div class="text-info"><i class="bi bi-hourglass-split"></i> Initializing site creation process...</div>';
         }
 
         try {
@@ -4029,12 +4223,26 @@ class FrappeAppManager {
                         if (statusData.success && statusData.task) {
                             const task = statusData.task;
                             
-                            // Update progress bar
-                            progressBar.style.width = `${task.progress}%`;
-                            progressBar.textContent = `${task.progress}%`;
+                            // Update progress bar with validation
+                            const progress = Math.min(100, Math.max(0, parseInt(task.progress) || 0));
+                            progressBar.style.width = `${progress}%`;
+                            progressBar.setAttribute('aria-valuenow', progress);
+                            progressBar.textContent = `${progress}%`;
+                            
+                            // Update progress bar color based on completion
+                            if (progress < 33) {
+                                progressBar.classList.remove('bg-warning', 'bg-success');
+                                progressBar.classList.add('bg-info');
+                            } else if (progress < 75) {
+                                progressBar.classList.remove('bg-info', 'bg-success');
+                                progressBar.classList.add('bg-warning');
+                            } else {
+                                progressBar.classList.remove('bg-info', 'bg-warning');
+                                progressBar.classList.add('bg-success');
+                            }
                             
                             // Update status text
-                            statusText.textContent = task.message;
+                            statusText.textContent = task.message || 'Processing...';
                             
                             // Update log with real-time output
                             if (creationLog) {
@@ -4100,8 +4308,8 @@ class FrappeAppManager {
                                                 .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
                                                 .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
                                                 .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
-                                                .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
-                                                .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                .replace(/🚀/g, '<i class="bi bi-rocket-takeoff text-success"></i>')
+                                                .replace(/🐳/g, '<i class="bi bi-code-square text-info"></i>')
                                                 .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
                                                 .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
                                                 .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
@@ -4114,11 +4322,11 @@ class FrappeAppManager {
                                                 .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
                                                 .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
                                                 .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
-                                                .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
-                                                .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                .replace(/💾/g, '<i class="bi bi-database-fill text-info"></i>')
+                                                .replace(/🗂️|🗂/g, '<i class="bi bi-folder2-open text-warning"></i>')
                                                 .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
                                                 .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
-                                                .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                                .replace(/🔥/g, '<i class="bi bi-brightness-high-fill text-danger"></i>');
                                             
                                             return formattedLine;
                                         })
@@ -4243,7 +4451,9 @@ class FrappeAppManager {
                                 
                                 // Format credentials with icons
                                 let formattedCredentials = '';
+                                let rawCredentials = '';
                                 if (task.result.credentials) {
+                                    rawCredentials = task.result.credentials;
                                     formattedCredentials = task.result.credentials
                                         .split('\n')
                                         .map(line => {
@@ -4271,16 +4481,44 @@ class FrappeAppManager {
                                             </div>
                                         ` : ''}
                                         ${formattedCredentials ? `
-                                            <div class="alert alert-info text-start">
-                                                <h6><i class="bi bi-shield-lock"></i> Credentials:</h6>
-                                                <div style="font-family: monospace; line-height: 1.8;">
+                                            <div class="alert alert-info text-start position-relative">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="mb-0"><i class="bi bi-shield-lock"></i> Credentials:</h6>
+                                                    <button class="btn btn-sm btn-outline-primary copy-credentials-btn" 
+                                                            onclick="window.copyCredentialsToClipboard()"
+                                                            title="Copy credentials to clipboard">
+                                                        <i class="bi bi-clipboard"></i> Copy
+                                                    </button>
+                                                </div>
+                                                <div id="credentials-text" style="font-family: monospace; line-height: 1.8;" data-raw-credentials="${this.escapeHtml(rawCredentials)}">
                                                     ${formattedCredentials}
                                                 </div>
                                             </div>
                                         ` : ''}
                                     `,
                                     icon: 'success',
-                                    width: '600px'
+                                    width: '600px',
+                                    didOpen: () => {
+                                        // Setup copy functionality
+                                        window.copyCredentialsToClipboard = () => {
+                                            const credentialsDiv = document.getElementById('credentials-text');
+                                            const rawText = credentialsDiv.getAttribute('data-raw-credentials');
+                                            
+                                            // Copy to clipboard
+                                            navigator.clipboard.writeText(rawText).then(() => {
+                                                // Visual feedback
+                                                const copyBtn = document.querySelector('.copy-credentials-btn');
+                                                const originalHTML = copyBtn.innerHTML;
+                                                copyBtn.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Copied!';
+                                                copyBtn.classList.remove('btn-outline-primary');
+                                                copyBtn.classList.add('btn-success');
+                                                
+                                                
+                                            }).catch(err => {
+                                                console.error('Failed to copy:', err);
+                                            });
+                                        };
+                                    }
                                 });
                                 
                                 // Reset form
@@ -4331,8 +4569,8 @@ class FrappeAppManager {
                                                     .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
                                                     .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
                                                     .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
-                                                    .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
-                                                    .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                    .replace(/🚀/g, '<i class="bi bi-rocket-takeoff text-success"></i>')
+                                                    .replace(/🐳/g, '<i class="bi bi-code-square text-info"></i>')
                                                     .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
                                                     .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
                                                     .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
@@ -4342,11 +4580,14 @@ class FrappeAppManager {
                                                     .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
                                                     .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
                                                     .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
-                                                    .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
-                                                    .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                    .replace(/💾/g, '<i class="bi bi-database-fill text-info"></i>')
+                                                    .replace(/🗂️|🗂/g, '<i class="bi bi-folder2-open text-warning"></i>')
                                                     .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
                                                     .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
-                                                    .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                                    .replace(/🔥/g, '<i class="bi bi-brightness-high-fill text-danger"></i>')
+                                                    .replace(/📋/g, '<i class="bi bi-clipboard-fill text-info"></i>')
+                                                    .replace(/📝/g, '<i class="bi bi-pencil-square text-primary"></i>')
+                                                    .replace(/📁/g, '<i class="bi bi-folder-fill text-warning"></i>');
                                             })
                                             .join('<br>');
                                         
