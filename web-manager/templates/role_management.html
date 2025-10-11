@@ -1,0 +1,611 @@
+{% extends "base.html" %}
+
+{% block title %}Role & Permission Management - Web Docker Manager{% endblock %}
+
+{% block custom_css %}
+.role-card {
+    transition: transform 0.2s;
+}
+.role-card:hover {
+    transform: translateY(-2px);
+}
+.stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 15px;
+}
+.permission-badge {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.permission-badge:hover {
+    transform: scale(1.05);
+}
+.permission-category {
+    border-left: 4px solid #667eea;
+    padding-left: 1rem;
+    margin-bottom: 1.5rem;
+}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-shield-check"></i> Role & Permission Management</h2>
+            <div class="btn-group">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createRoleModal">
+                    <i class="bi bi-plus-circle"></i> Create Role
+                </button>
+                <button class="btn btn-outline-info" onclick="viewAllPermissions()">
+                    <i class="bi bi-list-check"></i> View All Permissions
+                </button>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <h3>{{ roles|length }}</h3>
+                        <p class="mb-0">Total Roles</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <h3>{{ roles|selectattr('is_system')|list|length }}</h3>
+                        <p class="mb-0">System Roles</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <h3>{{ roles|rejectattr('is_system')|list|length }}</h3>
+                        <p class="mb-0">Custom Roles</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <h3>{{ permissions|length }}</h3>
+                        <p class="mb-0">Total Permissions</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Roles Grid -->
+        <div class="row">
+            {% for role in roles %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card role-card h-100" data-role-id="{{ role.id }}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h5 class="mb-1">
+                                    <i class="bi bi-shield-check"></i> {{ role.display_name }}
+                                </h5>
+                                <small class="text-muted">{{ role.name }}</small>
+                            </div>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                                    <i class="bi bi-three-dots-vertical"></i>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="viewRoleDetails({{ role.id }}, '{{ role.display_name }}')">
+                                        <i class="bi bi-eye"></i> View Details
+                                    </a></li>
+                                    {% if not role.is_system %}
+                                    <li><a class="dropdown-item" href="#" onclick="editRole({{ role.id }})">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="editRolePermissions({{ role.id }}, '{{ role.display_name }}')">
+                                        <i class="bi bi-key"></i> Edit Permissions
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteRole({{ role.id }}, '{{ role.display_name }}')">
+                                        <i class="bi bi-trash"></i> Delete
+                                    </a></li>
+                                    {% else %}
+                                    <li><a class="dropdown-item disabled">
+                                        <i class="bi bi-lock"></i> System Role (Protected)
+                                    </a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            {% if role.is_system %}
+                                <span class="badge bg-primary">
+                                    <i class="bi bi-lock"></i> System Role
+                                </span>
+                            {% else %}
+                                <span class="badge bg-info">
+                                    <i class="bi bi-pencil"></i> Custom Role
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <p class="text-muted small mb-3">{{ role.description }}</p>
+
+                        <!-- Permissions Count -->
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-key text-primary me-2"></i>
+                            <strong>{{ role.permissions|length }}</strong>
+                            <span class="ms-1 text-muted">permissions</span>
+                        </div>
+
+                        <!-- Users with this role -->
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-people text-success me-2"></i>
+                            <strong>{{ role.users|length }}</strong>
+                            <span class="ms-1 text-muted">users</span>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-primary btn-sm" onclick="viewRoleDetails({{ role.id }}, '{{ role.display_name }}')">
+                                <i class="bi bi-eye"></i> View
+                            </button>
+                            {% if not role.is_system %}
+                            <button class="btn btn-outline-info btn-sm" onclick="editRolePermissions({{ role.id }}, '{{ role.display_name }}')">
+                                <i class="bi bi-key"></i> Permissions
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if not roles %}
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-shield-check text-muted" style="font-size: 3rem;"></i>
+                <h5 class="mt-3">No roles found</h5>
+                <p class="text-muted">Initialize the RBAC system to create default roles.</p>
+                <button class="btn btn-primary" onclick="alert('Run: python3 init_rbac.py')">
+                    <i class="bi bi-arrow-clockwise"></i> Initialize RBAC
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Create Role Modal -->
+<div class="modal fade" id="createRoleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle"></i> Create New Role
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createRoleForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="role_name" class="form-label">Role Name (Internal)</label>
+                                <input type="text" class="form-control" id="role_name" name="name" required placeholder="e.g., custom_operator">
+                                <small class="text-muted">Lowercase, use underscores</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="role_display_name" class="form-label">Display Name</label>
+                                <input type="text" class="form-control" id="role_display_name" name="display_name" required placeholder="e.g., Custom Operator">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="role_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="role_description" name="description" rows="2" placeholder="Brief description of this role's purpose"></textarea>
+                    </div>
+                    
+                    <h6 class="mb-3">Select Permissions</h6>
+                    <div id="permissionsSelection">
+                        {% for category, perms in permissions.items() %}
+                        <div class="permission-category mb-3">
+                            <h6 class="text-primary text-capitalize mb-2">
+                                <i class="bi bi-folder"></i> {{ category }}
+                            </h6>
+                            <div class="row">
+                                {% for perm in perms %}
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="permission_ids" value="{{ perm.id }}" id="perm_{{ perm.id }}">
+                                        <label class="form-check-label" for="perm_{{ perm.id }}">
+                                            <strong>{{ perm.display_name }}</strong>
+                                            <br><small class="text-muted">{{ perm.description }}</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check"></i> Create Role
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Role Permissions Modal -->
+<div class="modal fade" id="editPermissionsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-key"></i> Edit Permissions - <span id="edit_perm_role_name"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editPermissionsForm">
+                <input type="hidden" id="edit_perm_role_id">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        Select the permissions this role should have. Changes apply to all users with this role.
+                    </div>
+                    
+                    <div id="editPermissionsSelection">
+                        {% for category, perms in permissions.items() %}
+                        <div class="permission-category mb-3">
+                            <h6 class="text-primary text-capitalize mb-2">
+                                <i class="bi bi-folder"></i> {{ category }}
+                            </h6>
+                            <div class="row">
+                                {% for perm in perms %}
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input edit-perm-checkbox" type="checkbox" name="permission_ids" value="{{ perm.id }}" id="edit_perm_{{ perm.id }}">
+                                        <label class="form-check-label" for="edit_perm_{{ perm.id }}">
+                                            <strong>{{ perm.display_name }}</strong>
+                                            <br><small class="text-muted">{{ perm.description }}</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check"></i> Save Permissions
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Role Details Modal -->
+<div class="modal fade" id="roleDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield-check"></i> Role Details - <span id="detail_role_name"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="roleDetailsContent">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View All Permissions Modal -->
+<div class="modal fade" id="allPermissionsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-list-check"></i> All System Permissions
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% for category, perms in permissions.items() %}
+                <div class="permission-category mb-4">
+                    <h5 class="text-primary text-capitalize mb-3">
+                        <i class="bi bi-folder-fill"></i> {{ category|title }} Permissions
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Permission</th>
+                                    <th>Description</th>
+                                    <th>Internal Name</th>
+                                    <th>Used By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for perm in perms %}
+                                <tr>
+                                    <td><strong>{{ perm.display_name }}</strong></td>
+                                    <td><small class="text-muted">{{ perm.description }}</small></td>
+                                    <td><code>{{ perm.name }}</code></td>
+                                    <td>
+                                        {% set perm_obj = permissions_objs|selectattr('id', 'equalto', perm.id)|first %}
+                                        {% if perm_obj %}
+                                            <span class="badge bg-secondary">{{ perm_obj.roles|length }} roles</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block custom_js %}
+<script>
+// Create Role
+document.getElementById('createRoleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const permissionIds = [];
+    
+    // Get all checked permission IDs
+    document.querySelectorAll('input[name="permission_ids"]:checked').forEach(checkbox => {
+        permissionIds.push(parseInt(checkbox.value));
+    });
+    
+    const data = {
+        name: formData.get('name').toLowerCase().replace(/\s+/g, '_'),
+        display_name: formData.get('display_name'),
+        description: formData.get('description'),
+        permission_ids: permissionIds
+    };
+    
+    fetch('/api/roles', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('createRoleModal')).hide();
+            setTimeout(() => location.reload(), 300);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while creating the role');
+    });
+});
+
+// Edit Role Permissions
+function editRolePermissions(roleId, roleName) {
+    document.getElementById('edit_perm_role_id').value = roleId;
+    document.getElementById('edit_perm_role_name').textContent = roleName;
+    
+    // Fetch role details
+    fetch(`/api/roles`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const role = data.roles.find(r => r.id === roleId);
+                if (role) {
+                    // Uncheck all first
+                    document.querySelectorAll('.edit-perm-checkbox').forEach(cb => cb.checked = false);
+                    
+                    // Check permissions the role has
+                    role.permissions.forEach(permName => {
+                        // Find checkbox by permission name
+                        const allPerms = {{ permissions|tojson }};
+                        for (let category in allPerms) {
+                            const perm = allPerms[category].find(p => p.name === permName);
+                            if (perm) {
+                                const checkbox = document.getElementById('edit_perm_' + perm.id);
+                                if (checkbox) checkbox.checked = true;
+                            }
+                        }
+                    });
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('editPermissionsModal'));
+                    modal.show();
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while loading role permissions');
+        });
+}
+
+// Handle Edit Permissions Form Submission
+document.getElementById('editPermissionsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const roleId = document.getElementById('edit_perm_role_id').value;
+    const permissionIds = [];
+    
+    // Get all checked permission IDs
+    document.querySelectorAll('.edit-perm-checkbox:checked').forEach(checkbox => {
+        permissionIds.push(parseInt(checkbox.value));
+    });
+    
+    fetch(`/api/roles/${roleId}/permissions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ permission_ids: permissionIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editPermissionsModal')).hide();
+            setTimeout(() => location.reload(), 300);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating permissions');
+    });
+});
+
+// View Role Details
+function viewRoleDetails(roleId, roleName) {
+    document.getElementById('detail_role_name').textContent = roleName;
+    
+    const modal = new bootstrap.Modal(document.getElementById('roleDetailsModal'));
+    modal.show();
+    
+    // Fetch role details
+    fetch(`/api/roles`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const role = data.roles.find(r => r.id === roleId);
+                if (role) {
+                    const allPerms = {{ permissions|tojson }};
+                    let html = `
+                        <div class="mb-3">
+                            <h6>Role Information</h6>
+                            <table class="table">
+                                <tr><th>Name:</th><td>${role.display_name}</td></tr>
+                                <tr><th>Internal Name:</th><td><code>${role.name}</code></td></tr>
+                                <tr><th>Description:</th><td>${role.description}</td></tr>
+                                <tr><th>Type:</th><td>${role.is_system ? '<span class="badge bg-primary">System Role</span>' : '<span class="badge bg-info">Custom Role</span>'}</td></tr>
+                            </table>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Permissions (${role.permissions.length})</h6>
+                    `;
+                    
+                    // Group permissions by category
+                    const permsByCategory = {};
+                    role.permissions.forEach(permName => {
+                        for (let category in allPerms) {
+                            const perm = allPerms[category].find(p => p.name === permName);
+                            if (perm) {
+                                if (!permsByCategory[category]) permsByCategory[category] = [];
+                                permsByCategory[category].push(perm);
+                            }
+                        }
+                    });
+                    
+                    for (let category in permsByCategory) {
+                        html += `
+                            <div class="permission-category mb-3">
+                                <h6 class="text-primary text-capitalize">${category}</h6>
+                                <div class="d-flex flex-wrap gap-2">
+                        `;
+                        permsByCategory[category].forEach(perm => {
+                            html += `<span class="badge bg-secondary permission-badge">${perm.display_name}</span>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                    
+                    html += `</div>`;
+                    
+                    document.getElementById('roleDetailsContent').innerHTML = html;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('roleDetailsContent').innerHTML = `
+                <div class="alert alert-danger">Error loading role details</div>
+            `;
+        });
+}
+
+// Delete Role
+function deleteRole(roleId, roleName) {
+    if (confirm(`Are you sure you want to delete the role "${roleName}"? This action cannot be undone.`)) {
+        fetch(`/api/roles/${roleId}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while deleting the role');
+        });
+    }
+}
+
+// View All Permissions
+function viewAllPermissions() {
+    const modal = new bootstrap.Modal(document.getElementById('allPermissionsModal'));
+    modal.show();
+}
+</script>
+{% endblock %}
+
+

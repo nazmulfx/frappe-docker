@@ -22,7 +22,9 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 from config import Config
-from models import db, User, AuditLog, create_default_admin
+from models import db, User, AuditLog, Role, Permission, create_default_admin, init_rbac_system
+from permissions import require_permission, require_any_permission, require_role, get_current_user, check_permission
+from middleware import init_middleware
 
 
 
@@ -46,9 +48,10 @@ db.init_app(app)
 app.register_blueprint(ssh_bp)
 app.register_blueprint(ssh_pages_bp)
 
+# Initialize RBAC Middleware - filters all requests through permission checking
+init_middleware(app)
 
-# Context processor to make CSRF token available in all templates
-@app.context_processor
+# Context processor to make CSRF token and user info available in all templates
 @app.context_processor
 def inject_csrf_token():
     try:
@@ -56,6 +59,20 @@ def inject_csrf_token():
     except RuntimeError:
         # No request context, return empty token
         return dict(csrf_token=None)
+
+@app.context_processor
+def inject_user_permissions():
+    """Make current user and their permissions available in all templates"""
+    try:
+        current_user = get_current_user()
+        if current_user:
+            return {
+                'current_user': current_user,
+                'has_permission': lambda perm: current_user.has_permission(perm)
+            }
+        return {'current_user': None, 'has_permission': lambda perm: False}
+    except:
+        return {'current_user': None, 'has_permission': lambda perm: False}
 
 # Rate limiting storage
 login_attempts = {}
@@ -1136,15 +1153,47 @@ def toggle_2fa(user_id):
 # User Management Routes (Admin Only)
 @app.route('/users')
 @require_auth
-@require_admin
+@require_permission('view_users')
 def user_management():
     """User management panel"""
     users = User.query.all()
-    return render_template('user_management.html', users=users)
+    roles = Role.query.all()
+    permissions = Permission.query.all()
+    
+    # Check if current user can manage roles
+    current_user = get_current_user()
+    can_manage_roles = current_user.has_permission('manage_roles') if current_user else False
+    
+    return render_template('user_management.html', 
+                         users=users, 
+                         roles=roles, 
+                         permissions=permissions,
+                         can_manage_roles=can_manage_roles)
+
+@app.route('/roles')
+@require_auth
+@require_permission('manage_roles')
+def role_management():
+    """Role and permission management panel"""
+    roles = Role.query.all()
+    permissions_objs = Permission.query.all()
+    
+    # Group permissions by category
+    permissions = {}
+    for perm in permissions_objs:
+        category = perm.category or 'other'
+        if category not in permissions:
+            permissions[category] = []
+        permissions[category].append(perm.to_dict())
+    
+    return render_template('role_management.html', 
+                         roles=roles, 
+                         permissions=permissions,
+                         permissions_objs=permissions_objs)
 
 @app.route('/api/users', methods=['POST'])
 @require_auth
-@require_admin
+@require_permission('create_users')
 @require_csrf
 def create_user():
     """Create new user"""
@@ -1153,6 +1202,7 @@ def create_user():
     email = data.get('email', '').strip()
     password = data.get('password', '')
     is_admin = data.get('is_admin', False)
+    role_ids = data.get('role_ids', [])
     
     # Validate input
     if not username or not email or not password:
@@ -1173,24 +1223,52 @@ def create_user():
         username=username,
         email=email,
         is_admin=is_admin,
-        is_active=True,
+        is_active=data.get('is_active', True),  # Default to True if not specified
         totp_enabled=False  # 2FA disabled by default
     )
     user.set_password(password)
     
     db.session.add(user)
+    db.session.flush()  # Flush to get user ID
+    
+    # Assign roles
+    if role_ids:
+        for role_id in role_ids:
+            role = Role.query.get(role_id)
+            if role:
+                user.roles.append(role)
+    else:
+        # If no roles assigned and not admin, assign viewer role by default
+        if not is_admin:
+            viewer_role = Role.query.filter_by(name='viewer').first()
+            if viewer_role:
+                user.roles.append(viewer_role)
+    
+    # If user is admin, ensure they have admin role
+    if is_admin:
+        admin_role = Role.query.filter_by(name='admin').first()
+        if admin_role and admin_role not in user.roles:
+            user.roles.append(admin_role)
+    
     db.session.commit()
     
     # Log user creation
     client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
     admin_username = session.get('username', 'unknown')
-    log_audit("user_created", admin_username, client_ip, f"Created user: {username}", "success", session.get('user_id'))
+    role_names = [r.display_name for r in user.roles]
+    log_audit("user_created", admin_username, client_ip, 
+              f"Created user: {username} with roles: {', '.join(role_names) if role_names else 'None'}", 
+              "success", session.get('user_id'))
     
-    return jsonify({'success': True, 'message': 'User created successfully'})
+    return jsonify({
+        'success': True, 
+        'message': 'User created successfully',
+        'user': user.to_dict()
+    })
 
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @require_auth
-@require_admin
+@require_permission('edit_users')
 @require_csrf
 def update_user(user_id):
     """Update user"""
@@ -1218,16 +1296,30 @@ def update_user(user_id):
                 return jsonify({'success': False, 'message': 'Email already exists'})
             user.email = new_email
     
+    # Handle password update
     if 'password' in data and data['password']:
-        if len(data['password']) < 8:
-            return jsonify({'success': False, 'message': 'Password must be at least 8 characters long'})
-        user.set_password(data['password'])
+        new_password = data['password'].strip() if isinstance(data['password'], str) else data['password']
+        if new_password:  # Only update if not empty after stripping
+            if len(new_password) < 8:
+                return jsonify({'success': False, 'message': 'Password must be at least 8 characters long'})
+            user.set_password(new_password)
+            logger.info(f"Password updated for user: {user.username}")
+            # Log password change
+            log_audit("password_changed", session.get('username', 'unknown'), 
+                     request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr),
+                     f"Password changed for user: {user.username}", "success", session.get('user_id'))
     
     if 'is_admin' in data:
         user.is_admin = data['is_admin']
     
     if 'is_active' in data:
         user.is_active = data['is_active']
+    
+    if 'totp_enabled' in data:
+        user.totp_enabled = data['totp_enabled']
+        # If disabling 2FA, clear the TOTP secret
+        if not data['totp_enabled']:
+            user.totp_secret = None
     
     db.session.commit()
     
@@ -1240,7 +1332,7 @@ def update_user(user_id):
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @require_auth
-@require_admin
+@require_permission('delete_users')
 @require_csrf
 def delete_user(user_id):
     """Delete user"""
@@ -1267,7 +1359,7 @@ def delete_user(user_id):
 
 @app.route('/api/users/<int:user_id>/unlock', methods=['POST'])
 @require_auth
-@require_admin
+@require_permission('edit_users')
 @require_csrf
 def unlock_user(user_id):
     """Unlock user account"""
@@ -1284,6 +1376,220 @@ def unlock_user(user_id):
     log_audit("user_unlocked", admin_username, client_ip, f"Unlocked user: {user.username}", "success", session.get('user_id'))
     
     return jsonify({'success': True, 'message': 'User unlocked successfully'})
+
+# Role Management Routes
+@app.route('/api/roles', methods=['GET'])
+@require_auth
+@require_permission('manage_roles')
+def get_roles():
+    """Get all roles"""
+    roles = Role.query.all()
+    return jsonify({
+        'success': True,
+        'roles': [role.to_dict() for role in roles]
+    })
+
+@app.route('/api/permissions', methods=['GET'])
+@require_auth
+@require_permission('manage_roles')
+def get_permissions():
+    """Get all permissions"""
+    permissions = Permission.query.all()
+    # Group permissions by category
+    grouped = {}
+    for perm in permissions:
+        category = perm.category or 'other'
+        if category not in grouped:
+            grouped[category] = []
+        grouped[category].append(perm.to_dict())
+    
+    return jsonify({
+        'success': True,
+        'permissions': grouped
+    })
+
+@app.route('/api/users/<int:user_id>/roles', methods=['GET'])
+@require_auth
+@require_permission('view_users')
+def get_user_roles(user_id):
+    """Get user's roles and status"""
+    user = User.query.get_or_404(user_id)
+    return jsonify({
+        'success': True,
+        'roles': [role.to_dict() for role in user.roles],
+        'permissions': [p.name for p in user.get_all_permissions()],
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'is_active': user.is_active,
+            'totp_enabled': user.totp_enabled,
+            'is_admin': user.is_admin
+        }
+    })
+
+@app.route('/api/users/<int:user_id>/roles', methods=['POST'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def assign_user_roles(user_id):
+    """Assign roles to user"""
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    role_ids = data.get('role_ids', [])
+    
+    # Clear existing roles
+    user.roles.clear()
+    
+    # Assign new roles
+    for role_id in role_ids:
+        role = Role.query.get(role_id)
+        if role:
+            user.roles.append(role)
+    
+    db.session.commit()
+    
+    # Log role assignment
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    role_names = [role.display_name for role in user.roles]
+    log_audit("roles_assigned", admin_username, client_ip, 
+              f"Assigned roles to {user.username}: {', '.join(role_names)}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Roles assigned successfully',
+        'roles': [role.to_dict() for role in user.roles]
+    })
+
+@app.route('/api/roles/<int:role_id>/permissions', methods=['POST'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def update_role_permissions(role_id):
+    """Update permissions for a role"""
+    role = Role.query.get_or_404(role_id)
+    
+    # Prevent modifying system roles
+    if role.is_system:
+        return jsonify({
+            'success': False,
+            'message': 'Cannot modify system roles. Create a custom role instead.'
+        }), 403
+    
+    data = request.json
+    permission_ids = data.get('permission_ids', [])
+    
+    # Clear existing permissions
+    role.permissions.clear()
+    
+    # Assign new permissions
+    for perm_id in permission_ids:
+        permission = Permission.query.get(perm_id)
+        if permission:
+            role.permissions.append(permission)
+    
+    db.session.commit()
+    
+    # Log permission update
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    log_audit("role_permissions_updated", admin_username, client_ip, 
+              f"Updated permissions for role: {role.display_name}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Role permissions updated successfully',
+        'role': role.to_dict()
+    })
+
+@app.route('/api/roles', methods=['POST'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def create_role():
+    """Create a new custom role"""
+    data = request.json
+    name = data.get('name', '').strip().lower().replace(' ', '_')
+    display_name = data.get('display_name', '').strip()
+    description = data.get('description', '').strip()
+    permission_ids = data.get('permission_ids', [])
+    
+    if not name or not display_name:
+        return jsonify({
+            'success': False,
+            'message': 'Name and display name are required'
+        }), 400
+    
+    # Check if role already exists
+    if Role.query.filter_by(name=name).first():
+        return jsonify({
+            'success': False,
+            'message': 'Role with this name already exists'
+        }), 400
+    
+    # Create role
+    role = Role(
+        name=name,
+        display_name=display_name,
+        description=description,
+        is_system=False
+    )
+    
+    # Add permissions
+    for perm_id in permission_ids:
+        permission = Permission.query.get(perm_id)
+        if permission:
+            role.permissions.append(permission)
+    
+    db.session.add(role)
+    db.session.commit()
+    
+    # Log role creation
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    log_audit("role_created", admin_username, client_ip, 
+              f"Created role: {role.display_name}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Role created successfully',
+        'role': role.to_dict()
+    })
+
+@app.route('/api/roles/<int:role_id>', methods=['DELETE'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def delete_role(role_id):
+    """Delete a custom role"""
+    role = Role.query.get_or_404(role_id)
+    
+    # Prevent deleting system roles
+    if role.is_system:
+        return jsonify({
+            'success': False,
+            'message': 'Cannot delete system roles'
+        }), 403
+    
+    role_name = role.display_name
+    db.session.delete(role)
+    db.session.commit()
+    
+    # Log role deletion
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    log_audit("role_deleted", admin_username, client_ip, 
+              f"Deleted role: {role_name}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Role deleted successfully'
+    })
 
 # Audit Log Routes
 @app.route('/audit-logs')
@@ -1808,7 +2114,7 @@ def container_action_api(container_name, action):
         })
     
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'message': str(e), 'error': str(e)}), 500
 
 @app.route('/api/container/<container_name>/logs')
 @require_auth
@@ -3782,7 +4088,9 @@ def get_site_removal_status(task_id):
 
 if __name__ == '__main__':
     with app.app_context():
-        create_default_admin()
+        # Initialize database and RBAC system
+        db.create_all()
+        init_rbac_system()
     app.run(host='0.0.0.0', port=5000, debug=False)
 
 

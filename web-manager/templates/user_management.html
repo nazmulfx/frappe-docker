@@ -109,6 +109,11 @@
                                     <li><a class="dropdown-item" href="#" onclick="editUser({{ user.id }})">
                                         <i class="bi bi-pencil"></i> Edit
                                     </a></li>
+                                    {% if can_manage_roles %}
+                                    <li><a class="dropdown-item" href="#" onclick="manageUserRoles({{ user.id }}, '{{ user.username }}')">
+                                        <i class="bi bi-person-badge"></i> Manage Roles
+                                    </a></li>
+                                    {% endif %}
                                     {% if user.is_locked() %}
                                     <li><a class="dropdown-item text-warning" href="#" onclick="unlockUser({{ user.id }}, '{{ user.username }}')">
                                         <i class="bi bi-unlock"></i> Unlock
@@ -151,10 +156,25 @@
                             {% endif %}
                         </div>
 
+                        <!-- User Roles -->
+                        {% if user.roles %}
+                        <div class="mb-2">
+                            <small class="text-muted d-block mb-1"><i class="bi bi-person-badge"></i> Roles:</small>
+                            {% for role in user.roles %}
+                                <span class="badge bg-secondary me-1">{{ role.display_name }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
                         <div class="d-flex gap-2 mb-2">
                             <button class="btn btn-outline-primary btn-sm" onclick="editUser({{ user.id }})">
                                 <i class="bi bi-pencil"></i> Edit
                             </button>
+                            {% if can_manage_roles %}
+                            <button class="btn btn-outline-info btn-sm" onclick="manageUserRoles({{ user.id }}, '{{ user.username }}')">
+                                <i class="bi bi-person-badge"></i> Roles
+                            </button>
+                            {% endif %}
                             {% if user.is_locked() %}
                             <button class="btn btn-outline-warning btn-sm" onclick="unlockUser({{ user.id }}, '{{ user.username }}')">
                                 <i class="bi bi-unlock"></i> Unlock
@@ -220,24 +240,37 @@
                             <input type="password" class="form-control" id="password" name="password" required minlength="8">
                             <div class="form-text">Minimum 8 characters required</div>
                         </div>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin">
-                                    <label class="form-check-label" for="is_admin">
-                                        <i class="bi bi-shield-check"></i> Admin privileges
-                                    </label>
-                                </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                                <label class="form-check-label" for="is_active">
+                                    <i class="bi bi-check-circle"></i> Active account
+                                </label>
                             </div>
-                            <div class="col-md-6">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
-                                    <label class="form-check-label" for="is_active">
-                                        <i class="bi bi-check-circle"></i> Active account
-                                    </label>
-                                </div>
+                            <div class="form-text mt-2">
+                                <i class="bi bi-info-circle text-info"></i> <strong>Tip:</strong> Admin access is controlled through roles. Assign the <strong>"Administrator"</strong> role below for full system access.
                             </div>
                         </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-person-badge"></i> Assign Roles</label>
+                            <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                {% for role in roles %}
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" name="role_ids" value="{{ role.id }}" id="create_role_{{ role.id }}">
+                                    <label class="form-check-label" for="create_role_{{ role.id }}">
+                                        <strong>{{ role.display_name }}</strong>
+                                        {% if role.is_system %}
+                                            <span class="badge bg-primary badge-sm ms-1">System</span>
+                                        {% endif %}
+                                        <br><small class="text-muted">{{ role.description }}</small>
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <small class="text-muted">Select one or more roles. Users will have combined permissions from all assigned roles.</small>
+                        </div>
+                        
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle"></i>
                             <strong>Note:</strong> 2FA will be disabled by default. Users can enable it in their profile settings.
@@ -287,16 +320,8 @@
                             <input type="password" class="form-control" id="edit_password" name="password" minlength="8">
                             <div class="form-text">Leave blank to keep current password</div>
                         </div>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="edit_is_admin" name="is_admin">
-                                    <label class="form-check-label" for="edit_is_admin">
-                                        <i class="bi bi-shield-check"></i> Admin
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="edit_is_active" name="is_active">
                                     <label class="form-check-label" for="edit_is_active">
@@ -304,7 +329,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="edit_totp_enabled" name="totp_enabled">
                                     <label class="form-check-label" for="edit_totp_enabled">
@@ -313,12 +338,88 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="alert alert-info border-0 mb-3">
+                            <i class="bi bi-info-circle"></i> <strong>Admin Access:</strong> Use the <strong>"Administrator"</strong> role below. No need for a separate admin checkbox - role assignment controls all permissions.
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-person-badge"></i> Assign Roles</label>
+                            <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                {% for role in roles %}
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input edit-role-checkbox" type="checkbox" name="role_ids" value="{{ role.id }}" id="edit_role_{{ role.id }}">
+                                    <label class="form-check-label" for="edit_role_{{ role.id }}">
+                                        <strong>{{ role.display_name }}</strong>
+                                        {% if role.is_system %}
+                                            <span class="badge bg-primary badge-sm ms-1">System</span>
+                                        {% endif %}
+                                        <br><small class="text-muted">{{ role.description }}</small>
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <small class="text-muted">Select one or more roles. Changes will update user's permissions immediately.</small>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">
                             <span class="loading-spinner"></span>
                             <i class="bi bi-check"></i> Update User
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Roles Modal -->
+    <div class="modal fade" id="manageRolesModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-badge"></i> Manage User Roles - <span id="role_username"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="manageRolesForm">
+                    <input type="hidden" id="role_user_id" name="user_id">
+                    <div class="modal-body">
+                        <p class="text-muted">Select roles to assign to this user. Users can have multiple roles.</p>
+                        
+                        <div class="list-group" id="rolesList">
+                            {% for role in roles %}
+                            <label class="list-group-item">
+                                <div class="d-flex align-items-start">
+                                    <div class="form-check me-3">
+                                        <input class="form-check-input" type="checkbox" name="role_ids" value="{{ role.id }}" id="role_{{ role.id }}">
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <h6 class="mb-1">{{ role.display_name }}</h6>
+                                                <small class="text-muted">{{ role.description }}</small>
+                                                {% if role.is_system %}
+                                                    <span class="badge bg-secondary badge-sm ms-2">System Role</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        {% if role.permissions %}
+                                        <div class="mt-2">
+                                            <small class="text-muted"><i class="bi bi-shield-check"></i> {{ role.permissions|length }} permissions</small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Save Roles
                         </button>
                     </div>
                 </form>
@@ -343,12 +444,19 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
             submitBtn.disabled = true;
             
             const formData = new FormData(this);
+            
+            // Get selected role IDs
+            const roleIds = [];
+            document.querySelectorAll('#createUserForm input[name="role_ids"]:checked').forEach(checkbox => {
+                roleIds.push(parseInt(checkbox.value));
+            });
+            
             const data = {
                 username: formData.get('username'),
                 email: formData.get('email'),
                 password: formData.get('password'),
-                is_admin: formData.get('is_admin') === 'on',
-                is_active: formData.get('is_active') === 'on'
+                is_active: formData.get('is_active') === 'on',
+                role_ids: roleIds
             };
             
             fetch('/api/users', {
@@ -382,20 +490,47 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
 
         // Edit User
         function editUser(userId) {
-            const userCard = document.querySelector(`[data-user-id="${userId}"]`);
-            if (!userCard) return;
-            
-            const username = userCard.querySelector('h6').textContent.trim();
-            const email = userCard.querySelector('small.text-muted').textContent.trim();
-            
-            // Set form values
+            // Set user ID
             document.getElementById('edit_user_id').value = userId;
-            document.getElementById('edit_username').value = username;
-            document.getElementById('edit_email').value = email;
             
-            // Show modal
-            const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
-            modal.show();
+            // Clear password field (important - don't pre-fill passwords!)
+            document.getElementById('edit_password').value = '';
+            
+            // Fetch user details including roles and status
+            fetch(`/api/users/${userId}/roles`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.user) {
+                        // Set form values from API response
+                        document.getElementById('edit_username').value = data.user.username;
+                        document.getElementById('edit_email').value = data.user.email;
+                        
+                        // Set checkboxes for user status
+                        document.getElementById('edit_is_active').checked = data.user.is_active;
+                        document.getElementById('edit_totp_enabled').checked = data.user.totp_enabled;
+                        
+                        // Uncheck all role checkboxes first
+                        document.querySelectorAll('.edit-role-checkbox').forEach(cb => cb.checked = false);
+                        
+                        // Check roles the user has
+                        data.roles.forEach(role => {
+                            const checkbox = document.getElementById('edit_role_' + role.id);
+                            if (checkbox) {
+                                checkbox.checked = true;
+                            }
+                        });
+                        
+                        // Show modal
+                        const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+                        modal.show();
+                    } else {
+                        alert('Error loading user details');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while loading user details');
+                });
         }
 
         // Update User
@@ -411,15 +546,29 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
             
             const userId = document.getElementById('edit_user_id').value;
             const formData = new FormData(this);
+            
+            // Get selected role IDs
+            const roleIds = [];
+            document.querySelectorAll('#editUserForm input[name="role_ids"]:checked').forEach(checkbox => {
+                roleIds.push(parseInt(checkbox.value));
+            });
+            
+            // Prepare data - only include password if it's not empty
             const data = {
                 username: formData.get('username'),
                 email: formData.get('email'),
-                password: formData.get('password'),
-                is_admin: formData.get('is_admin') === 'on',
                 is_active: formData.get('is_active') === 'on',
-                totp_enabled: formData.get('totp_enabled') === 'on'
+                totp_enabled: formData.get('totp_enabled') === 'on',
+                role_ids: roleIds
             };
             
+            // Only add password if user entered one
+            const newPassword = formData.get('password');
+            if (newPassword && newPassword.trim() !== '') {
+                data.password = newPassword.trim();
+            }
+            
+            // First update user details
             fetch(`/api/users/${userId}`, {
                 method: 'PUT',
                 headers: {
@@ -429,18 +578,34 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
                 body: JSON.stringify(data)
             })
             .then(response => response.json())
-            .then(data => {
-                if (data.success) {
+            .then(result => {
+                if (result.success) {
+                    // Then update roles
+                    return fetch(`/api/users/${userId}/roles`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: JSON.stringify({ role_ids: roleIds })
+                    });
+                } else {
+                    throw new Error(result.message || 'Failed to update user');
+                }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
                     // Close modal and reload
                     bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
                     setTimeout(() => location.reload(), 300);
                 } else {
-                    alert('Error: ' + data.message);
+                    alert('Error: ' + result.message);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while updating the user');
+                alert('An error occurred while updating the user: ' + error.message);
             })
             .finally(() => {
                 // Hide loading state
@@ -496,5 +661,79 @@ document.getElementById('createUserForm').addEventListener('submit', function(e)
                 });
             }
         }
+
+        // Manage User Roles
+        function manageUserRoles(userId, username) {
+            document.getElementById('role_user_id').value = userId;
+            document.getElementById('role_username').textContent = username;
+            
+            // Fetch user's current roles
+            fetch(`/api/users/${userId}/roles`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Uncheck all roles first
+                        document.querySelectorAll('input[name="role_ids"]').forEach(checkbox => {
+                            checkbox.checked = false;
+                        });
+                        
+                        // Check roles the user has
+                        data.roles.forEach(role => {
+                            const checkbox = document.getElementById('role_' + role.id);
+                            if (checkbox) {
+                                checkbox.checked = true;
+                            }
+                        });
+                        
+                        // Show modal
+                        const modal = new bootstrap.Modal(document.getElementById('manageRolesModal'));
+                        modal.show();
+                    } else {
+                        alert('Error loading user roles: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while loading user roles');
+                });
+        }
+
+        // Handle Manage Roles Form Submission
+        document.getElementById('manageRolesForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const userId = document.getElementById('role_user_id').value;
+            const formData = new FormData(this);
+            const roleIds = [];
+            
+            // Get all checked role IDs
+            document.querySelectorAll('input[name="role_ids"]:checked').forEach(checkbox => {
+                roleIds.push(parseInt(checkbox.value));
+            });
+            
+            // Send role assignment request
+            fetch(`/api/users/${userId}/roles`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ role_ids: roleIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close modal and reload
+                    bootstrap.Modal.getInstance(document.getElementById('manageRolesModal')).hide();
+                    setTimeout(() => location.reload(), 300);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while assigning roles');
+            });
+        });
 </script>
 {% endblock %}

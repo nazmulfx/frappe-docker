@@ -11,23 +11,33 @@
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2">
             {% if 'Up' in container.Status %}
+                {% if has_permission('stop_containers') %}
                 <button class="btn btn-sm btn-warning" onclick="containerAction('{{ container.Names }}', 'stop')">
                     <i class="fas fa-stop"></i> Stop
                 </button>
+                {% endif %}
+                {% if has_permission('restart_containers') %}
                 <button class="btn btn-sm btn-info" onclick="containerAction('{{ container.Names }}', 'restart')">
                     <i class="fas fa-redo"></i> Restart
                 </button>
+                {% endif %}
             {% else %}
+                {% if has_permission('start_containers') %}
                 <button class="btn btn-sm btn-success" onclick="containerAction('{{ container.Names }}', 'start')">
                     <i class="fas fa-play"></i> Start
                 </button>
+                {% endif %}
             {% endif %}
+            {% if has_permission('view_logs') %}
             <button class="btn btn-sm btn-secondary" onclick="loadLogs('{{ container.Names }}')">
                 <i class="fas fa-file-alt"></i> View Logs
             </button>
+            {% endif %}
+            {% if has_permission('remove_containers') %}
             <button class="btn btn-sm btn-danger" onclick="containerAction('{{ container.Names }}', 'remove')">
                 <i class="fas fa-trash"></i> Remove
             </button>
+            {% endif %}
         </div>
         <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
             <i class="fas fa-sync-alt"></i> Refresh
