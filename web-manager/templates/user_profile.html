@@ -1,280 +1,271 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Profile - Secure Docker Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-    <style>
-        .profile-card {
-            transition: transform 0.2s;
-        }
-        .profile-card:hover {
-            transform: translateY(-2px);
-        }
-        .qr-code-container {
-            text-align: center;
-            margin: 1rem 0;
-        }
-        .qr-code-container img {
-            max-width: 200px;
-            margin: 0 auto;
-        }
-        .action-buttons {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .info-section {
-            background: rgba(0, 123, 255, 0.05);
-            border-left: 4px solid #007bff;
-            padding: 1.5rem;
-            margin: 1rem 0;
-            border-radius: 0 8px 8px 0;
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="bi bi-shield-lock-fill"></i> Secure Docker Manager
-            </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('index') }}">
-                    <i class="bi bi-house"></i> Dashboard
-                </a>
-                <a class="nav-link active" href="{{ url_for('user_profile') }}">
-                    <i class="bi bi-person-circle"></i> Profile
-                </a>
-                {% if session.is_admin %}
-                <a class="nav-link" href="{{ url_for('user_management') }}">
-                    <i class="bi bi-people"></i> Users
-                </a>
-                <a class="nav-link" href="{{ url_for('audit_logs') }}">
-                    <i class="bi bi-clipboard-data"></i> Audit Logs
-                </a>
-                {% endif %}
-                <a class="nav-link" href="{{ url_for('logout') }}">
-                    <i class="bi bi-box-arrow-right"></i> Logout
-                </a>
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-md-8 mx-auto">
-                <div class="card profile-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4><i class="bi bi-person-circle"></i> User Profile</h4>
-                        <div class="action-buttons">
-                            <a href="{{ url_for('edit_profile') }}" class="btn btn-outline-primary btn-sm">
-                                <i class="bi bi-pencil"></i> Edit Profile
-                            </a>
+{% block title %}User Profile - Web Docker Manager{% endblock %}
+
+{% block custom_css %}
+.profile-card {
+    transition: transform 0.2s;
+}
+.profile-card:hover {
+    transform: translateY(-2px);
+}
+.qr-code-container {
+    text-align: center;
+    margin: 1rem 0;
+}
+.qr-code-container img {
+    max-width: 200px;
+    margin: 0 auto;
+}
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.info-section {
+    background: rgba(0, 123, 255, 0.05);
+    border-left: 4px solid #007bff;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    border-radius: 0 8px 8px 0;
+}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card profile-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4><i class="bi bi-person-circle"></i> User Profile</h4>
+                <div class="action-buttons">
+                    <a href="{{ url_for('edit_profile') }}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-pencil"></i> Edit Profile
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="info-section">
+                            <h5><i class="bi bi-person"></i> Account Information</h5>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <td><strong>Username:</strong></td>
+                                    <td>{{ user.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Email:</strong></td>
+                                    <td>{{ user.email }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Role:</strong></td>
+                                    <td>
+                                        {% if user.is_admin %}
+                                            <span class="badge bg-primary">Admin</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">User</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Status:</strong></td>
+                                    <td>
+                                        {% if user.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Created:</strong></td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'Unknown' }}</td>
+                                </tr>
+                                {% if user.last_login %}
+                                <tr>
+                                    <td><strong>Last Login:</strong></td>
+                                    <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
                         </div>
                     </div>
-                    <div class="card-body">
-                        {% with messages = get_flashed_messages(with_categories=true) %}
-                            {% if messages %}
-                                {% for category, message in messages %}
-                                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                                        {{ message }}
-                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                    </div>
-                                {% endfor %}
-                            {% endif %}
-                        {% endwith %}
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="info-section">
-                                    <h5><i class="bi bi-person"></i> Account Information</h5>
-                                    <table class="table table-borderless">
-                                        <tr>
-                                            <td><strong>Username:</strong></td>
-                                            <td>{{ user.username }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Email:</strong></td>
-                                            <td>{{ user.email }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Role:</strong></td>
-                                            <td>
-                                                {% if user.is_admin %}
-                                                    <span class="badge bg-primary">Admin</span>
-                                                {% else %}
-                                                    <span class="badge bg-secondary">User</span>
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Status:</strong></td>
-                                            <td>
-                                                {% if user.is_active %}
-                                                    <span class="badge bg-success">Active</span>
-                                                {% else %}
-                                                    <span class="badge bg-danger">Inactive</span>
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Created:</strong></td>
-                                            <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'Unknown' }}</td>
-                                        </tr>
-                                        {% if user.last_login %}
-                                        <tr>
-                                            <td><strong>Last Login:</strong></td>
-                                            <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') }}</td>
-                                        </tr>
-                                        {% endif %}
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="info-section">
-                                    <h5><i class="bi bi-shield-check"></i> Security Settings</h5>
+                    <div class="col-md-6">
+                        <div class="info-section">
+                            <h5><i class="bi bi-shield-check"></i> Security Settings</h5>
+                            
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6><i class="bi bi-shield-check"></i> Two-Factor Authentication</h6>
+                                    <p class="text-muted small">
+                                        Add an extra layer of security to your account using Google Authenticator.
+                                    </p>
                                     
-                                    <div class="card">
-                                        <div class="card-body">
-                                            <h6><i class="bi bi-shield-check"></i> Two-Factor Authentication</h6>
-                                            <p class="text-muted small">
-                                                Add an extra layer of security to your account using Google Authenticator.
-                                            </p>
-                                            
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <div>
-                                                    {% if user.totp_enabled %}
-                                                        <span class="badge bg-success">Enabled</span>
-                                                    {% else %}
-                                                        <span class="badge bg-secondary">Disabled</span>
-                                                    {% endif %}
-                                                </div>
-                                                <div>
-                                                    {% if user.totp_enabled %}
-                                                        <button class="btn btn-sm btn-outline-danger" onclick="toggle2FA(false)">
-                                                            <i class="bi bi-x-circle"></i> Disable
-                                                        </button>
-                                                    {% else %}
-                                                        <button class="btn btn-sm btn-outline-success" onclick="toggle2FA(true)">
-                                                            <i class="bi bi-check-circle"></i> Enable
-                                                        </button>
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-                                            
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
                                             {% if user.totp_enabled %}
-                                            <div class="mt-3">
-                                                <small class="text-muted">
-                                                    <i class="bi bi-info-circle"></i> 
-                                                    2FA is currently enabled. Use your authenticator app to generate codes.
-                                                </small>
-                                            </div>
+                                                <span class="badge bg-success">Enabled</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Disabled</span>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            {% if user.totp_enabled %}
+                                                <button class="btn btn-sm btn-outline-danger" onclick="toggle2FA(false)">
+                                                    <i class="bi bi-x-circle"></i> Disable
+                                                </button>
+                                            {% else %}
+                                                <button class="btn btn-sm btn-outline-success" onclick="toggle2FA(true)">
+                                                    <i class="bi bi-check-circle"></i> Enable
+                                                </button>
                                             {% endif %}
                                         </div>
                                     </div>
-
-                                    {% if user.is_locked() %}
-                                    <div class="alert alert-warning mt-3">
-                                        <i class="bi bi-exclamation-triangle"></i>
-                                        <strong>Account Locked:</strong> Your account is temporarily locked due to too many failed login attempts.
+                                    
+                                    {% if user.totp_enabled %}
+                                    <div class="mt-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-info-circle"></i> 
+                                            2FA is currently enabled. Use your authenticator app to generate codes.
+                                        </small>
                                     </div>
                                     {% endif %}
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Quick Actions -->
-                        <div class="info-section">
-                            <h5><i class="bi bi-lightning"></i> Quick Actions</h5>
-                            <div class="action-buttons">
-                                <a href="{{ url_for('edit_profile') }}" class="btn btn-primary">
-                                    <i class="bi bi-pencil"></i> Edit Profile
-                                </a>
-                                {% if session.is_admin %}
-                                <a href="{{ url_for('user_management') }}" class="btn btn-outline-primary">
-                                    <i class="bi bi-people"></i> Manage Users
-                                </a>
-                                <a href="{{ url_for('audit_logs') }}" class="btn btn-outline-info">
-                                    <i class="bi bi-clipboard-data"></i> View Audit Logs
-                                </a>
-                                {% endif %}
-                                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
-                                    <i class="bi bi-house"></i> Dashboard
-                                </a>
+                            {% if user.is_locked() %}
+                            <div class="alert alert-warning mt-3">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <strong>Account Locked:</strong> Your account is temporarily locked due to too many failed login attempts.
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
 
-                <!-- 2FA Setup Modal -->
-                <div class="modal fade" id="setup2FAModal" tabindex="-1">
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Setup Two-Factor Authentication</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="alert alert-info">
-                                    <i class="bi bi-info-circle"></i>
-                                    <strong>Setup Instructions:</strong>
-                                    <ol class="mb-0 mt-2">
-                                        <li>Install Google Authenticator on your phone</li>
-                                        <li>Scan the QR code below</li>
-                                        <li>Enter the 6-digit code from the app</li>
-                                    </ol>
-                                </div>
-                                
-                                <div id="qrCodeContainer" class="qr-code-container">
-                                    <!-- QR code will be inserted here -->
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="totpCode" class="form-label">Enter 6-digit code from your authenticator app:</label>
-                                    <input type="text" class="form-control" id="totpCode" maxlength="6" placeholder="123456">
-                                </div>
-                                
-                                <div class="alert alert-warning">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                    <strong>Important:</strong> Save your recovery codes in a safe place. You'll need them if you lose access to your authenticator app.
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-primary" onclick="verifyAndEnable2FA()">Enable 2FA</button>
-                            </div>
+                <!-- Quick Actions -->
+                <div class="info-section">
+                    <h5><i class="bi bi-lightning"></i> Quick Actions</h5>
+                    <div class="action-buttons">
+                        <a href="{{ url_for('edit_profile') }}" class="btn btn-primary">
+                            <i class="bi bi-pencil"></i> Edit Profile
+                        </a>
+                        {% if session.is_admin %}
+                        <a href="{{ url_for('user_management') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-people"></i> Manage Users
+                        </a>
+                        <a href="{{ url_for('audit_logs') }}" class="btn btn-outline-info">
+                            <i class="bi bi-clipboard-data"></i> View Audit Logs
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2FA Setup Modal -->
+        <div class="modal fade" id="setup2FAModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Setup Two-Factor Authentication</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Setup Instructions:</strong>
+                            <ol class="mb-0 mt-2">
+                                <li>Install Google Authenticator on your phone</li>
+                                <li>Scan the QR code below</li>
+                                <li>Enter the 6-digit code from the app</li>
+                            </ol>
                         </div>
+                        
+                        <div id="qrCodeContainer" class="qr-code-container">
+                            <!-- QR code will be inserted here -->
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="totpCode" class="form-label">Enter 6-digit code from your authenticator app:</label>
+                            <input type="text" class="form-control" id="totpCode" maxlength="6" placeholder="123456">
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <strong>Important:</strong> Save your recovery codes in a safe place. You'll need them if you lose access to your authenticator app.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="verifyAndEnable2FA()">Enable 2FA</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function toggle2FA(enable) {
-            if (enable) {
-                // Enable 2FA
+{% block custom_js %}
+<script>
+    function toggle2FA(enable) {
+        if (enable) {
+            // Enable 2FA
+            fetch(`/api/users/{{ user.id }}/toggle-2fa`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ enable: true })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Show QR code in modal
+                    document.getElementById('qrCodeContainer').innerHTML = 
+                        `<img src="${data.qr_code}" alt="QR Code for 2FA Setup">`;
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('setup2FAModal'));
+                    modal.show();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred');
+            });
+        } else {
+            // Disable 2FA
+            if (confirm('Are you sure you want to disable 2FA? This will make your account less secure.')) {
                 fetch(`/api/users/{{ user.id }}/toggle-2fa`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': '{{ csrf_token }}'
                     },
-                    body: JSON.stringify({ enable: true })
+                    body: JSON.stringify({ enable: false })
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Show QR code in modal
-                        document.getElementById('qrCodeContainer').innerHTML = 
-                            `<img src="${data.qr_code}" alt="QR Code for 2FA Setup">`;
-                        
-                        const modal = new bootstrap.Modal(document.getElementById('setup2FAModal'));
-                        modal.show();
+                        location.reload();
                     } else {
                         alert('Error: ' + data.message);
                     }
@@ -283,46 +274,22 @@
                     console.error('Error:', error);
                     alert('An error occurred');
                 });
-            } else {
-                // Disable 2FA
-                if (confirm('Are you sure you want to disable 2FA? This will make your account less secure.')) {
-                    fetch(`/api/users/{{ user.id }}/toggle-2fa`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': '{{ csrf_token }}'
-                        },
-                        body: JSON.stringify({ enable: false })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            location.reload();
-                        } else {
-                            alert('Error: ' + data.message);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('An error occurred');
-                    });
-                }
             }
         }
+    }
 
-        function verifyAndEnable2FA() {
-            const code = document.getElementById('totpCode').value;
-            if (!code || code.length !== 6) {
-                alert('Please enter a valid 6-digit code');
-                return;
-            }
-
-            // Here you would typically verify the code with the server
-            // For now, we'll just close the modal and reload
-            const modal = bootstrap.Modal.getInstance(document.getElementById('setup2FAModal'));
-            modal.hide();
-            location.reload();
+    function verifyAndEnable2FA() {
+        const code = document.getElementById('totpCode').value;
+        if (!code || code.length !== 6) {
+            alert('Please enter a valid 6-digit code');
+            return;
         }
-    </script>
-</body>
-</html>
+
+        // Here you would typically verify the code with the server
+        // For now, we'll just close the modal and reload
+        const modal = bootstrap.Modal.getInstance(document.getElementById('setup2FAModal'));
+        modal.hide();
+        location.reload();
+    }
+</script>
+{% endblock %}
