@@ -330,19 +330,7 @@
                                         <i class="bi bi-file-text"></i>
                                     </button>
                                     {% endif %}
-                                    
-                                    {% if has_permission('remove_containers') %}
-                                    <button class="btn btn-danger btn-sm" onclick="containerAction('{{ container.name }}', 'remove')" title="Remove" 
-                                            data-bs-toggle="tooltip" data-bs-placement="top">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                    {% endif %}
-                                    
-                                    {% if not has_permission('start_containers') and not has_permission('stop_containers') and not has_permission('restart_containers') and not has_permission('view_logs') and not has_permission('remove_containers') %}
-                                    <span class="badge bg-secondary">
-                                        <i class="bi bi-eye"></i> View Only
-                                    </span>
-                                    {% endif %}
+
                                 </div>
                             </div>
                         </div>
