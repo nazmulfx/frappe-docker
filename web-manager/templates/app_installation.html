@@ -2076,9 +2076,26 @@ class FrappeAppManager {
                                 clearInterval(timerInterval);
                                 this.addToLog('success', `${description} completed successfully`);
                                 
-                                // Show completion
+                                // Show completion with clean HTML
                                 Swal.update({
                                     title: '✅ Completed Successfully!',
+                                    html: `
+                                        <div style="text-align: center; padding: 20px;">
+                                            <div class="alert alert-success" style="margin-bottom: 15px;">
+                                                <strong>${description}</strong> completed successfully!
+                                            </div>
+                                            ${task.output ? `
+                                                <details style="text-align: left;">
+                                                    <summary style="cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                                                        <strong>View Output</strong>
+                                                    </summary>
+                                                    <div style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; padding: 10px; border-radius: 5px; font-size: 12px; white-space: pre-wrap;">
+                                                        ${task.output}
+                                                    </div>
+                                                </details>
+                                            ` : ''}
+                                        </div>
+                                    `,
                                     icon: 'success',
                                     showConfirmButton: true,
                                     showCancelButton: false,
@@ -2088,9 +2105,26 @@ class FrappeAppManager {
                                 clearInterval(timerInterval);
                                 this.addToLog('error', `${description} failed: ${task.error}`);
                                 
-                                // Show error
+                                // Show error with clean HTML
                                 Swal.update({
                                     title: '❌ Task Failed',
+                                    html: `
+                                        <div style="text-align: center; padding: 20px;">
+                                            <div class="alert alert-danger" style="margin-bottom: 15px;">
+                                                <strong>Error:</strong> ${task.error || 'Unknown error'}
+                                            </div>
+                                            ${task.output ? `
+                                                <details style="text-align: left;">
+                                                    <summary style="cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                                                        <strong>View Output</strong>
+                                                    </summary>
+                                                    <div style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #ff4444; font-family: 'Courier New', monospace; padding: 10px; border-radius: 5px; font-size: 12px; white-space: pre-wrap;">
+                                                        ${task.output}
+                                                    </div>
+                                                </details>
+                                            ` : ''}
+                                        </div>
+                                    `,
                                     icon: 'error',
                                     showConfirmButton: true,
                                     showCancelButton: false,

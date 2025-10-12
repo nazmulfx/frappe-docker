@@ -12,6 +12,7 @@ import re
 import secrets
 import time
 import logging
+import shlex
 from logging.handlers import RotatingFileHandler
 import pyotp
 import base64
@@ -1866,8 +1867,10 @@ def execute_command_api():
                     current_dir = target_dir
                 
                 # Verify the directory exists
-                check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"[ -d '{current_dir}' ] && echo 'exists' || echo 'not_exists'"]
-                process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                # SECURITY FIX: Use shlex.quote() to prevent command injection
+                escaped_dir = shlex.quote(current_dir)
+                check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"[ -d {escaped_dir} ] && echo 'exists' || echo 'not_exists'"]
+                process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
                 stdout, stderr = process.communicate()
                 
                 if 'exists' in stdout.decode():
@@ -1889,19 +1892,31 @@ def execute_command_api():
             # Extract the file pattern
             file_pattern = command.split(' ', 2)[2]
             
+            # SECURITY FIX: Use shlex.quote() to prevent command injection
+            escaped_dir = shlex.quote(current_dir)
+            escaped_pattern = shlex.quote(file_pattern)
+            
             # First check if the file exists (improved logic)
-            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && ls {file_pattern} 2>/dev/null"]
-            process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {escaped_dir} && ls {escaped_pattern} 2>/dev/null"]
+            process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                return jsonify({'error': 'Command timed out'}), 408
             
             # If ls command failed or returned empty, file doesn't exist
             if process.returncode != 0 or not stdout.decode().strip():
                 return jsonify({'error': f"tail: cannot open '{file_pattern}' for reading: No such file or directory"})
             
             # Get initial content (last 10 lines)
-            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && tail -n 10 {file_pattern}"]
+            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {escaped_dir} && tail -n 10 {escaped_pattern}"]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            try:
+                stdout, stderr = process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                return jsonify({'error': 'Tail command timed out'}), 408
             
             output = stdout.decode()
             error = stderr.decode()
