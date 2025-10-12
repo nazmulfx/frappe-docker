@@ -416,8 +416,10 @@
                                                         <div class="col-md-3">
                                                             <div class="mb-3">
                                                                 <label for="app-branch" class="form-label">Branch (Optional)</label>
-                                                                <input type="text" class="form-control" id="app-branch"
-                                                                    placeholder="main, develop, etc.">
+                                                                <input type="text" autocomplete="new-password" class="form-control" id="app-branch"
+                                                                    placeholder="main, develop, etc." 
+                                                                    name="app-branch-field"
+                                                                    readonly onfocus="this.removeAttribute('readonly');">
                                                             </div>
                                                         </div>
                                         
@@ -2058,10 +2060,15 @@ class FrappeAppManager {
                             
                             // Update output
                             const outputContainer = document.getElementById('task-output-container');
-                            if (outputContainer && task.output) {
-                                outputContainer.textContent = task.output;
-                                // Auto-scroll to bottom
-                                outputContainer.scrollTop = outputContainer.scrollHeight;
+                            if (outputContainer) {
+                                // Always update output if task has been fetched
+                                if (task.output !== undefined) {
+                                    // Show output or appropriate message
+                                    const displayText = task.output ? task.output : (task.status === 'pending' ? 'Initializing...' : 'Processing...');
+                                    outputContainer.textContent = displayText;
+                                    // Auto-scroll to bottom
+                                    outputContainer.scrollTop = outputContainer.scrollHeight;
+                                }
                             }
                             
                             // Check if task is complete
@@ -2258,15 +2265,26 @@ class FrappeAppManager {
             
             this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
             
+            // Check if this is a background task
+            if (result.is_background_task && result.task_id) {
+                LoaderManager.setButtonLoading(getAppBtn, false);
+                this.addToLog('info', `Heavy command running in background: ${result.task_id}`);
+                
+                // Track the background task with progress modal
+                await this.trackBackgroundTask(result.task_id, `Getting app from ${repoUrl}`);
+                
+                // Refresh the apps list after completion
+                await this.loadAppsForContainer();
+            }
             // Check if we have output and no error (streaming responses don't have success field)
-            if (result.output && !result.error) {
+            else if (result.output && !result.error) {
                 this.addToLog('success', `Successfully got app from ${repoUrl}`);
                 if (result.output) {
                     this.addToLog('info', result.output);
                 }
                 // Refresh the apps list to show the newly installed app
                 await this.loadAppsForContainer();
-            } else {
+            } else if (result.error) {
                 this.addToLog('error', `Failed to get app: ${result.error || 'Unknown error'}`);
                 if (result.error) {
                     this.addToLog('error', result.error);
@@ -2327,13 +2345,21 @@ class FrappeAppManager {
                 
                 this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
                 
+                // Check if this is a background task
+                if (result.is_background_task && result.task_id) {
+                    LoaderManager.setButtonLoading(installAppBtn, false);
+                    this.addToLog('info', `Heavy command running in background: ${result.task_id}`);
+                    
+                    // Track the background task with progress modal
+                    await this.trackBackgroundTask(result.task_id, `Installing ${appName} on ${siteName}`);
+                }
                 // Check if we have output and no error (streaming responses don't have success field)
-                if (result.output && !result.error) {
+                else if (result.output && !result.error) {
                     this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
                     if (result.output) {
                         this.addToLog('info', result.output);
                     }
-                } else {
+                } else if (result.error) {
                     this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
                     if (result.error) {
                         this.addToLog('error', result.error);
@@ -4372,13 +4398,19 @@ EOFPYTHON`;
                     
                     if (index === 0) {
                         option.textContent += ' (Latest - Recommended)';
+                        option.selected = true;  // Auto-select latest version
                     }
                     
                     versionSelect.appendChild(option);
                 });
+                
+                // Also set the select value to ensure it's selected
+                if (data.versions.length > 0) {
+                    versionSelect.value = data.versions[0];
+                }
 
                 this.versionsLoaded = true;
-                this.addToLog('success', `Loaded ${data.versions.length} ERPNext versions`);
+                this.addToLog('success', `Loaded ${data.versions.length} ERPNext versions (latest auto-selected)`);
             } else {
                 // Fallback to hardcoded versions
                 this.loadFallbackVersions(versionSelect);
@@ -4405,14 +4437,20 @@ EOFPYTHON`;
             option.textContent = version;
             
             if (index === 0) {
-                option.textContent += ' (Latest)';
+                option.textContent += ' (Latest - Recommended)';
+                option.selected = true;  // Auto-select latest version
             }
             
             versionSelect.appendChild(option);
         });
+        
+        // Also set the select value to ensure it's selected
+        if (fallbackVersions.length > 0) {
+            versionSelect.value = fallbackVersions[0];
+        }
 
         this.versionsLoaded = true;
-        this.addToLog('warning', 'Using fallback version list');
+        this.addToLog('warning', 'Using fallback version list (latest auto-selected)');
     }
 
     resetSiteForm() {
@@ -5282,9 +5320,10 @@ function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = n
                     const task = data.task;
                     
                     // Update output
-                    if (task.output) {
+                    if ('output' in task) {
+                        const safeOutput = (task.output || 'Starting...').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         outputElement.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + 
-                            task.output.replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
+                            safeOutput + 
                             '</pre>';
                         outputElement.scrollTop = outputElement.scrollHeight;
                     }

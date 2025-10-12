@@ -36,6 +36,8 @@ def require_permission(permission_name):
                     'remove_containers': 'Remove Containers',
                     'view_logs': 'View Container Logs',
                     'exec_commands': 'Execute Commands',
+                    'execute_commands': 'Execute Terminal Commands',
+                    'execute_privileged_commands': 'Execute Privileged Commands',
                     'install_apps': 'Install Applications',
                     'uninstall_apps': 'Uninstall Applications',
                     'create_sites': 'Create/Remove Sites',

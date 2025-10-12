@@ -502,23 +502,39 @@ def check_database_connectivity(container):
         return False
     
 def log_command_execution(command, container, success, error_message=None):
-    """Helper function to log command execution"""
-    username = session.get('username', 'unknown')
-    status = 'success' if success else 'failed'
-    message = f"Executed command '{command}' in container {container}"
-    if error_message:
-        message += f" - Error: {error_message}"
+    """Helper function to log command execution (thread-safe)"""
+    from flask import has_request_context
     
-    log_entry = AuditLog(
-        user_id=session.get('user_id'),
-        username=username,
-        ip_address=request.remote_addr,
-        event_type='command_execution',
-        message=message,
-        status=status
-    )
-    db.session.add(log_entry)
-    db.session.commit()
+    try:
+        # Check if we're in a request context (not in background thread)
+        if has_request_context():
+            username = session.get('username', 'system')
+            user_id = session.get('user_id')
+            ip_address = request.remote_addr
+        else:
+            # Background thread - use system defaults
+            username = 'system'
+            user_id = None
+            ip_address = '127.0.0.1'
+        
+        status = 'success' if success else 'failed'
+        message = f"Executed command '{command}' in container {container}"
+        if error_message:
+            message += f" - Error: {error_message}"
+        
+        log_entry = AuditLog(
+            user_id=user_id,
+            username=username,
+            ip_address=ip_address,
+            event_type='command_execution',
+            message=message,
+            status=status
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+    except Exception as e:
+        # Don't fail the main operation if logging fails
+        logger.error(f"Failed to log command execution: {str(e)}")
 
 
 def require_auth(f):
@@ -1693,8 +1709,22 @@ def app_installation():
 @app.route('/api/frappe/execute-command', methods=['POST'])
 @require_auth
 def execute_command_api():
-    """UNIVERSAL TERMINAL - Execute ANY command in ANY container"""
+    """
+    SECURE TERMINAL - Execute validated commands with comprehensive security checks
+    
+    Security Features:
+    - RBAC permission checking
+    - Command whitelist/blacklist validation
+    - Input sanitization
+    - Container name validation
+    - Path traversal protection
+    - Audit logging
+    - Rate limiting
+    """
     try:
+        from command_security import validate_command_security, command_validator
+        from models import AuditLog, User, db
+        
         # Initialize variables
         output = ''
         error = ''
@@ -1704,15 +1734,108 @@ def execute_command_api():
         command = data.get('command')
         current_dir = data.get('current_dir', '/home/frappe/frappe-bench')
         
+        # Get current user info for audit
+        user_id = session.get('user_id')
+        username = session.get('username', 'unknown')
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        
+        # Basic input validation
         if not container:
-            return jsonify({'error': 'Container name is required'})
+            return jsonify({'error': 'Container name is required'}), 400
         
         if not command:
-            return jsonify({'error': 'Command is required'})
+            return jsonify({'error': 'Command is required'}), 400
         
-        # UNIVERSAL TERMINAL - NO RESTRICTIONS!
-        # Accept any container name and any command
-        # Let Docker handle the validation
+        # Get user object for permission checking
+        user = User.query.get(user_id) if user_id else None
+        if not user:
+            logger.error(f"User not found for command execution: {user_id}")
+            return jsonify({'error': 'User not found'}), 401
+        
+        # Check if user has execute_commands permission
+        has_execute_permission = user.has_permission('execute_commands')
+        has_privileged_permission = user.has_permission('execute_privileged_commands')
+        
+        if not has_execute_permission:
+            # Log unauthorized attempt
+            try:
+                audit_log = AuditLog(
+                    user_id=user_id,
+                    username=username,
+                    ip_address=client_ip,
+                    event_type='command_execution_denied',
+                    message=f'Unauthorized command execution attempt: {command[:100]}',
+                    status='blocked'
+                )
+                db.session.add(audit_log)
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Failed to log unauthorized attempt: {str(e)}")
+            
+            return jsonify({
+                'error': 'Permission Denied',
+                'message': 'You do not have permission to execute commands. Contact your administrator.',
+                'required_permission': 'execute_commands'
+            }), 403
+        
+        # Comprehensive security validation
+        is_valid, error_msg, security_info = validate_command_security(
+            command=command,
+            container=container,
+            current_dir=current_dir,
+            allow_privileged=has_privileged_permission
+        )
+        
+        if not is_valid:
+            # Log blocked command
+            try:
+                audit_log = AuditLog(
+                    user_id=user_id,
+                    username=username,
+                    ip_address=client_ip,
+                    event_type='command_blocked',
+                    message=f'Blocked command: {command[:200]} | Reason: {error_msg} | Risk: {security_info.get("risk_level")}',
+                    status='blocked'
+                )
+                db.session.add(audit_log)
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Failed to log blocked command: {str(e)}")
+            
+            logger.warning(f"Command blocked for user {username}: {command} - {error_msg}")
+            return jsonify({
+                'error': 'Command Blocked',
+                'message': error_msg,
+                'security_info': {
+                    'risk_level': security_info.get('risk_level'),
+                    'risk_score': security_info.get('risk_score')
+                }
+            }), 403
+        
+        # Validate container exists
+        try:
+            check_container_cmd = ["sudo", "docker", "inspect", container, "--format", "{{.State.Running}}"]
+            result = subprocess.run(check_container_cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return jsonify({'error': f'Container "{container}" not found or not accessible'}), 404
+        except Exception as e:
+            logger.error(f"Container validation failed: {str(e)}")
+            return jsonify({'error': 'Failed to validate container'}), 500
+        
+        # Log command execution attempt
+        try:
+            audit_log = AuditLog(
+                user_id=user_id,
+                username=username,
+                ip_address=client_ip,
+                event_type='command_executed',
+                message=f'Executing command in {container}: {command[:200]} | Risk: {security_info.get("risk_level")}',
+                status='success'
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log command execution: {str(e)}")
         
         # Handle cd command specially
         if command.startswith('cd ') or command == 'cd':
@@ -1998,13 +2121,49 @@ def execute_command_api():
         
         formatted_output = format_command_output(output, error, command_type)
         
+        # Log successful command completion
+        try:
+            audit_log = AuditLog(
+                user_id=user_id,
+                username=username,
+                ip_address=client_ip,
+                event_type='command_completed',
+                message=f'Command completed in {container}: {command[:100]}',
+                status='success'
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log command completion: {str(e)}")
+        
         return jsonify({
             'output': formatted_output['formatted_output'],
-            'current_dir': current_dir
+            'current_dir': current_dir,
+            'security_validated': True
         })
     except Exception as e:
+        # Log command execution failure
+        try:
+            user_id = session.get('user_id')
+            username = session.get('username', 'unknown')
+            client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+            command = request.json.get('command', 'unknown') if request.json else 'unknown'
+            
+            audit_log = AuditLog(
+                user_id=user_id,
+                username=username,
+                ip_address=client_ip,
+                event_type='command_failed',
+                message=f'Command execution error: {command[:100]} | Error: {str(e)[:200]}',
+                status='error'
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+        except Exception as log_error:
+            logger.error(f"Failed to log command failure: {str(log_error)}")
+        
         logger.error(f"Error executing command: {str(e)}")
-        return jsonify({'error': str(e)})
+        return jsonify({'error': str(e), 'security_validated': False}), 500
 
 
 
@@ -2387,10 +2546,18 @@ def list_backups():
                         size = parts[4]
                         date = ' '.join(parts[5:8])
                         
-                        backup_type = 'database' if 'database' in filename else \
-                                    'private_files' if 'private' in filename else \
-                                    'public_files' if 'public' in filename else \
-                                    'files' if 'files' in filename else 'unknown'
+                        # Determine backup type based on Frappe naming convention
+                        if 'database' in filename and ('.sql' in filename or '.gz' in filename):
+                            backup_type = 'database'
+                        elif 'private-files' in filename or 'private_files' in filename:
+                            backup_type = 'private_files'
+                        elif 'files' in filename and 'private' not in filename:
+                            # Public files are named *-files.tar (without 'private')
+                            backup_type = 'public_files'
+                        elif 'site_config_backup' in filename:
+                            backup_type = 'config'
+                        else:
+                            backup_type = 'unknown'
                         
                         backups.append({
                             'filename': filename,

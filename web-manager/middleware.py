@@ -82,8 +82,8 @@ class RBACMiddleware:
         self.add_pattern_permission(r'^/api/frappe/rebuild-with-apps.*$', 'install_apps')
         self.add_pattern_permission(r'^/api/frappe/fix-restart-policies.*$', 'start_containers')
         
-        # Frappe command execution routes
-        self.route_permissions['/api/frappe/execute-command'] = 'exec_commands'
+        # Frappe command execution routes (SECURITY: execute_commands permission required)
+        self.route_permissions['/api/frappe/execute-command'] = 'execute_commands'
         self.route_permissions['/api/frappe/validate-container'] = 'view_containers'
         self.route_permissions['/api/frappe/get-current-dir'] = 'view_containers'
         self.route_permissions['/api/frappe/list-containers'] = 'view_containers'
