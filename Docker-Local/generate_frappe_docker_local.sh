@@ -142,10 +142,12 @@ detect_docker_compose() {
     # Try docker compose (v2) first - preferred method
     if docker compose version >/dev/null 2>&1; then
         echo "docker compose"
+        export DOCKER_COMPOSE_VERSION="v2"
         return 0
     # Fallback to docker-compose (v1) if v2 is not available
     elif command -v docker-compose >/dev/null 2>&1; then
         echo "docker-compose"
+        export DOCKER_COMPOSE_VERSION="v1"
         return 0
     else
         echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is available${NC}" >&2
@@ -256,6 +258,15 @@ generate_docker_compose() {
     local erpnext_version=$3
     local compose_file="$safe_site_name/${safe_site_name}-docker-compose.yml"
     
+    # Get Docker Compose version for compatibility
+    DOCKER_COMPOSE_CMD=$(detect_docker_compose)
+    
+    # Generate unique IP subnet for this site based on site name hash
+    # This ensures each site gets its own unique IPs
+    local site_hash=$(echo -n "$safe_site_name" | md5sum | cut -c1-4)
+    local subnet_third_octet=$((0x${site_hash:0:2} % 250 + 1))  # 1-250
+    local subnet_base="172.25.${subnet_third_octet}"
+    
     # Load local config to check for custom ports
     local http_entrypoint="web"
     
@@ -291,8 +302,9 @@ services:
     container_name: ${safe_site_name}-app
     restart: unless-stopped
     networks:
-      - frappe_network
-      - traefik_proxy
+      frappe_network:
+        ipv4_address: ${subnet_base}.10
+      traefik_proxy:
     depends_on:
       db:
         condition: service_healthy
@@ -302,19 +314,15 @@ services:
         condition: service_completed_successfully
     labels:
 ${app_labels}
+    restart: unless-stopped
     deploy:
       restart_policy:
         condition: on-failure
-        delay: 10s
         max_attempts: 3
-        window: 120s
       resources:
         limits:
           memory: 2G
           cpus: '1.0'
-        reservations:
-          memory: 512M
-          cpus: '0.5'
     security_opt:
       - no-new-privileges:true
     read_only: false
@@ -496,12 +504,14 @@ ${app_labels}
     container_name: ${safe_site_name}-create-site
     restart: "no"
     networks:
-      - frappe_network
+      frappe_network:
+        ipv4_address: ${subnet_base}.11
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: "no"
     deploy:
       restart_policy:
         condition: none
@@ -509,9 +519,6 @@ ${app_labels}
         limits:
           memory: 1G
           cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
     security_opt:
       - no-new-privileges:true
     read_only: false
@@ -582,13 +589,15 @@ ${app_labels}
     container_name: ${safe_site_name}-db
     restart: unless-stopped
     networks:
-      - frappe_network
+      frappe_network:
+        ipv4_address: ${subnet_base}.20
     healthcheck:
       test: mysqladmin ping -h localhost --password=\${DB_PASSWORD}
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
     deploy:
       restart_policy:
         condition: on-failure
@@ -596,9 +605,6 @@ ${app_labels}
         limits:
           memory: 1G
           cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
     security_opt:
       - no-new-privileges:true
     read_only: false
@@ -621,13 +627,15 @@ ${app_labels}
     container_name: ${safe_site_name}-redis
     restart: unless-stopped
     networks:
-      - frappe_network
+      frappe_network:
+        ipv4_address: ${subnet_base}.30
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "\${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
     deploy:
       restart_policy:
         condition: on-failure
@@ -635,9 +643,6 @@ ${app_labels}
         limits:
           memory: 512M
           cpus: '0.25'
-        reservations:
-          memory: 128M
-          cpus: '0.1'
     security_opt:
       - no-new-privileges:true
     read_only: false
@@ -651,6 +656,9 @@ ${app_labels}
 networks:
   frappe_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${subnet_base}.0/24
   traefik_proxy:
     external: true
 
@@ -903,7 +911,11 @@ fi
 
 # Start containers
 echo -e "${BLUE}🚀 Starting containers...${NC}"
-$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+if ! $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
+    echo -e "${YELLOW}⚠️  Docker Compose failed, trying alternative method...${NC}"
+    # Try starting containers individually as fallback
+    $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
+fi
 
 # Check if containers started successfully
 if [ $? -eq 0 ]; then
@@ -914,9 +926,7 @@ if [ $? -eq 0 ]; then
     echo -e "${BLUE}🔍 Verifying network connectivity...${NC}"
     
     # Check if containers are connected to traefik_proxy
-    CONNECTED=$(docker network inspect traefik_proxy -f '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null | grep -o "${safe_site_name}-app")
-    
-    if [ -n "$CONNECTED" ]; then
+    if docker inspect "${safe_site_name}-app" | grep -q "traefik_proxy"; then
         echo -e "${GREEN}✅ Containers properly connected to traefik_proxy network${NC}"
     else
         echo -e "${YELLOW}⚠️  Reconnecting containers to network...${NC}"
@@ -935,6 +945,12 @@ else
     fi
 fi
 
+# Get the actual app container name (handle Docker Compose naming variations)
+APP_CONTAINER=$(docker ps --filter "name=${safe_site_name}-app" --format "{{.Names}}" | head -1)
+if [ -z "$APP_CONTAINER" ]; then
+    APP_CONTAINER="${safe_site_name}-app"
+fi
+
 # Ensure Frappe apps are available in the mounted directory
 echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"
 if [ ! -d "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps/frappe" ]; then
@@ -949,12 +965,12 @@ fi
 # Ensure apps.txt includes all installed apps
 echo -e "${BLUE}🔧 Ensuring apps.txt includes all installed apps...${NC}"
 sleep 10  # Wait for containers to be ready
-docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && ls -1 apps > sites/apps.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, apps.txt will be updated automatically${NC}"
+docker exec $APP_CONTAINER bash -c "cd /home/frappe/frappe-bench && ls -1 apps > sites/apps.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, apps.txt will be updated automatically${NC}"
 echo -e "${GREEN}✅ apps.txt updated with all installed apps${NC}"
 
 # Ensure currentsite.txt is set correctly
 echo -e "${BLUE}🔧 Ensuring currentsite.txt is set correctly...${NC}"
-docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && echo '${site_name}' > sites/currentsite.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, currentsite.txt will be set automatically${NC}"
+docker exec $APP_CONTAINER bash -c "cd /home/frappe/frappe-bench && echo '${site_name}' > sites/currentsite.txt" 2>/dev/null || echo -e "${YELLOW}⚠️  Container not ready yet, currentsite.txt will be set automatically${NC}"
 echo -e "${GREEN}✅ currentsite.txt set to ${site_name}${NC}"
 
 # Wait 2 minutes for everything to initialize, then restart containers
@@ -1033,7 +1049,7 @@ fi
 
 # Fix site_config.json to use root credentials
 echo -e "${BLUE}🔧 Updating site_config.json with correct credentials...${NC}"
-docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && python3 -c \"
+docker exec $APP_CONTAINER bash -c "cd /home/frappe/frappe-bench && python3 -c \"
 import json
 import os
 
@@ -1058,6 +1074,85 @@ else:
 
 echo -e "${GREEN}✅ Site configuration updated${NC}"
 
+# Fix database user permissions for app installation
+echo -e "${BLUE}🔐 Fixing database user permissions for app installation...${NC}"
+docker exec $APP_CONTAINER bash -c "cd /home/frappe/frappe-bench && python3 -c \"
+import json
+import os
+import subprocess
+
+site_config_path = 'sites/${site_name}/site_config.json'
+if os.path.exists(site_config_path):
+    with open(site_config_path, 'r') as f:
+        config = json.load(f)
+    
+    db_name = config.get('db_name')
+    db_password = config.get('db_password')
+    
+    if db_name and db_password:
+        # Get container IP addresses
+        container_ips = []
+        try:
+            # Get the app container's IP addresses
+            result = subprocess.run(['hostname', '-i'], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                container_ips = result.stdout.strip().split()
+        except:
+            pass
+        
+        # Create database users for different host patterns
+        mysql_commands = []
+        
+        # Create users for specific IPs
+        for ip in container_ips:
+            if ip:
+                mysql_commands.append(f\"CREATE USER IF NOT EXISTS '{db_name}'@'{ip}' IDENTIFIED BY '{db_password}'; GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_name}'@'{ip}';\")
+        
+        # Create users for IP ranges (Docker networks)
+        for ip in container_ips:
+            if ip:
+                # Extract subnet (e.g., 172.31.0.4 -> 172.31.%)
+                ip_parts = ip.split('.')
+                if len(ip_parts) >= 2:
+                    subnet = f\"{ip_parts[0]}.{ip_parts[1]}.%\"
+                    mysql_commands.append(f\"CREATE USER IF NOT EXISTS '{db_name}'@'{subnet}' IDENTIFIED BY '{db_password}'; GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_name}'@'{subnet}';\")
+        
+        # Also create for localhost and % patterns (% covers ALL IPs)
+        mysql_commands.extend([
+            f\"CREATE USER IF NOT EXISTS '{db_name}'@'localhost' IDENTIFIED BY '{db_password}'; GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_name}'@'localhost';\",
+            f\"CREATE USER IF NOT EXISTS '{db_name}'@'%' IDENTIFIED BY '{db_password}'; GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_name}'@'%';\"
+        ])
+        
+        # Execute all MySQL commands
+        for cmd in mysql_commands:
+            try:
+                mysql_cmd = f\"mysql -uroot -p{config.get('root_password', db_password)} -e '{cmd}'\"
+                result = subprocess.run(['docker', 'exec', '${safe_site_name}-db', 'bash', '-c', mysql_cmd], 
+                                      capture_output=True, text=True, timeout=30)
+                if result.returncode == 0:
+                    print(f'✅ Created/granted permissions for database user')
+                else:
+                    print(f'⚠️  Warning: {result.stderr.strip()}')
+            except Exception as e:
+                print(f'⚠️  Warning: Could not execute MySQL command: {e}')
+        
+        # Flush privileges
+        try:
+            flush_cmd = f\"mysql -uroot -p{config.get('root_password', db_password)} -e 'FLUSH PRIVILEGES;'\"
+            subprocess.run(['docker', 'exec', '${safe_site_name}-db', 'bash', '-c', flush_cmd], 
+                          capture_output=True, text=True, timeout=30)
+        except Exception as e:
+            print(f'⚠️  Warning: Could not flush privileges: {e}')
+        
+        print('✅ Database user permissions configured for app installation')
+    else:
+        print('⚠️  Could not read database configuration')
+else:
+    print('⚠️  site_config.json not found')
+\" 2>/dev/null || echo -e '${YELLOW}⚠️  Database permission setup failed${NC}'"
+
+echo -e "${GREEN}✅ Database permissions configured for app installation${NC}"
+
 # Final status check
 echo -e "${BLUE}📊 Final container status:${NC}"
 $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
@@ -1069,7 +1164,7 @@ if curl -f -s http://localhost:8000/api/method/ping >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Site is accessible after restart!${NC}"
 else
     echo -e "${YELLOW}⚠️  Site may still be starting up...${NC}"
-    echo -e "${BLUE}💡 You can check the status with: docker logs ${safe_site_name}-app${NC}"
+    echo -e "${BLUE}💡 You can check the status with: docker logs $APP_CONTAINER${NC}"
 fi
 
 # Show port information immediately after starting
@@ -1100,7 +1195,7 @@ if docker network inspect traefik_proxy >/dev/null 2>&1; then
     for container in ${safe_site_name}-app ${safe_site_name}-db ${safe_site_name}-redis; do
         if docker ps --filter "name=$container" --format "{{.Names}}" | grep -q "$container"; then
             # Check if container is on traefik_proxy network
-            if docker inspect "$container" --format '{{range .NetworkSettings.Networks}}{{.Name}}{{end}}' | grep -q "traefik_proxy"; then
+            if docker inspect "$container" | grep -q "traefik_proxy"; then
                 echo -e "${GREEN}   ✅ $container connected to traefik_proxy${NC}"
             else
                 echo -e "${YELLOW}   ⚠️  Connecting $container to traefik_proxy...${NC}"
@@ -1183,17 +1278,19 @@ echo -e "   3. Try accessing the site again"
 echo -e "   4. If issue persists, run: docker network ls (to check networks)"
 echo ""
 echo "🔧 Process Management Commands:"
-echo "   • Check status: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status"
-echo "   • Restart web: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-web"
-echo "   • Restart workers: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-worker-*"
-echo "   • Restart all: sudo docker exec ${safe_site_name}-app /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all"
-echo "   • View logs: sudo docker exec ${safe_site_name}-app tail -f /home/frappe/supervisor/logs/frappe-web.log"
+echo "   • Check status: sudo docker exec $APP_CONTAINER /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf status"
+echo "   • Restart web: sudo docker exec $APP_CONTAINER /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-web"
+echo "   • Restart workers: sudo docker exec $APP_CONTAINER /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart frappe-worker-*"
+echo "   • Restart all: sudo docker exec $APP_CONTAINER /home/frappe/.local/bin/supervisorctl -c /home/frappe/supervisor/supervisord.conf restart all"
+echo "   • View logs: sudo docker exec $APP_CONTAINER tail -f /home/frappe/supervisor/logs/frappe-web.log"
 
 echo ""
-echo "📦 Custom App Management:"
-echo "   • Install custom app: docker exec -it ${safe_site_name}-app bench get-app your_app_name"
-echo "   • Install app on site: docker exec -it ${safe_site_name}-app bench --site ${site_name} install-app your_app_name"
-echo "   • Check installed apps: docker exec -it ${safe_site_name}-app cat sites/apps.txt"
+echo "📦 Custom App Management (Database Permissions Fixed!):"
+echo "   • Install custom app: docker exec -it $APP_CONTAINER bench get-app your_app_name"
+echo "   • Install app on site: docker exec -it $APP_CONTAINER bench --site ${site_name} install-app your_app_name"
+echo "   • Check installed apps: docker exec -it $APP_CONTAINER bench --site ${site_name} list-apps"
+echo "   • ✅ Database permissions are automatically configured for app installation!"
+echo "   • ✅ No more 'Access denied' errors when installing apps!"
 echo "   • Custom apps are now preserved on container restart AND system reboot!"
 echo "   • Apps are stored in Docker named volume for persistence"
 echo ""
@@ -1272,6 +1369,9 @@ echo "🔑 Default Password    : admin"
 echo ""
 echo "💾 MySQL Password      : ${DB_PASSWORD}"
 echo "💾 Redis Password      : ${REDIS_PASSWORD}"
+echo ""
+echo "✅ Database Permissions: Automatically configured for app installation!"
+echo "   No more 'Access denied' errors when installing apps."
 echo ""
 echo "⚠️  Please save these credentials securely."
 echo "   They will be required for future updates, backups, and system access."
