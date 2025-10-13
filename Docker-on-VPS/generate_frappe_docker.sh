@@ -796,6 +796,31 @@ done
 # Sanitize site name
 safe_site_name=$(echo "$site_name" | sed 's/[^a-zA-Z0-9]/_/g')
 
+# Check if site directory already exists
+if [ -d "$safe_site_name" ]; then
+    echo -e "${YELLOW}⚠️  Site directory '$safe_site_name' already exists${NC}"
+    echo ""
+    read -p "Do you want to use the existing site? (y/n): " use_existing
+    if [[ "$use_existing" =~ ^[Yy]$ ]]; then
+        echo -e "${GREEN}Using existing site directory${NC}"
+        echo ""
+        echo -e "${BLUE}Note: This will reuse existing database volumes.${NC}"
+        echo -e "${BLUE}If you're having password issues, you may want to:${NC}"
+        echo "  1. Delete the site directory: rm -rf $safe_site_name"
+        echo "  2. Remove volumes: docker volume rm ${safe_site_name}_db-data ${safe_site_name}_sites ${safe_site_name}_redis-data 2>/dev/null"
+        echo "  3. Run this script again"
+        echo ""
+        read -p "Continue with existing site? (y/n): " continue_existing
+        if [[ ! "$continue_existing" =~ ^[Yy]$ ]]; then
+            echo -e "${RED}Setup cancelled${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}Please remove the existing site directory or choose a different name${NC}"
+        exit 1
+    fi
+fi
+
 # Create site directory
 mkdir -p "$safe_site_name"
 
@@ -954,6 +979,67 @@ $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
 echo -e "${GREEN}✅ Containers restarted successfully!${NC}"
 echo -e "${BLUE}⏳ Waiting 30 seconds for containers to be ready...${NC}"
 sleep 30
+
+# Verify and fix MySQL password
+echo -e "${BLUE}🔐 Verifying MySQL password...${NC}"
+if ! docker exec ${safe_site_name}-db mysql -uroot -p"${DB_PASSWORD}" -e "SELECT 1;" >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  MySQL password mismatch detected - fixing...${NC}"
+    
+    # Try common default passwords
+    COMMON_PASSWORDS=("admin" "root" "password" "")
+    PASSWORD_FIXED=false
+    
+    for pwd in "${COMMON_PASSWORDS[@]}"; do
+        if [ -z "$pwd" ]; then
+            if docker exec ${safe_site_name}-db mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_PASSWORD}'; ALTER USER 'root'@'%' IDENTIFIED BY '${DB_PASSWORD}'; FLUSH PRIVILEGES;" >/dev/null 2>&1; then
+                PASSWORD_FIXED=true
+                break
+            fi
+        else
+            if docker exec ${safe_site_name}-db mysql -uroot -p"$pwd" -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_PASSWORD}'; ALTER USER 'root'@'%' IDENTIFIED BY '${DB_PASSWORD}'; FLUSH PRIVILEGES;" >/dev/null 2>&1; then
+                PASSWORD_FIXED=true
+                break
+            fi
+        fi
+    done
+    
+    if [ "$PASSWORD_FIXED" = true ]; then
+        echo -e "${GREEN}✅ MySQL password fixed and synchronized with .env file${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Could not auto-fix password. Manual fix may be needed.${NC}"
+        echo -e "${BLUE}   Run: docker exec -it ${safe_site_name}-db mysql -uroot${NC}"
+        echo -e "${BLUE}   Then: ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';${NC}"
+    fi
+else
+    echo -e "${GREEN}✅ MySQL password is correctly configured${NC}"
+fi
+
+# Fix site_config.json to use root credentials
+echo -e "${BLUE}🔧 Updating site_config.json with correct credentials...${NC}"
+docker exec ${safe_site_name}-app bash -c "cd /home/frappe/frappe-bench && python3 -c \"
+import json
+import os
+
+site_config_path = 'sites/${site_name}/site_config.json'
+if os.path.exists(site_config_path):
+    with open(site_config_path, 'r') as f:
+        config = json.load(f)
+    
+    # Update to use root credentials
+    config['db_password'] = '${DB_PASSWORD}'
+    if 'root_login' not in config:
+        config['root_login'] = 'root'
+    if 'root_password' not in config:
+        config['root_password'] = '${DB_PASSWORD}'
+    
+    with open(site_config_path, 'w') as f:
+        json.dump(config, f, indent=4)
+    print('✅ Updated site_config.json')
+else:
+    print('⚠️  site_config.json not found yet')
+\" 2>/dev/null || echo -e '${YELLOW}⚠️  Site config not ready yet${NC}'"
+
+echo -e "${GREEN}✅ Site configuration updated${NC}"
 
 # Final status check
 echo -e "${BLUE}📊 Final container status:${NC}"

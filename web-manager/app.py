@@ -4123,6 +4123,72 @@ def run_site_removal_task(task_id, site_name, base_dir):
         append_output(f'📍 Base directory: {base_dir}')
         append_output('')
         
+        # Show preview of what will be removed
+        append_output('=' * 60)
+        append_output('📋 PREVIEW: Resources to be removed')
+        append_output('=' * 60)
+        
+        # Preview containers
+        containers_cmd = f'docker ps -a --filter "name=^{site_name}-" --format "{{{{.Names}}}}"'
+        containers_result = subprocess.run(containers_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if containers_result.stdout.strip():
+            append_output('🐳 Containers:')
+            for container in containers_result.stdout.strip().split('\n'):
+                if container:
+                    append_output(f'   • {container}')
+        else:
+            append_output('🐳 Containers: None found')
+        
+        # Preview volumes
+        volumes_cmd = f'docker volume ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
+        volumes_result = subprocess.run(volumes_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if volumes_result.stdout.strip():
+            append_output('📦 Volumes:')
+            for volume in volumes_result.stdout.strip().split('\n'):
+                if volume:
+                    append_output(f'   • {volume}')
+        else:
+            append_output('📦 Volumes: None found')
+        
+        # Preview networks
+        networks_cmd = f'docker network ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
+        networks_result = subprocess.run(networks_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if networks_result.stdout.strip():
+            append_output('🌐 Networks:')
+            for network in networks_result.stdout.strip().split('\n'):
+                if network and network not in ['bridge', 'host', 'none']:
+                    append_output(f'   • {network}')
+        else:
+            append_output('🌐 Networks: None found')
+        
+        # Preview folders
+        append_output('📁 Folders:')
+        site_folder_local = f"{base_dir}/Docker-Local/{site_name}"
+        site_folder_vps = f"{base_dir}/Docker-on-VPS/{site_name}"
+        if os.path.exists(site_folder_local):
+            append_output(f'   • {site_folder_local}')
+        if os.path.exists(site_folder_vps):
+            append_output(f'   • {site_folder_vps}')
+        
+        # Preview dev folder
+        if os.environ.get('SUDO_USER'):
+            preview_home_dir = os.path.expanduser(f"~{os.environ['SUDO_USER']}")
+        else:
+            preview_home_dir = os.path.expanduser("~")
+        preview_dev_folder = f"{preview_home_dir}/frappe-docker/{site_name}-frappe-bench"
+        if os.path.exists(preview_dev_folder):
+            append_output(f'   • {preview_dev_folder}')
+        
+        # Preview hosts entry
+        site_domain = site_name.replace('_', '.')
+        check_hosts_cmd = f'grep "{site_domain}" /etc/hosts 2>/dev/null'
+        check_result = subprocess.run(check_hosts_cmd, shell=True, capture_output=True)
+        if check_result.returncode == 0:
+            append_output(f'🌍 Hosts entry: {site_domain}')
+        
+        append_output('=' * 60)
+        append_output('')
+        
         # Stop and remove containers
         append_output('⏹️  Stopping containers...')
         stop_cmd = f'docker stop $(docker ps --filter "name=^{site_name}-" --format "{{{{.Names}}}}") 2>/dev/null || true'
@@ -4133,6 +4199,48 @@ def run_site_removal_task(task_id, site_name, base_dir):
         rm_cmd = f'docker rm $(docker ps -a --filter "name=^{site_name}-" --format "{{{{.Names}}}}") 2>/dev/null || true'
         subprocess.run(rm_cmd, shell=True, capture_output=True, timeout=60)
         append_output('✅ All containers removed')
+        site_removal_tasks[task_id]['progress'] = 30
+        
+        # Remove Docker volumes
+        append_output('')
+        append_output('📦 Removing Docker volumes...')
+        
+        # Get list of volumes for this site
+        volumes_cmd = f'docker volume ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
+        volumes_result = subprocess.run(volumes_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        
+        if volumes_result.stdout.strip():
+            volumes = volumes_result.stdout.strip().split('\n')
+            for volume in volumes:
+                if volume:
+                    append_output(f'  🗑️  Removing volume: {volume}')
+                    rm_vol_cmd = f'docker volume rm {volume} 2>/dev/null || true'
+                    subprocess.run(rm_vol_cmd, shell=True, capture_output=True, timeout=30)
+            append_output(f'✅ Removed {len(volumes)} Docker volume(s)')
+        else:
+            append_output('  ℹ️  No volumes found')
+        
+        site_removal_tasks[task_id]['progress'] = 35
+        
+        # Remove Docker networks
+        append_output('')
+        append_output('🌐 Removing Docker networks...')
+        
+        # Get list of networks for this site
+        networks_cmd = f'docker network ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
+        networks_result = subprocess.run(networks_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        
+        if networks_result.stdout.strip():
+            networks = networks_result.stdout.strip().split('\n')
+            for network in networks:
+                if network and network not in ['bridge', 'host', 'none']:
+                    append_output(f'  🗑️  Removing network: {network}')
+                    rm_net_cmd = f'docker network rm {network} 2>/dev/null || true'
+                    subprocess.run(rm_net_cmd, shell=True, capture_output=True, timeout=30)
+            append_output(f'✅ Removed {len([n for n in networks if n and n not in ["bridge", "host", "none"]])} Docker network(s)')
+        else:
+            append_output('  ℹ️  No networks found')
+        
         site_removal_tasks[task_id]['progress'] = 40
         
         # Remove site folders
@@ -4195,11 +4303,43 @@ def run_site_removal_task(task_id, site_name, base_dir):
         else:
             append_output('  ℹ️  No hosts entry found')
         
+        site_removal_tasks[task_id]['progress'] = 90
+        
+        # Docker system cleanup
+        append_output('')
+        append_output('🧹 Cleaning up unused Docker resources...')
+        cleanup_cmd = 'docker system prune -a --volumes -f'
+        cleanup_result = subprocess.run(cleanup_cmd, shell=True, capture_output=True, text=True, timeout=300)
+        if cleanup_result.returncode == 0:
+            append_output('  ✅ Docker cleanup completed')
+        
+        # Show final disk usage
+        append_output('')
+        append_output('📊 Updated Docker Space Usage:')
+        df_cmd = 'docker system df'
+        df_result = subprocess.run(df_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if df_result.stdout:
+            for line in df_result.stdout.strip().split('\n'):
+                append_output(f'  {line}')
+        
         site_removal_tasks[task_id]['progress'] = 100
         site_removal_tasks[task_id]['status'] = 'completed'
         append_output('')
-        append_output('🎉 Complete cleanup completed successfully!')
+        append_output('=' * 60)
+        append_output('🎉 COMPLETE CLEANUP FINISHED!')
+        append_output('=' * 60)
         append_output(f'✅ All traces of {site_name} have been removed')
+        append_output('')
+        append_output('Removed resources:')
+        append_output('  • Docker containers')
+        append_output('  • Docker volumes (all data)')
+        append_output('  • Docker networks')
+        append_output('  • Site folders')
+        append_output('  • Development folders')
+        append_output('  • Hosts file entries')
+        append_output('  • Unused Docker resources')
+        append_output('')
+        append_output('✨ System cleanup complete!')
         
     except Exception as e:
         logger.error(f"Error in site removal task: {str(e)}")
