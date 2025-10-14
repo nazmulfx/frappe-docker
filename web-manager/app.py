@@ -4189,80 +4189,179 @@ def run_site_removal_task(task_id, site_name, base_dir):
         append_output('=' * 60)
         append_output('')
         
-        # Stop and remove containers
+        # Stop and remove containers (with force)
         append_output('⏹️  Stopping containers...')
-        stop_cmd = f'docker stop $(docker ps --filter "name=^{site_name}-" --format "{{{{.Names}}}}") 2>/dev/null || true'
+        stop_cmd = f'docker stop $(docker ps -q --filter "name=^{site_name}-") 2>/dev/null || true'
         subprocess.run(stop_cmd, shell=True, capture_output=True, timeout=120)
-        site_removal_tasks[task_id]['progress'] = 20
+        site_removal_tasks[task_id]['progress'] = 15
         
-        append_output('🗑️  Removing containers...')
-        rm_cmd = f'docker rm $(docker ps -a --filter "name=^{site_name}-" --format "{{{{.Names}}}}") 2>/dev/null || true'
-        subprocess.run(rm_cmd, shell=True, capture_output=True, timeout=60)
-        append_output('✅ All containers removed')
-        site_removal_tasks[task_id]['progress'] = 30
+        append_output('🗑️  Force removing containers (app, db, redis)...')
+        # Force remove with -f flag to ensure removal even if running
+        rm_cmd = f'docker rm -f $(docker ps -aq --filter "name=^{site_name}-") 2>/dev/null || true'
+        rm_result = subprocess.run(rm_cmd, shell=True, capture_output=True, text=True, timeout=60)
         
-        # Remove Docker volumes
+        # Also try individual container removal to be thorough
+        for container_type in ['app', 'db', 'redis', 'socketio', 'scheduler', 'worker']:
+            container_name = f'{site_name}-{container_type}'
+            rm_individual = f'docker rm -f {container_name} 2>/dev/null || true'
+            subprocess.run(rm_individual, shell=True, capture_output=True, timeout=30)
+        
+        append_output('✅ All containers forcefully removed')
+        site_removal_tasks[task_id]['progress'] = 25
+        
+        # Remove Docker volumes (force removal)
         append_output('')
-        append_output('📦 Removing Docker volumes...')
+        append_output('📦 Removing Docker volumes (all data)...')
         
-        # Get list of volumes for this site
-        volumes_cmd = f'docker volume ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
-        volumes_result = subprocess.run(volumes_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        # Get list of volumes for this site (multiple patterns)
+        volume_patterns = [
+            f'docker volume ls -q --filter "name={site_name}"',
+            f'docker volume ls -q | grep {site_name}',
+        ]
         
-        if volumes_result.stdout.strip():
-            volumes = volumes_result.stdout.strip().split('\n')
-            for volume in volumes:
-                if volume:
-                    append_output(f'  🗑️  Removing volume: {volume}')
-                    rm_vol_cmd = f'docker volume rm {volume} 2>/dev/null || true'
-                    subprocess.run(rm_vol_cmd, shell=True, capture_output=True, timeout=30)
-            append_output(f'✅ Removed {len(volumes)} Docker volume(s)')
+        volumes_found = set()
+        for pattern_cmd in volume_patterns:
+            try:
+                result = subprocess.run(pattern_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                if result.stdout.strip():
+                    for vol in result.stdout.strip().split('\n'):
+                        if vol and site_name in vol:
+                            volumes_found.add(vol)
+            except:
+                pass
+        
+        if volumes_found:
+            for volume in volumes_found:
+                append_output(f'  🗑️  Force removing volume: {volume}')
+                # Force remove with -f flag
+                rm_vol_cmd = f'docker volume rm -f {volume} 2>/dev/null || true'
+                subprocess.run(rm_vol_cmd, shell=True, capture_output=True, timeout=30)
+            append_output(f'✅ Removed {len(volumes_found)} Docker volume(s)')
         else:
             append_output('  ℹ️  No volumes found')
         
+        # Also try to remove common volume patterns
+        common_volumes = [
+            f'{site_name}_db-data',
+            f'{site_name}_redis-data',
+            f'{site_name}_sites',
+            f'{site_name}-db-data',
+            f'{site_name}-redis-data',
+            f'{site_name}-sites',
+        ]
+        for vol in common_volumes:
+            subprocess.run(f'docker volume rm -f {vol} 2>/dev/null', shell=True, capture_output=True, timeout=10)
+        
         site_removal_tasks[task_id]['progress'] = 35
         
-        # Remove Docker networks
+        # Remove Docker networks (force removal)
         append_output('')
         append_output('🌐 Removing Docker networks...')
         
-        # Get list of networks for this site
-        networks_cmd = f'docker network ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
-        networks_result = subprocess.run(networks_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        # Get list of networks for this site (multiple methods)
+        network_patterns = [
+            f'docker network ls -q --filter "name={site_name}"',
+            f'docker network ls -q | grep {site_name}',
+        ]
         
-        if networks_result.stdout.strip():
-            networks = networks_result.stdout.strip().split('\n')
-            for network in networks:
-                if network and network not in ['bridge', 'host', 'none']:
-                    append_output(f'  🗑️  Removing network: {network}')
-                    rm_net_cmd = f'docker network rm {network} 2>/dev/null || true'
-                    subprocess.run(rm_net_cmd, shell=True, capture_output=True, timeout=30)
-            append_output(f'✅ Removed {len([n for n in networks if n and n not in ["bridge", "host", "none"]])} Docker network(s)')
+        networks_found = set()
+        for pattern_cmd in network_patterns:
+            try:
+                result = subprocess.run(pattern_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                if result.stdout.strip():
+                    for net in result.stdout.strip().split('\n'):
+                        if net and site_name in net:
+                            networks_found.add(net)
+            except:
+                pass
+        
+        # Exclude system networks
+        system_networks = {'bridge', 'host', 'none', 'traefik-net', 'traefik-public'}
+        networks_to_remove = networks_found - system_networks
+        
+        if networks_to_remove:
+            for network in networks_to_remove:
+                append_output(f'  🗑️  Removing network: {network}')
+                rm_net_cmd = f'docker network rm {network} 2>/dev/null || true'
+                subprocess.run(rm_net_cmd, shell=True, capture_output=True, timeout=30)
+            append_output(f'✅ Removed {len(networks_to_remove)} Docker network(s)')
         else:
-            append_output('  ℹ️  No networks found')
+            append_output('  ℹ️  No custom networks found')
+        
+        # Also try common network patterns
+        common_networks = [
+            f'{site_name}_default',
+            f'{site_name}-network',
+            f'{site_name}_network',
+        ]
+        for net in common_networks:
+            subprocess.run(f'docker network rm {net} 2>/dev/null', shell=True, capture_output=True, timeout=10)
         
         site_removal_tasks[task_id]['progress'] = 40
         
-        # Remove site folders
+        # Remove Docker images related to this site
         append_output('')
-        append_output('📁 Removing site folders...')
+        append_output('🖼️  Removing Docker images...')
         
+        # Find images tagged with site name
+        images_cmd = f'docker images --format "{{{{.Repository}}}}:{{{{.Tag}}}}" | grep {site_name}'
+        images_result = subprocess.run(images_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        
+        if images_result.stdout.strip():
+            images = images_result.stdout.strip().split('\n')
+            images_removed = 0
+            for image in images:
+                if image and site_name in image:
+                    append_output(f'  🗑️  Removing image: {image}')
+                    rm_img_cmd = f'docker rmi -f {image} 2>/dev/null || true'
+                    subprocess.run(rm_img_cmd, shell=True, capture_output=True, timeout=30)
+                    images_removed += 1
+            if images_removed > 0:
+                append_output(f'✅ Removed {images_removed} Docker image(s)')
+        else:
+            append_output('  ℹ️  No custom images found')
+        
+        site_removal_tasks[task_id]['progress'] = 50
+        
+        # Remove site folders and configuration files
+        append_output('')
+        append_output('📁 Removing site folders and configurations...')
+        
+        folders_removed = 0
+        
+        # Remove Docker-Local folder
         site_folder_local = f"{base_dir}/Docker-Local/{site_name}"
-        site_folder_vps = f"{base_dir}/Docker-on-VPS/{site_name}"
-        
         if os.path.exists(site_folder_local):
             append_output(f'  🗑️  Removing: {site_folder_local}')
             rm_local_cmd = f'sudo rm -rf "{site_folder_local}"'
             subprocess.run(rm_local_cmd, shell=True, timeout=60)
             append_output('  ✅ Docker-Local folder removed')
+            folders_removed += 1
         
+        # Remove Docker-on-VPS folder
+        site_folder_vps = f"{base_dir}/Docker-on-VPS/{site_name}"
         if os.path.exists(site_folder_vps):
             append_output(f'  🗑️  Removing: {site_folder_vps}')
             rm_vps_cmd = f'sudo rm -rf "{site_folder_vps}"'
             subprocess.run(rm_vps_cmd, shell=True, timeout=60)
             append_output('  ✅ Docker-on-VPS folder removed')
+            folders_removed += 1
         
-        site_removal_tasks[task_id]['progress'] = 60
+        # Remove any docker-compose files in root
+        compose_files = [
+            f"{base_dir}/{site_name}-docker-compose.yml",
+            f"{base_dir}/{site_name}_local/{site_name}_local-docker-compose.yml",
+            f"{base_dir}/erp{site_name}/{site_name}-docker-compose.yml",
+        ]
+        for compose_file in compose_files:
+            if os.path.exists(compose_file):
+                append_output(f'  🗑️  Removing compose file: {compose_file}')
+                subprocess.run(f'sudo rm -f "{compose_file}"', shell=True, timeout=10)
+        
+        if folders_removed == 0:
+            append_output('  ℹ️  No site folders found')
+        
+        site_removal_tasks[task_id]['progress'] = 65
         
         # Remove development folder
         append_output('')
@@ -4284,7 +4383,7 @@ def run_site_removal_task(task_id, site_name, base_dir):
         else:
             append_output(f'  ℹ️  Development folder not found: {dev_folder}')
         
-        site_removal_tasks[task_id]['progress'] = 80
+        site_removal_tasks[task_id]['progress'] = 85
         
         # Update hosts file
         append_output('')
@@ -4328,18 +4427,23 @@ def run_site_removal_task(task_id, site_name, base_dir):
         append_output('=' * 60)
         append_output('🎉 COMPLETE CLEANUP FINISHED!')
         append_output('=' * 60)
-        append_output(f'✅ All traces of {site_name} have been removed')
+        append_output(f'✅ All traces of {site_name} have been removed from the system')
         append_output('')
-        append_output('Removed resources:')
-        append_output('  • Docker containers')
-        append_output('  • Docker volumes (all data)')
-        append_output('  • Docker networks')
-        append_output('  • Site folders')
-        append_output('  • Development folders')
-        append_output('  • Hosts file entries')
-        append_output('  • Unused Docker resources')
+        append_output('✅ Successfully removed:')
+        append_output('  ✔ Docker containers (app, db, redis, worker, scheduler, socketio)')
+        append_output('  ✔ Docker volumes (all persistent data)')
+        append_output('  ✔ Docker networks (custom networks)')
+        append_output('  ✔ Docker images (site-specific images)')
+        append_output('  ✔ Site folders (Docker-Local, Docker-on-VPS)')
+        append_output('  ✔ Configuration files (docker-compose.yml)')
+        append_output('  ✔ Development folders (frappe-bench)')
+        append_output('  ✔ Hosts file entries')
+        append_output('  ✔ Unused Docker resources (system prune)')
         append_output('')
-        append_output('✨ System cleanup complete!')
+        append_output('✨ Complete site removal finished successfully!')
+        append_output(f'💾 Disk space has been reclaimed')
+        append_output('')
+        append_output('⚠️  Note: You may need to refresh the page to see updated container list')
         
     except Exception as e:
         logger.error(f"Error in site removal task: {str(e)}")

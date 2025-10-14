@@ -933,6 +933,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# IMPORTANT: Always use -p (--project-name) flag with docker-compose commands
+# This ensures consistent container naming (e.g., hossain10_local-app)
+# Without it, Docker Compose may prefix containers with a hash (e.g., 40e26c6007ba_hossain10_local-app)
+
 # Verify network exists before starting containers
 if ! docker network ls | grep -q traefik_proxy; then
     echo -e "${YELLOW}⚠️  traefik_proxy network missing, recreating...${NC}"
@@ -941,10 +945,10 @@ fi
 
 # Start containers
 echo -e "${BLUE}🚀 Starting containers...${NC}"
-if ! $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
+if ! $DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
     echo -e "${YELLOW}⚠️  Docker Compose failed, trying alternative method...${NC}"
     # Try starting containers individually as fallback
-    $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
+    $DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
 fi
 
 # Check if containers started successfully
@@ -971,7 +975,7 @@ else
         echo -e "${RED}Network issue detected. Fixing...${NC}"
         docker network create traefik_proxy --driver bridge
         echo -e "${YELLOW}Retrying container start...${NC}"
-        $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
+        $DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d
     fi
 fi
 
@@ -1028,16 +1032,16 @@ sleep 5
 
 # Start all containers using the full path to docker-compose file
 echo -e "${YELLOW}▶️  Starting all containers...${NC}"
-if ! $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
+if ! $DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" up -d; then
     echo -e "${YELLOW}⚠️  Docker Compose up failed, trying alternative method...${NC}"
     # Try starting containers individually as fallback
-    $DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
+    $DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" start || echo -e "${RED}❌ Failed to start containers${NC}"
 fi
 
 # Wait a bit and check if containers are running
 sleep 10
 echo -e "${BLUE}🔍 Checking container status after restart...${NC}"
-$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
+$DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
 
 echo -e "${GREEN}✅ Containers restarted successfully!${NC}"
 echo -e "${BLUE}⏳ Waiting 30 seconds for containers to be ready...${NC}"
@@ -1131,7 +1135,7 @@ echo -e "${GREEN}✅ Database permissions configured for app installation${NC}"
 
 # Final status check
 echo -e "${BLUE}📊 Final container status:${NC}"
-$DOCKER_COMPOSE_CMD -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
+$DOCKER_COMPOSE_CMD -p "$safe_site_name" -f "$safe_site_name/${safe_site_name}-docker-compose.yml" ps
 
 # Test if the site is accessible
 echo -e "${BLUE}🔍 Testing site accessibility...${NC}"

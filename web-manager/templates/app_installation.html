@@ -5337,7 +5337,7 @@ function getCSRFToken() {
 }
 
 // Universal Danger Zone polling function
-function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = null) {
+function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = null, onComplete = null) {
     const endpoints = {
         'rebuild': '/api/frappe/rebuild-with-apps/status/',
         'restart-policy': '/api/frappe/fix-restart-policies/status/',
@@ -5366,6 +5366,11 @@ function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = n
                     if (task.status === 'completed') {
                         clearInterval(pollInterval);
                         LoaderManager.hide();
+                        
+                        // Call completion callback if provided
+                        if (onComplete && typeof onComplete === 'function') {
+                            onComplete();
+                        }
                         
                         if (operationType === 'rebuild') {
                             showToast('Rebuild completed successfully!', 'success');
@@ -5399,12 +5404,18 @@ function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = n
                                 icon: 'success',
                                 confirmButtonColor: '#28a745'
                             }).then(() => {
-                                location.reload();
+                                // location.reload();
                             });
                         }
                     } else if (task.status === 'failed') {
                         clearInterval(pollInterval);
                         LoaderManager.hide();
+                        
+                        // Call completion callback if provided (even on failure to reset button state)
+                        if (onComplete && typeof onComplete === 'function') {
+                            onComplete();
+                        }
+                        
                         const errorMsg = task.error || 'Unknown error';
                         outputElement.innerHTML += `<br><div class="text-danger"><strong>❌ Error:</strong> ${errorMsg}</div>`;
                         showToast(`${operationType.replace('-', ' ')} failed`, 'error');
@@ -5474,8 +5485,16 @@ document.getElementById('fix-restart-policies-btn')?.addEventListener('click', a
     }
 });
 
-// 3. Complete Site Removal (with double confirmation)
+// 3. Complete Site Removal (with double confirmation and throttling)
+let isRemovalInProgress = false;
+
 document.getElementById('complete-site-removal-btn')?.addEventListener('click', async function() {
+    // Throttling: Prevent multiple simultaneous operations
+    if (isRemovalInProgress) {
+        showToast('A removal operation is already in progress. Please wait...', 'warning');
+        return;
+    }
+    
     const siteName = document.getElementById('danger-site-select').value;
     
     if (!siteName) {
@@ -5483,31 +5502,13 @@ document.getElementById('complete-site-removal-btn')?.addEventListener('click', 
         return;
     }
     
-    // First, show what will be removed
     const outputElement = document.getElementById('danger-zone-output');
-    outputElement.innerHTML = '<div class="text-info"><i class="bi bi-hourglass-split"></i> Checking containers and folders...</div>';
+    const removeBtn = document.getElementById('complete-site-removal-btn');
+    const originalBtnHTML = removeBtn.innerHTML;
     
     try {
         // Convert underscores to dots for domain name (JavaScript replacement)
         const siteDomain = siteName.replace(/_/g, '.');
-        
-        const checkCommand = `
-BASE_DIR="${FRAPPE_BASE_DIR}"
-echo "📍 Base directory: $BASE_DIR"
-echo ""
-echo "=== Containers that will be removed ==="
-docker ps -a --filter "name=^${siteName}-" --format "table {{.Names}}\\t{{.Status}}"
-echo ""
-echo "=== Folders that will be checked ==="
-ls -ld "$BASE_DIR/Docker-Local/${siteName}" 2>/dev/null || echo "Docker-Local: Not found"
-ls -ld "$BASE_DIR/Docker-on-VPS/${siteName}" 2>/dev/null || echo "Docker-on-VPS: Not found"
-ls -ld ~/frappe-docker/${siteName}-frappe-bench 2>/dev/null || echo "Development folder: Not found"
-echo ""
-echo "=== Hosts file entries ==="
-grep "${siteDomain}" /etc/hosts 2>/dev/null || echo "No hosts entry found"
-        `;
-        
-        const checkData = await executeDangerCommand(checkCommand, 'danger-zone-output', false);
         
         // First confirmation
         const firstConfirm = await Swal.fire({
@@ -5588,6 +5589,11 @@ grep "${siteDomain}" /etc/hosts 2>/dev/null || echo "No hosts entry found"
             return;
         }
         
+        // Set throttle flag and disable button
+        isRemovalInProgress = true;
+        removeBtn.disabled = true;
+        removeBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processing...';
+        
         // Execute site removal with threading + polling
         outputElement.innerHTML = '<div class="text-danger"><i class="bi bi-trash-fill spin"></i> Starting complete site removal...</div>';
         LoaderManager.show('Removing site completely...');
@@ -5604,21 +5610,38 @@ grep "${siteDomain}" /etc/hosts 2>/dev/null || echo "No hosts entry found"
         .then(response => response.json())
         .then(data => {
             if (data.success && data.task_id) {
-                // Start polling for status
-                pollDangerZoneStatus(data.task_id, 'site-removal', outputElement, siteName);
+                // Start polling for status (will reset button state when done)
+                pollDangerZoneStatus(data.task_id, 'site-removal', outputElement, siteName, () => {
+                    // Reset button state after completion
+                    isRemovalInProgress = false;
+                    removeBtn.disabled = false;
+                    removeBtn.innerHTML = originalBtnHTML;
+                });
             } else {
+                // Reset button state on error
+                isRemovalInProgress = false;
+                removeBtn.disabled = false;
+                removeBtn.innerHTML = originalBtnHTML;
                 LoaderManager.hide();
                 outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start removal'}</div>`;
                 showToast('Failed to start site removal', 'error');
             }
         })
         .catch(error => {
+            // Reset button state on error
+            isRemovalInProgress = false;
+            removeBtn.disabled = false;
+            removeBtn.innerHTML = originalBtnHTML;
             LoaderManager.hide();
             outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
             showToast('Failed to start site removal', 'error');
         });
         
     } catch (error) {
+        // Reset button state on error
+        isRemovalInProgress = false;
+        removeBtn.disabled = false;
+        removeBtn.innerHTML = originalBtnHTML;
         showToast('Error during site removal', 'error');
         LoaderManager.hide();
     }
