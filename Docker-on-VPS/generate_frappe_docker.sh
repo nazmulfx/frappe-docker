@@ -506,95 +506,46 @@ ${app_labels}
         bench set-config -gp socketio_port 9000;
         if [ ! -d sites/${site_name} ]; then
           echo "Creating new site...";
-          bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=\${DB_PASSWORD} --install-app erpnext --set-default ${site_name};
+          bench new-site --mariadb-root-password=\${DB_PASSWORD} --admin-password=admin --install-app erpnext --set-default ${site_name};
           echo "${site_name}" > sites/currentsite.txt;
+          
+          # IMMEDIATELY fix database user to allow connections from any IP
+          echo "🔐 Fixing database user permissions for wildcard access...";
+          SITE_DB_USER=\$\$(python3 -c "import json; print(json.load(open('sites/${site_name}/site_config.json')).get('db_name',''))")
+          SITE_DB_PASS=\$\$(python3 -c "import json; print(json.load(open('sites/${site_name}/site_config.json')).get('db_password',''))")
+          
+          echo "Extracted user: \$\$SITE_DB_USER";
+          if [ -n "\$\$SITE_DB_USER" ] && [ -n "\$\$SITE_DB_PASS" ]; then
+            echo "Granting % access to user: \$\$SITE_DB_USER";
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "DROP USER IF EXISTS '\$\$SITE_DB_USER'@'%';" 2>/dev/null || true
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "CREATE USER '\$\$SITE_DB_USER'@'%' IDENTIFIED BY '\$\$SITE_DB_PASS';"
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "GRANT ALL PRIVILEGES ON \$\$SITE_DB_USER.* TO '\$\$SITE_DB_USER'@'%';"
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "FLUSH PRIVILEGES;"
+            echo "✅ Database user \$\$SITE_DB_USER now has wildcard (%) access!";
+          else
+            echo "❌ Failed to extract DB credentials!";
+          fi
         else
           echo "Site ${site_name} already exists, skipping creation";
           echo "${site_name}" > sites/currentsite.txt;
+          
+          # Fix permissions for existing site too
+          echo "🔐 Fixing database user permissions for existing site...";
+          SITE_DB_USER=\$\$(python3 -c "import json; print(json.load(open('sites/${site_name}/site_config.json')).get('db_name',''))")
+          SITE_DB_PASS=\$\$(python3 -c "import json; print(json.load(open('sites/${site_name}/site_config.json')).get('db_password',''))")
+          
+          echo "Extracted user: \$\$SITE_DB_USER";
+          if [ -n "\$\$SITE_DB_USER" ] && [ -n "\$\$SITE_DB_PASS" ]; then
+            echo "Granting % access to user: \$\$SITE_DB_USER";
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "DROP USER IF EXISTS '\$\$SITE_DB_USER'@'%';" 2>/dev/null || true
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "CREATE USER '\$\$SITE_DB_USER'@'%' IDENTIFIED BY '\$\$SITE_DB_PASS';"
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "GRANT ALL PRIVILEGES ON \$\$SITE_DB_USER.* TO '\$\$SITE_DB_USER'@'%';"
+            mysql -h db -uroot -p\${DB_PASSWORD} -e "FLUSH PRIVILEGES;"
+            echo "✅ Database user \$\$SITE_DB_USER now has wildcard (%) access!";
+          else
+            echo "❌ Failed to extract DB credentials!";
+          fi
         fi
-        
-        # Configure database permissions for app installation
-        echo "🔐 Configuring database user permissions for app installation...";
-        python3 -c \"
-import json
-import subprocess
-import os
-
-# Read site configuration
-config_path = 'sites/${site_name}/site_config.json'
-if os.path.exists(config_path):
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-    
-    db_name = config.get('db_name', '')
-    db_password = config.get('db_password', '')
-    
-    if db_name and db_password:
-        # Get container IP addresses
-        result = subprocess.run(['hostname', '-i'], capture_output=True, text=True)
-        container_ips = result.stdout.strip().split()
-        
-        # Generate MySQL commands for user creation and permissions
-        mysql_commands = []
-        
-        # Create users for specific IPs
-        for ip in container_ips:
-            if ip.strip():
-                mysql_commands.extend([
-                    f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"{ip.strip()}\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-                    f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"{ip.strip()}\\\";'
-                ])
-        
-        # Create users for IP subnets
-        for ip in container_ips:
-            if ip.strip() and '.' in ip.strip():
-                ip_parts = ip.strip().split('.')
-                if len(ip_parts) >= 2:
-                    subnet = f'{ip_parts[0]}.{ip_parts[1]}.%'
-                    mysql_commands.extend([
-                        f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"{subnet}\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-                        f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"{subnet}\\\";'
-                    ])
-        
-        # Create user for localhost
-        mysql_commands.extend([
-            f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"localhost\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-            f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"localhost\\\";'
-        ])
-        
-        # Create user and grant privileges for % pattern (covers ALL IPs)
-        mysql_commands.extend([
-            f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"%\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-            f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"%\\\";'
-        ])
-        
-        # Execute all MySQL commands
-        for cmd in mysql_commands:
-            try:
-                mysql_cmd = f\\\"mysql -uroot -p{config.get('root_password', db_password)} -e '{cmd}'\\\"
-                result = subprocess.run(['docker', 'exec', '${safe_site_name}-db', 'bash', '-c', mysql_cmd], 
-                                      capture_output=True, text=True, timeout=30)
-                if result.returncode == 0:
-                    print(f'✅ Created/granted permissions for database user')
-                else:
-                    print(f'⚠️  Warning: {result.stderr.strip()}')
-            except Exception as e:
-                print(f'⚠️  Warning: Could not execute MySQL command: {e}')
-        
-        # Flush privileges
-        try:
-            flush_cmd = f\\\"mysql -uroot -p{config.get('root_password', db_password)} -e 'FLUSH PRIVILEGES;'\\\"
-            subprocess.run(['docker', 'exec', '${safe_site_name}-db', 'bash', '-c', flush_cmd], 
-                          capture_output=True, text=True, timeout=30)
-        except Exception as e:
-            print(f'⚠️  Warning: Could not flush privileges: {e}')
-        
-        print('✅ Database user permissions configured for app installation')
-    else:
-        print('⚠️  Could not read database configuration')
-else:
-    print('⚠️  site_config.json not found')
-\" 2>/dev/null || echo -e '${YELLOW}⚠️  Database permission setup failed${NC}'
 
   db:
     image: mariadb:10.6
@@ -1110,115 +1061,12 @@ else
     echo -e "${GREEN}✅ MySQL password is correctly configured${NC}"
 fi
 
-# Fix site_config.json to use root credentials
-echo -e "${BLUE}🔧 Updating site_config.json with correct credentials...${NC}"
-docker exec $APP_CONTAINER bash -c "cd /home/frappe/frappe-bench && python3 -c \"
-import json
-import os
+# Note: We do NOT modify db_password in site_config.json
+# The password created by bench new-site should remain unchanged
+echo -e "${GREEN}✅ Site configuration preserved (using password from bench new-site)${NC}"
 
-site_config_path = 'sites/${site_name}/site_config.json'
-if os.path.exists(site_config_path):
-    with open(site_config_path, 'r') as f:
-        config = json.load(f)
-    
-    # Update to use root credentials
-    config['db_password'] = '${DB_PASSWORD}'
-    if 'root_login' not in config:
-        config['root_login'] = 'root'
-    if 'root_password' not in config:
-        config['root_password'] = '${DB_PASSWORD}'
-    
-    with open(site_config_path, 'w') as f:
-        json.dump(config, f, indent=4)
-    print('✅ Updated site_config.json')
-else:
-    print('⚠️  site_config.json not found yet')
-\" 2>/dev/null || echo -e '${YELLOW}⚠️  Site config not ready yet${NC}'"
-
-echo -e "${GREEN}✅ Site configuration updated${NC}"
-
-# Configure database permissions for app installation
-echo -e "${BLUE}🔐 Configuring database user permissions for app installation...${NC}"
-docker exec $APP_CONTAINER bash -c "cd /home/frappe/frappe-bench && python3 -c \"
-import json
-import subprocess
-import os
-
-# Read site configuration
-config_path = 'sites/${site_name}/site_config.json'
-if os.path.exists(config_path):
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-    
-    db_name = config.get('db_name', '')
-    db_password = config.get('db_password', '')
-    
-    if db_name and db_password:
-        # Get container IP addresses
-        result = subprocess.run(['hostname', '-i'], capture_output=True, text=True)
-        container_ips = result.stdout.strip().split()
-        
-        # Generate MySQL commands for user creation and permissions
-        mysql_commands = []
-        
-        # Create users for specific IPs
-        for ip in container_ips:
-            if ip.strip():
-                mysql_commands.extend([
-                    f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"{ip.strip()}\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-                    f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"{ip.strip()}\\\";'
-                ])
-        
-        # Create users for IP subnets
-        for ip in container_ips:
-            if ip.strip() and '.' in ip.strip():
-                ip_parts = ip.strip().split('.')
-                if len(ip_parts) >= 2:
-                    subnet = f'{ip_parts[0]}.{ip_parts[1]}.%'
-                    mysql_commands.extend([
-                        f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"{subnet}\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-                        f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"{subnet}\\\";'
-                    ])
-        
-        # Create user for localhost
-        mysql_commands.extend([
-            f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"localhost\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-            f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"localhost\\\";'
-        ])
-        
-        # Create user and grant privileges for % pattern (covers ALL IPs)
-        mysql_commands.extend([
-            f'CREATE USER IF NOT EXISTS \\\"{db_name}\\\"@\\\"%\\\" IDENTIFIED BY \\\"{db_password}\\\";',
-            f'GRANT ALL PRIVILEGES ON {db_name}.* TO \\\"{db_name}\\\"@\\\"%\\\";'
-        ])
-        
-        # Execute all MySQL commands
-        for cmd in mysql_commands:
-            try:
-                mysql_cmd = f\\\"mysql -uroot -p{config.get('root_password', db_password)} -e '{cmd}'\\\"
-                result = subprocess.run(['docker', 'exec', '${safe_site_name}-db', 'bash', '-c', mysql_cmd], 
-                                      capture_output=True, text=True, timeout=30)
-                if result.returncode == 0:
-                    print(f'✅ Created/granted permissions for database user')
-                else:
-                    print(f'⚠️  Warning: {result.stderr.strip()}')
-            except Exception as e:
-                print(f'⚠️  Warning: Could not execute MySQL command: {e}')
-        
-        # Flush privileges
-        try:
-            flush_cmd = f\\\"mysql -uroot -p{config.get('root_password', db_password)} -e 'FLUSH PRIVILEGES;'\\\"
-            subprocess.run(['docker', 'exec', '${safe_site_name}-db', 'bash', '-c', flush_cmd], 
-                          capture_output=True, text=True, timeout=30)
-        except Exception as e:
-            print(f'⚠️  Warning: Could not flush privileges: {e}')
-        
-        print('✅ Database user permissions configured for app installation')
-    else:
-        print('⚠️  Could not read database configuration')
-else:
-    print('⚠️  site_config.json not found')
-\" 2>/dev/null || echo -e '${YELLOW}⚠️  Database permission setup failed${NC}'"
+# Database permissions are already configured by the create-site container
+echo -e "${GREEN}✅ Database permissions already configured (wildcard access enabled in create-site container)${NC}"
 
 # Final status check
 echo -e "${BLUE}📊 Final container status:${NC}"
