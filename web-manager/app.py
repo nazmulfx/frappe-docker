@@ -1937,7 +1937,13 @@ def execute_command_api():
         
         # Detect heavy commands that should run in background
         heavy_commands = ['bench migrate', 'bench get-app', 'bench install-app', 'bench build', 'bench update', 'bench backup', 'bench restore']
+        
+        # Check for exact matches and also patterns like "bench --site site_name install-app"
         is_heavy_command = any(command.lower().strip().startswith(hc) for hc in heavy_commands)
+        
+        # Also check for bench commands with --site parameter that contain heavy operations
+        if not is_heavy_command and command.lower().strip().startswith('bench --site') and any(op in command.lower() for op in ['install-app', 'migrate', 'build', 'update', 'backup', 'restore']):
+            is_heavy_command = True
         
         # For heavy commands, use threading for background execution
         if is_heavy_command:
@@ -3397,6 +3403,110 @@ def run_heavy_command_task(task_id, container, command, current_dir):
                 background_tasks[task_id]['status'] = 'completed'
                 background_tasks[task_id]['progress'] = 100
                 background_tasks[task_id]['message'] = 'Migration completed successfully!'
+                background_tasks[task_id]['output'] = output
+                background_tasks[task_id]['result'] = {
+                    'success': True,
+                    'output': output
+                }
+        
+        # Special handling for bench install-app command
+        elif command.lower().strip().startswith('bench --site') and 'install-app' in command.lower():
+            app_name = None
+            site_name = None
+            last_progress = 0
+            
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                line = line.rstrip()
+                
+                # Extract app and site names from command
+                if app_name is None or site_name is None:
+                    if '--site' in command:
+                        parts = command.split('--site')
+                        if len(parts) > 1:
+                            site_part = parts[1].strip().split()[0]
+                            site_name = site_part
+                    if 'install-app' in command:
+                        parts = command.split('install-app')
+                        if len(parts) > 1:
+                            app_part = parts[1].strip().split()[0]
+                            app_name = app_part
+                
+                # Parse install-app specific output
+                if 'Installing' in line and 'app' in line.lower():
+                    output_lines.append(f"🚀 Starting installation of {app_name or 'app'} on site {site_name or 'site'}")
+                    background_tasks[task_id]['progress'] = 20
+                    background_tasks[task_id]['message'] = f'Installing {app_name or "app"} on {site_name or "site"}'
+                
+                elif 'Installing app' in line:
+                    output_lines.append(f"📦 {line}")
+                    background_tasks[task_id]['progress'] = 30
+                    background_tasks[task_id]['message'] = 'Installing application files...'
+                
+                elif 'Building' in line or 'Compiling' in line:
+                    output_lines.append(f"🔨 {line}")
+                    background_tasks[task_id]['progress'] = 40
+                    background_tasks[task_id]['message'] = 'Building application...'
+                
+                elif 'Installing dependencies' in line or 'pip install' in line.lower():
+                    output_lines.append(f"📚 {line}")
+                    background_tasks[task_id]['progress'] = 50
+                    background_tasks[task_id]['message'] = 'Installing dependencies...'
+                
+                elif 'Creating' in line and 'doctype' in line.lower():
+                    output_lines.append(f"📋 {line}")
+                    background_tasks[task_id]['progress'] = 60
+                    background_tasks[task_id]['message'] = 'Creating database tables...'
+                
+                elif 'Migrating' in line and 'local' in line:
+                    output_lines.append(f"🔄 {line}")
+                    background_tasks[task_id]['progress'] = 70
+                    background_tasks[task_id]['message'] = 'Running database migrations...'
+                
+                elif 'Updating DocTypes' in line:
+                    output_lines.append(f"📊 {line}")
+                    background_tasks[task_id]['progress'] = 80
+                    background_tasks[task_id]['message'] = 'Updating DocTypes...'
+                
+                elif 'Building assets' in line or 'Compiling assets' in line:
+                    output_lines.append(f"🎨 {line}")
+                    background_tasks[task_id]['progress'] = 85
+                    background_tasks[task_id]['message'] = 'Building frontend assets...'
+                
+                elif 'Successfully installed' in line or 'Installation completed' in line:
+                    output_lines.append(f"✅ {line}")
+                    background_tasks[task_id]['progress'] = 95
+                    background_tasks[task_id]['message'] = 'Installation completed!'
+                
+                elif line.strip() and not any(x in line for x in ['[', ']', '=', 'INFO', 'DEBUG']):
+                    # Include important lines but filter out noise
+                    if any(keyword in line.lower() for keyword in ['error', 'warning', 'success', 'installing', 'creating', 'building', 'migrating']):
+                        output_lines.append(line)
+                
+                # Update output in real-time
+                background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Get final output
+            output = '\n'.join(output_lines)
+            
+            # Check if process completed successfully
+            process.wait()
+            if process.returncode != 0:
+                background_tasks[task_id]['status'] = 'failed'
+                background_tasks[task_id]['error'] = f"App installation failed with exit code {process.returncode}"
+                background_tasks[task_id]['result'] = {
+                    'success': False,
+                    'error': f"App installation failed with exit code {process.returncode}",
+                    'output': output
+                }
+            else:
+                output += f"\n\n✅ App '{app_name or 'application'}' installed successfully on site '{site_name or 'site'}'!"
+                background_tasks[task_id]['status'] = 'completed'
+                background_tasks[task_id]['progress'] = 100
+                background_tasks[task_id]['message'] = f'App {app_name or "application"} installed successfully!'
                 background_tasks[task_id]['output'] = output
                 background_tasks[task_id]['result'] = {
                     'success': True,

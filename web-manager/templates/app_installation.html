@@ -363,11 +363,6 @@
                                                 </button>
                                             </div>
                                             <div class="d-grid gap-2">
-                                                <button class="btn btn-outline-warning w-100 app-operation-btn" id="fix-apps-txt-btn">
-                                                    <i class="bi bi-tools"></i> Fix apps.txt
-                                                </button>
-                                            </div>
-                                            <div class="d-grid gap-2">
                                                 <button class="btn btn-outline-secondary w-100 app-operation-btn" id="bench-restart-btn">
                                                     <i class="bi bi-arrow-clockwise"></i> Supervisor Bench Restart
                                                 </button>
@@ -1791,7 +1786,6 @@ class FrappeAppManager {
         document.getElementById('uninstall-app-btn')?.addEventListener('click', () => this.uninstallApp());
         document.getElementById('update-app-btn')?.addEventListener('click', () => this.updateApp());
         document.getElementById('list-apps-btn')?.addEventListener('click', () => this.listApps());
-        document.getElementById('fix-apps-txt-btn')?.addEventListener('click', () => this.fixAppsTxt());
         document.getElementById('bench-restart-btn')?.addEventListener('click', () => this.restartBench());
         document.getElementById('supervisor-status-btn')?.addEventListener('click', () => this.supervisorStatus());
         document.getElementById('bench-build-btn')?.addEventListener('click', () => this.benchBuild());
@@ -2379,20 +2373,25 @@ class FrappeAppManager {
                 
                 this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
                 
-                // Check if this is a background task
-                if (result.is_background_task && result.task_id) {
-                    LoaderManager.setButtonLoading(installAppBtn, false);
-                    this.addToLog('info', `Heavy command running in background: ${result.task_id}`);
-                    
-                    // Track the background task with progress modal
-                    await this.trackBackgroundTask(result.task_id, `Installing ${appName} on ${siteName}`);
-                }
+            // Check if this is a background task
+            if (result.is_background_task && result.task_id) {
+                LoaderManager.setButtonLoading(installAppBtn, false);
+                this.addToLog('info', `Heavy command running in background: ${result.task_id}`);
+                
+                // Track the background task with progress modal
+                await this.trackBackgroundTask(result.task_id, `Installing ${appName} on ${siteName}`);
+                
+                // Refresh the apps list after completion
+                await this.loadAppsForContainer();
+            }
                 // Check if we have output and no error (streaming responses don't have success field)
                 else if (result.output && !result.error) {
                     this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
                     if (result.output) {
                         this.addToLog('info', result.output);
                     }
+                    // Refresh the apps list to show the newly installed app
+                    await this.loadAppsForContainer();
                 } else if (result.error) {
                     this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
                     if (result.error) {
@@ -2503,199 +2502,6 @@ class FrappeAppManager {
         }
         const command = 'bench list-apps';
         await this.executeCommand(command, 'Listing installed apps');
-    }
-    
-    async fixAppsTxt() {
-        if (!this.selectedContainer) {
-            this.showError('Please select a container first');
-            return;
-        }
-        
-        const result = await Swal.fire({
-            title: 'Fix apps.txt File',
-            html: `
-                <div class="text-start">
-                    <p>This will fix common issues with apps.txt file:</p>
-                    <ul>
-                        <li>Fix concatenated app names (e.g., "frappefrappe")</li>
-                        <li>Remove duplicate entries</li>
-                        <li>Ensure proper line breaks</li>
-                        <li>Format file correctly</li>
-                    </ul>
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <strong>Note:</strong> This will overwrite your apps.txt file.
-                        Make sure you have the correct apps installed.
-                    </div>
-                </div>
-            `,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Fix It',
-            cancelButtonText: 'Cancel',
-            confirmButtonColor: '#ffc107'
-        });
-        
-        if (!result.isConfirmed) return;
-        
-        try {
-            this.addToLog('info', 'Fixing apps.txt file...');
-            
-            // Create Python script to fix the file
-            const fixScript = `#!/usr/bin/env python3
-# Fix apps.txt file
-import re
-import os
-import sys
-
-apps_txt_path = '/home/frappe/frappe-bench/sites/apps.txt'
-
-# Check if file exists
-if not os.path.exists(apps_txt_path):
-    print(f"❌ Error: apps.txt file not found at {apps_txt_path}")
-    sys.exit(1)
-
-# Read current content
-try:
-    with open(apps_txt_path, 'r') as f:
-        content = f.read()
-except Exception as e:
-    print(f"❌ Error reading apps.txt: {e}")
-    sys.exit(1)
-
-print("Current apps.txt content:")
-print(content)
-print("\\n" + "="*50 + "\\n")
-
-# Known common app names
-common_apps = ['frappe', 'erpnext', 'hrms', 'payments', 'wiki', 'helpdesk', 
-               'ecommerce', 'insights', 'webshop', 'builder', 'crm', 'lms',
-               'healthcare', 'education', 'agriculture', 'non_profit']
-
-# Parse and fix
-fixed_apps = []
-lines = content.replace('\\r\\n', '\\n').replace('\\r', '\\n').split('\\n')
-
-for line in lines:
-    line = line.strip()
-    if not line:
-        continue
-    
-    # Check for concatenated apps
-    for app in common_apps:
-        duplicated = app + app
-        if duplicated in line:
-            # Found duplication like 'frappefrappe'
-            line = line.replace(duplicated, app + '\\n' + app)
-    
-    # Add fixed line(s)
-    for subline in line.split('\\n'):
-        subline = subline.strip()
-        if subline:
-            fixed_apps.append(subline)
-
-# Remove duplicates while preserving order
-seen = set()
-unique_apps = []
-for app in fixed_apps:
-    if app and app not in seen:
-        seen.add(app)
-        unique_apps.append(app)
-
-# Write back with proper formatting
-if unique_apps:
-    try:
-        with open(apps_txt_path, 'w') as f:
-            for app in unique_apps:
-                f.write(app + '\\n')
-        
-        print("✅ Fixed apps.txt successfully!")
-        print("\\nFixed apps list:")
-        for app in unique_apps:
-            print(f"  - {app}")
-    except Exception as e:
-        print(f"❌ Error writing apps.txt: {e}")
-        sys.exit(1)
-else:
-    print("⚠️ No apps found in apps.txt")
-    sys.exit(1)
-`;
-
-            // Create a temporary file with the script and execute it
-            const tempFile = `/tmp/fix_apps_txt_${Date.now()}.py`;
-            
-            // First, write the script to a file
-            const writeCommand = `cat > ${tempFile} << 'EOFPYTHON'
-${fixScript}
-EOFPYTHON`;
-            
-            await fetchWithLoader('/api/frappe/execute-command', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                },
-                body: JSON.stringify({
-                    container: this.selectedContainer,
-                    command: writeCommand
-                })
-            }, 'Creating fix script...');
-            
-            // Then execute the script
-            const response = await fetchWithLoader('/api/frappe/execute-command', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
-                },
-                body: JSON.stringify({
-                    container: this.selectedContainer,
-                    command: `python3 ${tempFile} && rm -f ${tempFile}`
-                })
-            }, 'Fixing apps.txt...');
-            
-            const data = await response.json();
-            
-            if (data.error) {
-                this.addToLog('error', `Failed to fix apps.txt: ${data.error}`);
-                Swal.fire({
-                    title: 'Error',
-                    html: `<pre style="text-align: left; max-height: 300px; overflow-y: auto;">${data.error}</pre>`,
-                    icon: 'error',
-                    confirmButtonColor: '#dc3545'
-                });
-            } else if (data.output) {
-                this.addToLog('success', '✅ apps.txt file has been fixed!');
-                this.addToLog('info', data.output);
-                
-                // Reload the apps list
-                await this.loadAppsForContainer();
-                
-                Swal.fire({
-                    title: 'Success!',
-                    html: `<div style="text-align: left;"><strong>apps.txt file has been fixed successfully.</strong><pre style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px;">${data.output}</pre></div>`,
-                    icon: 'success',
-                    width: '700px',
-                    confirmButtonColor: '#28a745'
-                });
-            } else {
-                this.addToLog('error', 'No output received from fix operation');
-                Swal.fire({
-                    title: 'Error',
-                    text: 'No output received. The operation may have failed.',
-                    icon: 'error',
-                    confirmButtonColor: '#dc3545'
-                });
-            }
-        } catch (error) {
-            this.addToLog('error', `Error fixing apps.txt: ${error.message}`);
-            Swal.fire({
-                title: 'Error',
-                text: error.message,
-                icon: 'error',
-                confirmButtonColor: '#dc3545'
-            });
-        }
     }
     
     async restartBench() {
