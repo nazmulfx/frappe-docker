@@ -325,9 +325,6 @@
                                                 <button class="btn btn-outline-primary app-operation-btn" id="bench-status">
                                                     <i class="bi bi-check-circle"></i> Bench Status
                                                 </button>
-                                                <button class="btn btn-outline-info app-operation-btn" id="bench-info">
-                                                    <i class="bi bi-info-square"></i> Bench Info
-                                                </button>
                                                 <button class="btn btn-outline-warning app-operation-btn" id="bench-clear-cache">
                                                     <i class="bi bi-trash"></i> Clear Cache
                                                 </button>
@@ -1794,7 +1791,6 @@ class FrappeAppManager {
         
         // Quick actions
         document.getElementById('bench-status')?.addEventListener('click', () => this.benchStatus());
-        document.getElementById('bench-info')?.addEventListener('click', () => this.benchInfo());
         document.getElementById('bench-clear-cache')?.addEventListener('click', () => this.clearCache());
         document.getElementById('bench-migrate')?.addEventListener('click', () => this.migrate());
         
@@ -2738,34 +2734,19 @@ class FrappeAppManager {
     
     // Quick Actions
     async benchStatus() {
-        // Use safe version of bench status
-        const benchVersionCommand = "bench --version";
-        await this.executeCommand(benchVersionCommand, "Checking bench version");
-        
-        // Also try to get basic info
-        const infoCommand = "ls -la /home/frappe/frappe-bench/apps/";
-        await this.executeCommand(infoCommand, "Listing installed apps directory");
-        
-        const sitesCommand = "ls -la /home/frappe/frappe-bench/sites/";
-        await this.executeCommand(sitesCommand, "Listing sites directory");
-        const benchStatusCommand = 'bench doctor';
-        await this.executeCommand(benchStatusCommand, 'Checking bench status');
-    }
-    
-    async benchInfo() {
-        // Use safe commands instead of bench info
+        // Comprehensive bench status and info
         const commands = [
             "bench --version",
+            "bench doctor",
             "cat /home/frappe/frappe-bench/sites/apps.txt",
             "cat /home/frappe/frappe-bench/sites/currentsite.txt",
-            "ls -la /home/frappe/frappe-bench/apps/"
+            "ls -la /home/frappe/frappe-bench/apps/",
+            "ls -la /home/frappe/frappe-bench/sites/"
         ];
         
         for (const cmd of commands) {
-            await this.executeCommand(cmd, `Getting bench info: ${cmd}`);
+            await this.executeCommand(cmd, `Getting bench status: ${cmd}`);
         }
-        const command = 'bench version';
-        await this.executeCommand(command, 'Getting bench information');
     }
     
     async clearCache() {
