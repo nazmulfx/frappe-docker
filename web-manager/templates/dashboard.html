@@ -119,6 +119,17 @@
 .border-left-info { border-left: 4px solid #17a2b8 !important; }
 .border-left-warning { border-left: 4px solid #ffc107 !important; }
 
+@keyframes slideInUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
 {% endblock %}
 
 {% block content %}
@@ -136,7 +147,8 @@
     </div>
 </div>
 
-<!-- Statistics Cards -->
+<!-- Statistics Cards - Only show if user can view containers -->
+{% if has_permission('view_containers') %}
 <div class="row mb-4">
     <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-success shadow h-100 py-2 card-stat">
@@ -202,9 +214,11 @@
         </div>
     </div>
 </div>
+{% endif %}
 
-<!-- Container Groups (Projects) -->
-{% if container_groups %}
+<!-- Container Groups (Projects) - Only show if user can view containers -->
+{% if has_permission('view_containers') %}
+    {% if container_groups %}
 <div class="row">
     <div class="col-12">
         <h4 class="mb-3"><i class="bi bi-collection"></i> Projects & Containers</h4>
@@ -289,29 +303,34 @@
                                 <div class="btn-group btn-group-sm" role="group">
                                     
                                     {% if 'Up' in container.status %}
-                                        <button class="btn btn-warning btn-sm" onclick="confirmContainerAction('{{ container.name }}', 'stop')" title="Stop" 
+                                        {% if has_permission('stop_containers') %}
+                                        <button class="btn btn-warning btn-sm" onclick="containerAction('{{ container.name }}', 'stop')" title="Stop" 
                                                 data-bs-toggle="tooltip" data-bs-placement="top">
                                             <i class="bi bi-stop-fill"></i>
                                         </button>
+                                        {% endif %}
+                                        {% if has_permission('restart_containers') %}
                                         <button class="btn btn-info btn-sm" onclick="containerAction('{{ container.name }}', 'restart')" title="Restart" 
                                                 data-bs-toggle="tooltip" data-bs-placement="top">
                                             <i class="bi bi-arrow-clockwise"></i>
                                         </button>
+                                        {% endif %}
                                     {% else %}
+                                        {% if has_permission('start_containers') %}
                                         <button class="btn btn-success btn-sm" onclick="containerAction('{{ container.name }}', 'start')" title="Start" 
                                                 data-bs-toggle="tooltip" data-bs-placement="top">
                                             <i class="bi bi-play"></i>
                                         </button>
+                                        {% endif %}
                                     {% endif %}
                                     
-                                    <button class="btn btn-secondary btn-sm" onclick="loadLogs('{{ container.name }}')" title="Logs">
+                                    {% if has_permission('view_logs') %}
+                                    <button class="btn btn-secondary btn-sm" onclick="loadLogs('{{ container.name }}')" title="Logs"
+                                            data-bs-toggle="tooltip" data-bs-placement="top">
                                         <i class="bi bi-file-text"></i>
                                     </button>
-                                    
-                                    <button class="btn btn-danger btn-sm" onclick="confirmContainerAction('{{ container.name }}', 'remove')" title="Remove" 
-                                            data-bs-toggle="tooltip" data-bs-placement="top">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                    {% endif %}
+
                                 </div>
                             </div>
                         </div>
@@ -323,13 +342,37 @@
         {% endfor %}
     </div>
 </div>
-{% else %}
+    {% else %}
 <div class="row">
     <div class="col-12">
         <div class="text-center py-5">
             <i class="bi bi-box fa-3x text-muted mb-3"></i>
             <h4 class="text-muted">No containers found</h4>
             <p class="text-muted">Start by creating a new Docker project or container.</p>
+        </div>
+    </div>
+</div>
+    {% endif %}
+{% else %}
+<!-- User doesn't have permission to view containers -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info border-0 shadow-sm" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);">
+            <div class="d-flex align-items-start">
+                <i class="bi bi-info-circle fs-3 me-3 text-info"></i>
+                <div>
+                    <h5 class="alert-heading"><i class="bi bi-shield-lock"></i> Limited Access</h5>
+                    <p class="mb-2">You have limited access to the Docker Manager.</p>
+                    <p class="mb-0">
+                        <strong>Your current roles:</strong> 
+                        <span class="badge bg-primary">{{ current_user.roles|map(attribute='display_name')|join(', ') if current_user and current_user.roles else 'No roles assigned' }}</span>
+                    </p>
+                    <hr>
+                    <p class="mb-0 small text-muted">
+                        <i class="bi bi-lightbulb"></i> To access more features, contact your administrator to request additional permissions.
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -358,28 +401,6 @@
     </div>
 </div>
 
-<!-- Confirmation Modal -->
-<div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
-    <div class="modal-dialog model-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p id="confirmationMessage">Are you sure you want to perform this action?</p>
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle-fill"></i> 
-                    <span id="confirmationWarning">This action cannot be undone.</span>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmActionBtn">Confirm</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block custom_js %}
@@ -442,7 +463,9 @@ async function containerAction(containerName, action) {
                 location.reload();
             }, 1500);
         } else {
-            showToast(`Failed to ${action} container: ${result.error}`, 'error');
+            // Extract error message from different possible locations
+            const errorMsg = result.error || result.message || (result.result && result.result.message) || 'Unknown error';
+            showToast(`Failed to ${action} container: ${errorMsg}`, 'error');
         }
     } catch (error) {
         console.error(`Error ${action}ing container:`, error);
@@ -452,18 +475,6 @@ async function containerAction(containerName, action) {
     }
 }
 
-// Confirmation dialog for stop/remove actions
-async function confirmContainerAction(containerName, action) {
-    const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
-    document.getElementById('confirmationMessage').textContent = `Are you sure you want to ${action} container "${containerName}"?`;
-    document.getElementById('confirmationWarning').textContent = `This action cannot be undone.`;
-    document.getElementById('confirmActionBtn').textContent = `Confirm ${action}`;
-    document.getElementById('confirmActionBtn').onclick = () => {
-        modal.hide();
-        containerAction(containerName, action);
-    };
-    modal.show();
-}
 
 // Load container logs
 async function loadLogs(containerName) {
@@ -499,23 +510,81 @@ async function refreshLogs() {
     }
 }
 
-// Show toast notification
+// Show toast notification with beautiful styling
 function showToast(message, type = 'info') {
     const toastContainer = document.getElementById('toastContainer') || createToastContainer();
     
+    // Icon mapping
+    const iconMap = {
+        'error': 'bi-shield-x',
+        'success': 'bi-check-circle',
+        'warning': 'bi-exclamation-triangle',
+        'info': 'bi-info-circle',
+        'permission_denied': 'bi-shield-lock'
+    };
+    
+    // Title mapping
+    const titleMap = {
+        'error': 'Error',
+        'success': 'Success',
+        'warning': 'Warning',
+        'info': 'Info',
+        'permission_denied': 'Permission Denied'
+    };
+    
+    // Color mapping
+    const bgMap = {
+        'error': 'danger',
+        'success': 'success',
+        'warning': 'warning',
+        'info': 'info',
+        'permission_denied': 'danger'
+    };
+    
+    const icon = iconMap[type] || iconMap['info'];
+    const title = titleMap[type] || titleMap['info'];
+    const bgColor = bgMap[type] || bgMap['info'];
+    
     const toast = document.createElement('div');
-    toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'primary'} border-0`;
+    toast.className = `toast border-0 shadow-lg`;
     toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+    toast.style.animation = 'slideInUp 0.3s ease-out';
+    
+    // Gradient backgrounds
+    const gradients = {
+        'danger': 'linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%)',
+        'success': 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+        'warning': 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+        'info': 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+    };
+    
+    const textColors = {
+        'danger': '#721c24',
+        'success': '#155724',
+        'warning': '#856404',
+        'info': '#055160'
+    };
+    
+    toast.style.background = gradients[bgColor];
+    toast.style.color = textColors[bgColor];
+    toast.style.borderLeft = `4px solid var(--bs-${bgColor})`;
+    
     toast.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">${message}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        <div class="toast-header" style="background: transparent; border: none; color: inherit;">
+            <i class="bi ${icon} me-2" style="font-size: 1.2rem;"></i>
+            <strong class="me-auto">${title}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" style="font-size: 0.95rem;">
+            ${message}
         </div>
     `;
     
     toastContainer.appendChild(toast);
     
-    const bsToast = new bootstrap.Toast(toast);
+    const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
     bsToast.show();
     
     toast.addEventListener('hidden.bs.toast', () => {
@@ -528,7 +597,7 @@ function createToastContainer() {
     const container = document.createElement('div');
     container.id = 'toastContainer';
     container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-    container.style.zIndex = '11';
+    container.style.zIndex = '1050';
     document.body.appendChild(container);
     return container;
 }

@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from ssh_manager import ssh_manager
 from models import AuditLog, db
+from permissions import require_permission
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -17,14 +18,9 @@ logger = logging.getLogger(__name__)
 # Create SSH blueprint
 ssh_bp = Blueprint('ssh', __name__, url_prefix='/api/ssh')
 
-def require_auth(f):
-    """Decorator to require authentication"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'logged_in' not in session or not session['logged_in']:
-            return jsonify({'error': 'Authentication required'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
+# Note: Permission checking is now handled by RBAC middleware
+# All routes under /api/ssh/* require 'ssh_access' permission
+# We keep basic auth checks for backward compatibility
 
 def log_audit(event_type, username, ip, message, status="success", user_id=None):
     """Log security event to audit log"""
@@ -43,7 +39,6 @@ def log_audit(event_type, username, ip, message, status="success", user_id=None)
         logger.error(f"Failed to log audit event: {str(e)}")
 
 @ssh_bp.route('/sessions', methods=['GET'])
-@require_auth
 def get_ssh_sessions():
     """Get all active SSH sessions"""
     try:
@@ -68,7 +63,6 @@ def get_ssh_sessions():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @ssh_bp.route('/create', methods=['POST'])
-@require_auth
 def create_ssh_session():
     """Create new SSH session"""
     try:
@@ -115,7 +109,6 @@ def create_ssh_session():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @ssh_bp.route('/revoke', methods=['POST'])
-@require_auth
 def revoke_ssh_session():
     """Revoke SSH session"""
     try:
@@ -151,7 +144,6 @@ def revoke_ssh_session():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @ssh_bp.route('/download-key/<session_id>')
-@require_auth
 def download_ssh_key(session_id):
     """Download private key for SSH session"""
     try:
@@ -194,7 +186,6 @@ def download_ssh_key(session_id):
         return jsonify({'error': str(e)}), 500
 
 @ssh_bp.route('/status/<container>')
-@require_auth
 def check_ssh_status(container):
     """Check SSH server status in container"""
     try:
@@ -230,7 +221,6 @@ def check_ssh_status(container):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @ssh_bp.route('/extend', methods=['POST'])
-@require_auth
 def extend_ssh_session():
     """Extend SSH session duration"""
     try:
@@ -284,7 +274,6 @@ def extend_ssh_session():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @ssh_bp.route('/cleanup', methods=['POST'])
-@require_auth
 def cleanup_expired_sessions():
     """Clean up expired SSH sessions"""
     try:
@@ -312,7 +301,6 @@ def cleanup_expired_sessions():
 
 
 @ssh_bp.route('/cleanup-orphaned', methods=['POST'])
-@require_auth
 def cleanup_orphaned_files():
     """Clean up orphaned log files"""
     try:
@@ -340,7 +328,6 @@ def cleanup_orphaned_files():
         }), 500
 
 @ssh_bp.route('/cleanup-orphaned-users', methods=['POST'])
-@require_auth
 def cleanup_orphaned_ssh_users():
     """Clean up orphaned SSH users from containers"""
     try:
@@ -367,7 +354,6 @@ def cleanup_orphaned_ssh_users():
             'error': str(e)
         }), 500
 @ssh_bp.route('/containers')
-@require_auth
 def get_containers():
     """Get list of available containers for SSH setup"""
     try:

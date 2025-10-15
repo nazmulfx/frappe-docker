@@ -269,6 +269,30 @@ remove_all_containers() {
     docker ps -a --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}"
     echo ""
     
+    # Show volumes that will be removed
+    echo -e "${CYAN}Docker volumes that will be removed:${NC}"
+    local volumes=$(docker volume ls --filter "name=${site_name}" --format "{{.Name}}")
+    if [ ! -z "$volumes" ]; then
+        echo "$volumes" | while read volume; do
+            echo -e "   📦 $volume"
+        done
+    else
+        echo -e "   ${YELLOW}No volumes found${NC}"
+    fi
+    echo ""
+    
+    # Show networks that will be removed
+    echo -e "${CYAN}Docker networks that will be removed:${NC}"
+    local networks=$(docker network ls --filter "name=${site_name}" --format "{{.Name}}")
+    if [ ! -z "$networks" ]; then
+        echo "$networks" | while read network; do
+            echo -e "   🌐 $network"
+        done
+    else
+        echo -e "   ${YELLOW}No networks found${NC}"
+    fi
+    echo ""
+    
     # Show folders that will be removed
     echo -e "${CYAN}Folders that will be removed:${NC}"
     local site_folder="${site_name}"
@@ -309,6 +333,35 @@ remove_all_containers() {
     
     echo -e "${GREEN}✅ All containers removed successfully!${NC}"
     
+    # Remove associated volumes
+    echo -e "${BLUE}🗑️  Removing Docker volumes for $site_name...${NC}"
+    local volumes=$(docker volume ls --filter "name=${site_name}" --format "{{.Name}}")
+    if [ ! -z "$volumes" ]; then
+        echo "$volumes" | while read volume; do
+            echo -e "   Removing volume: $volume"
+            docker volume rm "$volume" 2>/dev/null || echo -e "   ${YELLOW}⚠️  Warning: Could not remove volume $volume (may be in use)${NC}"
+        done
+        echo -e "${GREEN}✅ Docker volumes removed successfully!${NC}"
+    else
+        echo -e "${YELLOW}No volumes found for $site_name${NC}"
+    fi
+    
+    # Remove associated networks
+    echo -e "${BLUE}🗑️  Removing Docker networks for $site_name...${NC}"
+    local networks=$(docker network ls --filter "name=${site_name}" --format "{{.Name}}")
+    if [ ! -z "$networks" ]; then
+        echo "$networks" | while read network; do
+            # Skip default networks
+            if [[ "$network" != "bridge" && "$network" != "host" && "$network" != "none" ]]; then
+                echo -e "   Removing network: $network"
+                docker network rm "$network" 2>/dev/null || echo -e "   ${YELLOW}⚠️  Warning: Could not remove network $network (may be in use)${NC}"
+            fi
+        done
+        echo -e "${GREEN}✅ Docker networks removed successfully!${NC}"
+    else
+        echo -e "${YELLOW}No networks found for $site_name${NC}"
+    fi
+    
     # Remove site folder
     if [[ -d "$site_folder" ]]; then
         echo -e "${BLUE}🗑️  Removing site folder: $site_folder${NC}"
@@ -333,126 +386,12 @@ remove_all_containers() {
     
     echo -e "${GREEN}🎉 Complete cleanup completed for $site_name!${NC}"
     
-    # Offer cleanup
-    read -p "🧹 Do you want to clean up unused Docker resources? (y/n): " cleanup_choice
-    if [[ "$cleanup_choice" =~ ^[Yy]$ ]]; then
-        cleanup_docker_space
-    fi
-}
-
-# Function to remove specific container
-remove_specific_container() {
-    local site_name=$1
-    
-    echo -e "${CYAN}📋 Available containers for $site_name:${NC}"
-    docker ps -a --filter "name=^${site_name}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    # Automatic cleanup - always yes, always aggressive
     echo ""
-    
-    read -p "Enter container name to remove: " container_name
-    if [[ -z "$container_name" ]]; then
-        echo -e "${YELLOW}No container name provided.${NC}"
-        return 1
-    fi
-    
-    # Check if container exists
-    if ! docker ps -a --format "{{.Names}}" | grep -q "^${container_name}$"; then
-        echo -e "${RED}❌ Container $container_name not found.${NC}"
-        return 1
-    fi
-    
-    echo -e "${RED}⚠️  WARNING: This will permanently remove container: $container_name${NC}"
-    read -p "⚠️  Are you sure you want to remove $container_name? (y/n): " confirm1
-    if [[ ! "$confirm1" =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}Removal cancelled.${NC}"
-        return 0
-    fi
-    
-    read -p "⚠️  FINAL CONFIRMATION: Type 'REMOVE' to confirm: " confirm2
-    if [[ "$confirm2" != "REMOVE" ]]; then
-        echo -e "${YELLOW}Removal cancelled - incorrect confirmation.${NC}"
-        return 0
-    fi
-    
-    echo -e "${RED}🗑️  Removing container $container_name...${NC}"
-    
-    if docker rm -f "$container_name"; then
-        echo -e "${GREEN}✅ Container $container_name removed successfully!${NC}"
-    else
-        echo -e "${RED}❌ Failed to remove container $container_name.${NC}"
-        return 1
-    fi
-}
-
-# Function to cleanup Docker space
-cleanup_docker_space() {
-    echo -e "${CYAN}🧹 Docker System Cleanup${NC}"
+    echo -e "${BLUE}🧹 Cleaning up unused Docker resources (volumes, images, containers)...${NC}"
+    docker system prune -a --volumes -f
+    echo -e "${GREEN}✅ Docker cleanup completed!${NC}"
     echo ""
-    
-    # Show current space usage
-    echo -e "${YELLOW}📊 Current Docker Space Usage:${NC}"
-    docker system df
-    echo ""
-    
-    echo "What would you like to clean up?"
-    echo "1. Clean unused containers, networks, and dangling images (safe)"
-    echo "2. Clean everything unused including volumes (removes data!)"
-    echo "3. Clean only dangling images"
-    echo "4. Clean only stopped containers"
-    echo "5. Clean only unused volumes (removes data!)"
-    echo "6. Clean only unused networks"
-    echo "7. Cancel"
-    
-    read -p "Select cleanup option (1-7): " cleanup_option
-    
-    case $cleanup_option in
-        1)
-            echo -e "${GREEN}🧹 Cleaning containers, networks, and dangling images...${NC}"
-            docker system prune -f
-            ;;
-        2)
-            echo -e "${RED}⚠️  WARNING: This will remove ALL unused volumes and may delete important data!${NC}"
-            read -p "⚠️  Are you sure you want to remove volumes? (y/n): " confirm_volumes
-            if [[ "$confirm_volumes" == "y" ]]; then
-                echo -e "${GREEN}🧹 Cleaning everything including volumes...${NC}"
-                docker system prune -a --volumes -f
-            else
-                echo -e "${YELLOW}Volume cleanup cancelled.${NC}"
-            fi
-            ;;
-        3)
-            echo -e "${GREEN}🖼️  Cleaning dangling images...${NC}"
-            docker image prune -f
-            ;;
-        4)
-            echo -e "${GREEN}📦 Cleaning stopped containers...${NC}"
-            docker container prune -f
-            ;;
-        5)
-            echo -e "${RED}⚠️  WARNING: This will remove unused volumes and may delete data!${NC}"
-            read -p "⚠️  Are you sure you want to remove unused volumes? (y/n): " confirm_vol
-            if [[ "$confirm_vol" == "y" ]]; then
-                echo -e "${GREEN}💾 Cleaning unused volumes...${NC}"
-                docker volume prune -f
-            else
-                echo -e "${YELLOW}Volume cleanup cancelled.${NC}"
-            fi
-            ;;
-        6)
-            echo -e "${GREEN}🌐 Cleaning unused networks...${NC}"
-            docker network prune -f
-            ;;
-        7)
-            echo -e "${YELLOW}Cleanup cancelled.${NC}"
-            return
-            ;;
-        *)
-            echo -e "${RED}❌ Invalid option.${NC}"
-            return
-            ;;
-    esac
-    
-    echo ""
-    echo -e "${GREEN}✅ Cleanup completed!${NC}"
     echo -e "${GREEN}📊 Updated Docker Space Usage:${NC}"
     docker system df
 }
@@ -653,11 +592,8 @@ show_container_menu() {
     echo -e "${GREEN}5.${NC} Rebuild with custom apps preservation"
     echo -e "${GREEN}6.${NC} Show container logs"
     echo -e "${GREEN}7.${NC} Show container status"
-    echo -e "${GREEN}8.${NC} Remove all containers (with space cleanup)"
-    echo -e "${GREEN}9.${NC} Remove specific container"
-    echo -e "${GREEN}10.${NC} Docker system cleanup (free space)"
-    echo -e "${GREEN}11.${NC} Complete site removal (containers + folders + hosts)"
-    echo -e "${GREEN}12.${NC} Back to main menu"
+    echo -e "${GREEN}8.${NC} Complete site removal (containers + folders + hosts)"
+    echo -e "${GREEN}9.${NC} Back to main menu"
     echo ""
 }
 
@@ -1033,7 +969,7 @@ manage_containers_menu() {
     while true; do
         show_container_menu
         
-        read -p "Select an option (1-13): " choice
+        read -p "Select an option (1-9): " choice
         
         case $choice in
             1)
@@ -1061,15 +997,6 @@ manage_containers_menu() {
                 remove_all_containers "$site_name"
                 ;;
             9)
-                remove_specific_container "$site_name"
-                ;;
-            10)
-                cleanup_docker_space
-                ;;
-            11)
-                remove_all_containers "$site_name"
-                ;;
-            12)
                 break
                 ;;
             *)

@@ -862,6 +862,67 @@ PrintMotd no"""
         except Exception as e:
             logger.error(f"Orphaned log cleanup error: {str(e)}")
     
+    def cleanup_orphaned_ssh_users(self):
+        """Clean up orphaned SSH users from containers that no longer have active sessions"""
+        try:
+            # Get list of all containers
+            cmd = ["sudo", "docker", "ps", "--format", "{{.Names}}"]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to list containers: {result.stderr}")
+                return
+            
+            containers = result.stdout.strip().split('\n')
+            containers = [c for c in containers if c]  # Filter empty strings
+            
+            # Get all active sessions grouped by container and username
+            active_users = {}
+            for session in self.ssh_connections.values():
+                if session['status'] == 'active' and session['expires_at'] > datetime.now():
+                    container = session['container']
+                    username = session['username']
+                    
+                    if container not in active_users:
+                        active_users[container] = set()
+                    active_users[container].add(username)
+            
+            # Check each container for orphaned SSH users
+            cleaned_count = 0
+            for container in containers:
+                try:
+                    # List users with SSH directories
+                    cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c",
+                           "find /home -maxdepth 2 -type d -name '.ssh' 2>/dev/null | sed 's|/home/||; s|/.ssh||'"]
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    
+                    if result.returncode != 0:
+                        continue
+                    
+                    ssh_users = result.stdout.strip().split('\n')
+                    ssh_users = [u for u in ssh_users if u and u != 'frappe']  # Keep frappe user
+                    
+                    # Remove users that don't have active sessions
+                    for username in ssh_users:
+                        if container not in active_users or username not in active_users[container]:
+                            # Check if user has temp_ssh pattern (our temporary users)
+                            if 'temp' in username.lower() or username.startswith('ssh_'):
+                                logger.info(f"Removing orphaned SSH user {username} from {container}")
+                                self._remove_ssh_keys_from_container(container, username, remove_user=True)
+                                cleaned_count += 1
+                
+                except Exception as e:
+                    logger.warning(f"Error checking container {container}: {str(e)}")
+                    continue
+            
+            if cleaned_count > 0:
+                logger.info(f"Cleaned up {cleaned_count} orphaned SSH users")
+            else:
+                logger.info("No orphaned SSH users found")
+            
+        except Exception as e:
+            logger.error(f"Orphaned SSH user cleanup error: {str(e)}")
+    
 
     def cleanup_expired_sessions(self):
         """Clean up expired SSH sessions"""
@@ -927,10 +988,12 @@ def cleanup_expired_sessions():
 
 def get_session_private_key(session_id):
     """Backward compatibility wrapper"""
+    return ssh_manager.get_session_private_key(session_id)
+
 def cleanup_orphaned_log_files():
     """Backward compatibility wrapper"""
     return ssh_manager.cleanup_orphaned_log_files()
+
 def cleanup_orphaned_ssh_users():
     """Backward compatibility wrapper"""
     return ssh_manager.cleanup_orphaned_ssh_users()
-    return ssh_manager.get_session_private_key(session_id)

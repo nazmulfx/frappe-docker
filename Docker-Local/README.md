@@ -40,11 +40,27 @@ sudo ./generate_frappe_docker_local.sh
 sudo ./docker-manager-local.sh
 ```
 
+## ⚠️ Network Error Fix
+
+✅ **Automatic Prevention:** Scripts only create the network if missing - they **never remove working networks**.
+
+**If you have a broken network** (existing sites can't connect):
+```bash
+# Run the manual fix from project root
+cd frappe-docker
+sudo ./fix-traefik-network.sh
+```
+
+This will safely fix the network and reconnect all your sites.
+
+---
+
 ## 📁 Folder Structure
 
 ```
 Docker-Local/
-├── generate_frappe_docker_local.sh    # Main site generation script
+├── generate_frappe_docker_local.sh    # Main site generation script (with auto network fix)
+├── setup-traefik-local.sh            # Traefik setup (with auto network fix)
 ├── docker-manager-local.sh            # Container management tool
 ├── setup-traefik-local-mac-no-sudo.sh # Mac-optimized Traefik setup (no sudo)
 ├── setup-traefik-local-mac.sh        # Mac-optimized Traefik setup (with sudo)

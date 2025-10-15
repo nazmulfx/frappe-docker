@@ -30,23 +30,39 @@
                 <i class="bi bi-shield-lock-fill"></i> Secure Docker Manager
             </a>
             <div class="navbar-nav ms-auto">
+                {% if has_permission('view_dashboard') %}
                 <a class="nav-link {% if request and request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
                     <i class="bi bi-house"></i> Dashboard
                 </a>
+                {% endif %}
+                
+                {% if has_permission('install_apps') %}
                 <a class="nav-link {% if request and request.endpoint == 'app_installation' %}active{% endif %}" href="{{ url_for('app_installation') }}">
                     <i class="bi bi-box-seam"></i> App Installation
                 </a>
+                {% endif %}
                 <a class="nav-link {% if request and request.endpoint == 'user_profile' %}active{% endif %}" href="{{ url_for('user_profile') }}">
                     <i class="bi bi-person-circle"></i> Profile
                 </a>
-                {% if session and session.is_admin %}
+                
+                {% if has_permission('view_users') %}
                 <a class="nav-link {% if request and request.endpoint == 'user_management' %}active{% endif %}" href="{{ url_for('user_management') }}">
                     <i class="bi bi-people"></i> Users
                 </a>
+                {% endif %}
+                
+                {% if has_permission('manage_roles') %}
+                <a class="nav-link {% if request and request.endpoint == 'role_management' %}active{% endif %}" href="{{ url_for('role_management') }}">
+                    <i class="bi bi-shield-check"></i> Roles
+                </a>
+                {% endif %}
+                
+                {% if has_permission('view_audit_logs') %}
                 <a class="nav-link {% if request and request.endpoint == 'audit_logs' %}active{% endif %}" href="{{ url_for('audit_logs') }}">
                     <i class="bi bi-clipboard-data"></i> Audit Logs
                 </a>
                 {% endif %}
+                
                 <a class="nav-link" href="{{ url_for('logout') }}">
                     <i class="bi bi-box-arrow-right"></i> Logout
                 </a>
@@ -62,16 +78,77 @@
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050;">
+            <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050; max-width: 450px;">
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    {% set icon_map = {
+                        'error': 'bi-shield-x',
+                        'warning': 'bi-exclamation-triangle',
+                        'success': 'bi-check-circle',
+                        'info': 'bi-info-circle',
+                        'permission_denied': 'bi-shield-lock'
+                    } %}
+                    {% set alert_class = 'danger' if category in ['error', 'permission_denied'] else category %}
+                    {% set icon = icon_map.get(category, 'bi-info-circle') %}
+                    
+                    <div class="alert alert-{{ alert_class }} alert-dismissible fade show shadow-lg border-0" role="alert" style="animation: slideInRight 0.3s ease-out;">
+                        <div class="d-flex align-items-start">
+                            <i class="bi {{ icon }} fs-4 me-3 flex-shrink-0" style="margin-top: 2px;"></i>
+                            <div class="flex-grow-1">
+                                <strong>{% if category == 'permission_denied' %}Permission Denied{% elif category == 'error' %}Error{% elif category == 'success' %}Success{% elif category == 'warning' %}Warning{% else %}Info{% endif %}</strong>
+                                <div class="mt-1" style="font-size: 0.95rem;">{{ message | safe }}</div>
+                            </div>
+                            <button type="button" class="btn-close flex-shrink-0 ms-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
                     </div>
                 {% endfor %}
             </div>
         {% endif %}
     {% endwith %}
+    
+    <style>
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .alert {
+            border-left: 4px solid;
+        }
+        
+        .alert-danger {
+            background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%);
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        
+        .alert-success {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border-left-color: #198754;
+            color: #155724;
+        }
+        
+        .alert-warning {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        
+        .alert-info {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border-left-color: #0dcaf0;
+            color: #055160;
+        }
+        
+        .alert .bi {
+            opacity: 0.8;
+        }
+    </style>
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>

@@ -245,12 +245,7 @@
                         </li>
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="console-panel-tab" data-bs-toggle="tab" data-bs-target="#console-panel" type="button" role="tab" aria-controls="console-panel" aria-selected="false">
-                                <i class="bi bi-terminal"></i> Terminal Access
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="ssh-panel-tab" data-bs-toggle="tab" data-bs-target="#ssh-panel" type="button" role="tab" aria-controls="ssh-panel" aria-selected="false">
-                                <i class="bi bi-shield-lock"></i> SSH Access
+                                <i class="bi bi-terminal"></i> Access To Container
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -259,18 +254,18 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="bench-logs-tab" data-bs-toggle="tab" data-bs-target="#bench-logs-panel" type="button" role="tab" aria-controls="bench-logs-panel" aria-selected="false">
-                                <i class="bi bi-file-text"></i> Bench Logs
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="operation-log-tab" data-bs-toggle="tab" data-bs-target="#operation-log-panel" type="button" role="tab" aria-controls="operation-log-panel" aria-selected="false">
-                                <i class="bi bi-journal-text"></i> Operation Log
+                            <button class="nav-link" id="logs-operations-tab" data-bs-toggle="tab" data-bs-target="#logs-operations-panel" type="button" role="tab" aria-controls="logs-operations-panel" aria-selected="false">
+                                <i class="bi bi-journal-text"></i> Logs & Operations
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="new-site-tab" data-bs-toggle="tab" data-bs-target="#new-site-panel" type="button" role="tab" aria-controls="new-site-panel" aria-selected="false">
                                 <i class="bi bi-plus-circle"></i> New Site
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link text-danger fw-bold" id="danger-zone-tab" data-bs-toggle="tab" data-bs-target="#danger-zone-panel" type="button" role="tab" aria-controls="danger-zone-panel" aria-selected="false">
+                                <i class="bi bi-exclamation-triangle-fill"></i> Danger Zone
                             </button>
                         </li>
                     </ul>
@@ -295,17 +290,15 @@
                                                 <select class="form-select" id="app-container-select">
                                                     <option value="">-- Choose a container --</option>
                                                     {% for project_name, project_containers in container_groups.items() %}
-                                                        <optgroup label="{{ project_name }}">
-                                                            {% for container in project_containers %}
-                                                                {% if container.service_type == 'App Server' %}
-                                                                    <option value="{{ container.name }}" 
-                                                                            data-status="{{ container.status }}"
-                                                                            data-image="{{ container.image }}">
-                                                                        {{ container.name }}
-                                                                    </option>
-                                                                {% endif %}
-                                                            {% endfor %}
-                                                        </optgroup>
+                                                        {% for container in project_containers %}
+                                                            {% if container.service_type == 'App Server' %}
+                                                                <option value="{{ container.name }}" 
+                                                                        data-status="{{ container.status }}"
+                                                                        data-image="{{ container.image }}">
+                                                                    {{ container.name }}
+                                                                </option>
+                                                            {% endif %}
+                                                        {% endfor %}
                                                     {% endfor %}
                                                 </select>
                                             </div>
@@ -418,8 +411,10 @@
                                                         <div class="col-md-3">
                                                             <div class="mb-3">
                                                                 <label for="app-branch" class="form-label">Branch (Optional)</label>
-                                                                <input type="text" class="form-control" id="app-branch"
-                                                                    placeholder="main, develop, etc.">
+                                                                <input type="text" autocomplete="new-password" class="form-control" id="app-branch"
+                                                                    placeholder="main, develop, etc." 
+                                                                    name="app-branch-field"
+                                                                    readonly onfocus="this.removeAttribute('readonly');">
                                                             </div>
                                                         </div>
                                         
@@ -605,144 +600,160 @@
                             </div>
                         </div>
 
-                        <!-- Bench Logs Tab -->
-                        <div class="tab-pane fade" id="bench-logs-panel" role="tabpanel">
-                            <!-- Container Selection for Logs -->
-                            <div class="row mb-3">
-                                <div class="col-md-4">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-primary text-white">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-server"></i> Select Container
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <select class="form-select form-select-lg" id="logs-container-select">
-                                                <option value="">-- Choose a container --</option>
-                                                {% for project_name, project_containers in container_groups.items() %}
-                                                    <optgroup label="{{ project_name }}">
-                                                        {% for container in project_containers %}
-                                                            {% if container.service_type == 'App Server' %}
-                                                                <option value="{{ container.name }}">{{ container.name }}</option>
-                                                            {% endif %}
+                        <!-- Logs & Operations Panel Tab -->
+                        <div class="tab-pane fade" id="logs-operations-panel" role="tabpanel">
+                            <ul class="nav nav-pills nav-fill mb-3" id="logsOperationsTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="bench-logs-subtab" data-bs-toggle="pill" data-bs-target="#bench-logs-content" type="button" role="tab" aria-controls="bench-logs-content" aria-selected="true">
+                                        <i class="bi bi-file-text"></i> Bench Logs
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="operation-log-subtab" data-bs-toggle="pill" data-bs-target="#operation-log-content" type="button" role="tab" aria-controls="operation-log-content" aria-selected="false">
+                                        <i class="bi bi-journal-text"></i> Operation Log
+                                    </button>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content" id="logsOperationsTabsContent">
+                                <!-- Bench Logs Sub-Tab -->
+                                <div class="tab-pane fade show active" id="bench-logs-content" role="tabpanel">
+                                    <!-- Container Selection for Logs -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-primary text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-server"></i> Select Container
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <select class="form-select form-select-lg" id="logs-container-select">
+                                                        <option value="">-- Choose a container --</option>
+                                                        {% for project_name, project_containers in container_groups.items() %}
+                                                            <optgroup label="{{ project_name }}">
+                                                                {% for container in project_containers %}
+                                                                    {% if container.service_type == 'App Server' %}
+                                                                        <option value="{{ container.name }}">{{ container.name }}</option>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </optgroup>
                                                         {% endfor %}
-                                                    </optgroup>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-5">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-success text-white">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-file-earmark-text"></i> Select Log File
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="input-group input-group-lg">
-                                                <select class="form-select" id="bench-log-file-select">
-                                                    <option value="">Select a log file...</option>
-                                                </select>
-                                                <button class="btn btn-outline-secondary" type="button" id="refresh-log-files-btn" title="Refresh Log Files">
-                                                    <i class="bi bi-bootstrap-reboot"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-warning text-dark">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-speedometer2"></i> Lines Limit
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <select class="form-select form-select-lg" id="log-lines-limit">
-                                                <option value="50">Last 50 lines</option>
-                                                <option value="100" selected>Last 100 lines</option>
-                                                <option value="200">Last 200 lines</option>
-                                                <option value="500">Last 500 lines</option>
-                                                <option value="1000">Last 1000 lines</option>
-                                                <option value="all">All lines (slow)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Log Viewer -->
-                            <div class="row">
-                                <div class="col-12">
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-file-text"></i> Log Viewer
-                                            </h6>
-                                            <div class="btn-group" role="group">
-                                                <button class="btn btn-sm btn-outline-light" id="view-log-btn">
-                                                    <i class="bi bi-eye"></i> View Log
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-light" id="download-log-btn">
-                                                    <i class="bi bi-download"></i> Download
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-light" id="clear-log-viewer-btn">
-                                                    <i class="bi bi-trash"></i> Clear View
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="card-body p-0">
-                                            <div id="bench-log-content" class="operation-log" style="background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace; padding: 15px; min-height: 400px; max-height: 600px; overflow-y: auto;">
-                                                <div class="text-muted text-center py-5">
-                                                    <i class="bi bi-info-circle"></i> Select a container, log file, and line limit, then click "View Log"
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="card-footer bg-light">
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <small class="text-muted">
-                                                        <i class="bi bi-info-circle me-1"></i>
-                                                        <span id="log-info">No log loaded</span>
-                                                    </small>
+                                        <div class="col-md-5">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-success text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-file-earmark-text"></i> Select Log File
+                                                    </h6>
                                                 </div>
-                                                <div class="col-md-6 text-end">
-                                                    <small class="text-muted">
-                                                        <span id="log-lines-count">0 lines</span>
-                                                    </small>
+                                                <div class="card-body">
+                                                    <div class="input-group input-group-lg">
+                                                        <select class="form-select" id="bench-log-file-select">
+                                                            <option value="">Select a log file...</option>
+                                                        </select>
+                                                        <button class="btn btn-outline-secondary" type="button" id="refresh-log-files-btn" title="Refresh Log Files">
+                                                            <i class="bi bi-bootstrap-reboot"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-warning text-dark">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-speedometer2"></i> Lines Limit
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <select class="form-select form-select-lg" id="log-lines-limit">
+                                                        <option value="50">Last 50 lines</option>
+                                                        <option value="100" selected>Last 100 lines</option>
+                                                        <option value="200">Last 200 lines</option>
+                                                        <option value="500">Last 500 lines</option>
+                                                        <option value="1000">Last 1000 lines</option>
+                                                        <option value="all">All lines (slow)</option>
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
 
-                        </div>
-
-                        <!-- Operation Log Tab -->
-                        <div class="tab-pane fade" id="operation-log-panel" role="tabpanel">
-                            <div class="row">
-                                <div class="col-12">
-                                    <!-- Operation Log -->
-                                    <div class="frappe-cloud-card">
-                                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-journal-text"></i> Operation Log
-                                            </h6>
-                                            <div>
-                                                <button class="btn btn-sm btn-outline-light" id="clear-log-btn">
-                                                    <i class="bi bi-trash"></i> Clear
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-light" id="refresh-log-btn">
-                                                    <i class="bi bi-arrow-clockwise"></i> Refresh
-                                                </button>
+                                    <!-- Log Viewer -->
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-file-text"></i> Bench Log Viewer
+                                                    </h6>
+                                                    <div class="btn-group" role="group">
+                                                        <button class="btn btn-sm btn-outline-light" id="view-log-btn">
+                                                            <i class="bi bi-eye"></i> View Log
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-light" id="download-log-btn">
+                                                            <i class="bi bi-download"></i> Download
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-light" id="clear-log-viewer-btn">
+                                                            <i class="bi bi-trash"></i> Clear View
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="card-body p-0">
+                                                    <div id="bench-log-content" class="operation-log" style="background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace; padding: 15px; min-height: 400px; max-height: 600px; overflow-y: auto;">
+                                                        <div class="text-muted text-center py-5">
+                                                            <i class="bi bi-info-circle"></i> Select a container, log file, and line limit, then click "View Log"
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="card-footer bg-light">
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <small class="text-muted">
+                                                                <i class="bi bi-info-circle me-1"></i>
+                                                                <span id="log-info">No log loaded</span>
+                                                            </small>
+                                                        </div>
+                                                        <div class="col-md-6 text-end">
+                                                            <small class="text-muted">
+                                                                <span id="log-lines-count">0 lines</span>
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="card-body p-0">
-                                            <div id="operation-log" class="operation-log">
-                                                <div class="text-muted text-center py-3">
-                                                    <i class="bi bi-info-circle"></i> Select a container and perform operations to see logs here
+                                    </div>
+                                </div>
+                                
+                                <!-- Operation Log Sub-Tab -->
+                                <div class="tab-pane fade" id="operation-log-content" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <div class="frappe-cloud-card">
+                                                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-journal-text"></i> Operation Log
+                                                    </h6>
+                                                    <div>
+                                                        <button class="btn btn-sm btn-outline-light" id="clear-log-btn">
+                                                            <i class="bi bi-trash"></i> Clear
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-light" id="refresh-log-btn">
+                                                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="card-body p-0">
+                                                    <div id="operation-log" class="operation-log">
+                                                        <div class="text-muted text-center py-3">
+                                                            <i class="bi bi-info-circle"></i> Select a container and perform operations to see logs here
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -751,12 +762,17 @@
                             </div>
                         </div>
 
-                        <!-- Console Panel Tab -->
+                        <!-- Access To Container Panel Tab -->
                         <div class="tab-pane fade" id="console-panel" role="tabpanel">
                             <ul class="nav nav-pills nav-fill mb-3" id="terminalTabs" role="tablist">
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link active" id="terminal-console-tab" data-bs-toggle="pill" data-bs-target="#terminal-console" type="button" role="tab" aria-controls="terminal-console" aria-selected="true">
-                                        <i class="bi bi-terminal"></i> Terminal Console
+                                        <i class="bi bi-terminal"></i> Web Terminal
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="ssh-access-tab" data-bs-toggle="pill" data-bs-target="#ssh-access" type="button" role="tab" aria-controls="ssh-access" aria-selected="false">
+                                        <i class="bi bi-shield-lock"></i> SSH Access
                                     </button>
                                 </li>
                                 <li class="nav-item" role="presentation">
@@ -767,10 +783,11 @@
                             </ul>
                             
                             <div class="tab-content" id="terminalTabsContent">
+                                <!-- Web Terminal Tab -->
                                 <div class="tab-pane fade show active" id="terminal-console" role="tabpanel">
                                     <div class="container-selector mb-3">
                                         <label for="container-select" class="form-label fw-bold">
-                                            <i class="bi bi-terminal"></i> Select Container for Terminal Access
+                                            <i class="bi bi-terminal"></i> Select Container for Web Terminal
                                         </label>
                                         <select class="form-select form-select-lg" id="container-select">
                                             <option value="">-- Choose a container --</option>
@@ -785,7 +802,7 @@
                                             {% endfor %}
                                         </select>
                                         <div class="form-text">
-                                            <i class="bi bi-info-circle"></i> Select a container to access its terminal for advanced operations
+                                            <i class="bi bi-info-circle"></i> Select a container to access its web terminal for command execution
                                         </div>
                                     </div>
                                     
@@ -793,7 +810,7 @@
                                         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                                             <div>
                                                 <i class="bi bi-terminal-fill me-2"></i>
-                                                <span id="terminal-title">AWS Console-like Terminal</span>
+                                                <span id="terminal-title">Web Terminal Console</span>
                                             </div>
                                             <div>
                                                 <button class="btn btn-sm btn-outline-light" id="terminal-clear-btn">
@@ -803,6 +820,164 @@
                                         </div>
                                         <div class="card-body p-0">
                                             <div id="terminal-container" class="terminal-container"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- SSH Access Tab -->
+                                <div class="tab-pane fade" id="ssh-access" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header bg-primary text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-shield-lock me-2"></i> Temporary SSH Access Setup
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <form id="temp-ssh-form">
+                                                        <div class="mb-3">
+                                                            <label for="temp-container-select" class="form-label">
+                                                                <i class="bi bi-terminal"></i> Select Container
+                                                            </label>
+                                                            <select class="form-select" id="temp-container-select">
+                                                                <option value="">-- Choose a container --</option>
+                                                                {% for project_name, project_containers in container_groups.items() %}
+                                                                    <optgroup label="{{ project_name }}">
+                                                                        {% for container in project_containers %}
+                                                                            {% if container.service_type == 'App Server' %}
+                                                                                <option value="{{ container.name }}">{{ container.name }}</option>
+                                                                            {% endif %}
+                                                                        {% endfor %}
+                                                                    </optgroup>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-username" class="form-label">
+                                                                <i class="bi bi-person"></i> SSH Username
+                                                            </label>
+                                                            <input type="text" class="form-control" id="temp-username" value="frappe" placeholder="e.g., frappe, root, ubuntu">
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-duration" class="form-label">
+                                                                <i class="bi bi-clock"></i> Access Duration
+                                                            </label>
+                                                            <select class="form-select" id="temp-duration">
+                                                                <option value="1">1 Hour</option>
+                                                                <option value="6">6 Hours</option>
+                                                                <option value="24" selected>24 Hours</option>
+                                                                <option value="72">3 Days</option>
+                                                                <option value="168">1 Week</option>
+                                                            </select>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-port" class="form-label">
+                                                                <i class="bi bi-ethernet"></i> SSH Port (Auto-assigned if empty)
+                                                            </label>
+                                                            <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
+                                                            <div class="form-text">Leave empty for auto-assignment</div>
+                                                        </div>
+                                                        
+                                                        <div class="mb-3">
+                                                            <label for="temp-description" class="form-label">
+                                                                <i class="bi bi-chat-text"></i> Description (Optional)
+                                                            </label>
+                                                            <input type="text" class="form-control" id="temp-description" placeholder="e.g., Development access, Debug session">
+                                                        </div>
+                                                        
+                                                        <div class="d-grid gap-2">
+                                                            <button type="submit" class="btn btn-success">
+                                                                <i class="bi bi-key"></i> Generate Temporary Access
+                                                            </button>
+                                                            <button type="button" class="btn btn-outline-info" id="check-ssh-status">
+                                                                <i class="bi bi-check-circle"></i> Check SSH Status
+                                                            </button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-6">
+                                            <div class="card">
+                                                <div class="card-header bg-success text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-info-circle"></i> SSH Connection Details
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div id="access-info" class="alert alert-info">
+                                                        <i class="bi bi-info-circle"></i> No active SSH access configured
+                                                    </div>
+                                                    
+                                                    <div id="ssh-connection-details" style="display: none;">
+                                                        <h6><i class="bi bi-terminal"></i> SSH Connection Details:</h6>
+                                                        <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace;">
+                                                            <div id="ssh-host-info"></div>
+                                                            <div id="ssh-port-info"></div>
+                                                            <div id="ssh-username-info"></div>
+                                                            <div id="ssh-key-info"></div>
+                                                        </div>
+                                                        
+                                                        <h6><i class="bi bi-download"></i> Download SSH Key:</h6>
+                                                        <div class="d-grid gap-2">
+                                                            <button class="btn btn-outline-primary" id="download-private-key">
+                                                                <i class="bi bi-download"></i> Download Private Key (.pem)
+                                                            </button>
+                                                            <button class="btn btn-outline-secondary" id="copy-ssh-command">
+                                                                <i class="bi bi-clipboard"></i> Copy SSH Command
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="mt-3">
+                                                        <button class="btn btn-outline-danger btn-sm" id="revoke-access" style="display: none;">
+                                                            <i class="bi bi-x-circle"></i> Revoke Access
+                                                        </button>
+                                                        <button class="btn btn-outline-warning btn-sm" id="extend-access" style="display: none;">
+                                                            <i class="bi bi-clock"></i> Extend Access
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row mt-3">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header bg-warning text-dark">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-list-check"></i> Active SSH Sessions
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="table-responsive">
+                                                        <table class="table table-striped" id="ssh-sessions-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Container</th>
+                                                                    <th>Username</th>
+                                                                    <th>Port</th>
+                                                                    <th>Created</th>
+                                                                    <th>Expires</th>
+                                                                    <th>Status</th>
+                                                                    <th>Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="ssh-sessions-tbody">
+                                                                <tr>
+                                                                    <td colspan="7" class="text-center text-muted">No active SSH sessions</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -879,164 +1054,6 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- SSH Panel Tab -->
-                        <div class="tab-pane fade" id="ssh-panel" role="tabpanel">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-shield-lock me-2"></i> Temporary SSH Access Setup
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <form id="temp-ssh-form">
-                                                <div class="mb-3">
-                                                    <label for="temp-container-select" class="form-label">
-                                                        <i class="bi bi-terminal"></i> Select Container
-                                                    </label>
-                                                    <select class="form-select" id="temp-container-select">
-                                                        <option value="">-- Choose a container --</option>
-                                                        {% for project_name, project_containers in container_groups.items() %}
-                                                            <optgroup label="{{ project_name }}">
-                                                                {% for container in project_containers %}
-                                                                    {% if container.service_type == 'App Server' %}
-                                                                        <option value="{{ container.name }}">{{ container.name }}</option>
-                                                                    {% endif %}
-                                                                {% endfor %}
-                                                            </optgroup>
-                                                        {% endfor %}
-                                                    </select>
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-username" class="form-label">
-                                                        <i class="bi bi-person"></i> SSH Username
-                                                    </label>
-                                                    <input type="text" class="form-control" id="temp-username" value="frappe" placeholder="e.g., frappe, root, ubuntu">
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-duration" class="form-label">
-                                                        <i class="bi bi-clock"></i> Access Duration
-                                                    </label>
-                                                    <select class="form-select" id="temp-duration">
-                                                        <option value="1">1 Hour</option>
-                                                        <option value="6">6 Hours</option>
-                                                        <option value="24" selected>24 Hours</option>
-                                                        <option value="72">3 Days</option>
-                                                        <option value="168">1 Week</option>
-                                                    </select>
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-port" class="form-label">
-                                                        <i class="bi bi-ethernet"></i> SSH Port (Auto-assigned if empty)
-                                                    </label>
-                                                    <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
-                                                    <div class="form-text">Leave empty for auto-assignment</div>
-                                                </div>
-                                                
-                                                <div class="mb-3">
-                                                    <label for="temp-description" class="form-label">
-                                                        <i class="bi bi-chat-text"></i> Description (Optional)
-                                                    </label>
-                                                    <input type="text" class="form-control" id="temp-description" placeholder="e.g., Development access, Debug session">
-                                                </div>
-                                                
-                                                <div class="d-grid gap-2">
-                                                    <button type="submit" class="btn btn-success">
-                                                        <i class="bi bi-key"></i> Generate Temporary Access
-                                                    </button>
-                                                    <button type="button" class="btn btn-outline-info" id="check-ssh-status">
-                                                        <i class="bi bi-check-circle"></i> Check SSH Status
-                                                    </button>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-info-circle"></i> Access Information
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div id="access-info" class="alert alert-info">
-                                                <i class="bi bi-info-circle"></i> No active SSH access configured
-                                            </div>
-                                            
-                                            <div id="ssh-connection-details" style="display: none;">
-                                                <h6><i class="bi bi-terminal"></i> SSH Connection Details:</h6>
-                                                <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace;">
-                                                    <div id="ssh-host-info"></div>
-                                                    <div id="ssh-port-info"></div>
-                                                    <div id="ssh-username-info"></div>
-                                                    <div id="ssh-key-info"></div>
-                                                </div>
-                                                
-                                                <h6><i class="bi bi-download"></i> Download SSH Key:</h6>
-                                                <div class="d-grid gap-2">
-                                                    <button class="btn btn-outline-primary" id="download-private-key">
-                                                        <i class="bi bi-download"></i> Download Private Key (.pem)
-                                                    </button>
-                                                    <button class="btn btn-outline-secondary" id="copy-ssh-command">
-                                                        <i class="bi bi-clipboard"></i> Copy SSH Command
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="mt-3">
-                                                <button class="btn btn-outline-danger btn-sm" id="revoke-access" style="display: none;">
-                                                    <i class="bi bi-x-circle"></i> Revoke Access
-                                                </button>
-                                                <button class="btn btn-outline-warning btn-sm" id="extend-access" style="display: none;">
-                                                    <i class="bi bi-clock"></i> Extend Access
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="row mt-3">
-                                <div class="col-12">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <i class="bi bi-list-check"></i> Active SSH Sessions
-                                            </h6>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="table-responsive">
-                                                <table class="table table-striped" id="ssh-sessions-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Container</th>
-                                                            <th>Username</th>
-                                                            <th>Port</th>
-                                                            <th>Created</th>
-                                                            <th>Expires</th>
-                                                            <th>Status</th>
-                                                            <th>Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody id="ssh-sessions-tbody">
-                                                        <tr>
-                                                            <td colspan="7" class="text-center text-muted">No active SSH sessions</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
                                             </div>
                                         </div>
                                     </div>
@@ -1365,7 +1382,7 @@
                         <!-- New Site Creation Panel Tab -->
                         <div class="tab-pane fade" id="new-site-panel" role="tabpanel">
                             <div class="row">
-                                <div class="col-md-8 mx-auto">
+                                <div class="col-md-4">
                                     <div class="frappe-cloud-card">
                                         <div class="card-header bg-primary text-white">
                                             <h5 class="mb-0">
@@ -1384,13 +1401,13 @@
                                                             <input type="radio" class="btn-check" name="environment" id="env-local" value="local" checked>
                                                             <label class="btn btn-outline-primary" for="env-local">
                                                                 <i class="bi bi-laptop"></i> Docker-Local<br>
-                                                                <small class="text-muted">Development & Testing</small>
+                                                                <small>Development & Testing</small>
                                                             </label>
                                                             
                                                             <input type="radio" class="btn-check" name="environment" id="env-vps" value="vps">
                                                             <label class="btn btn-outline-success" for="env-vps">
                                                                 <i class="bi bi-cloud-upload"></i> Docker-on-VPS<br>
-                                                                <small class="text-muted">Production Deployment</small>
+                                                                <small>Production Deployment</small>
                                                             </label>
                                                         </div>
                                                     </div>
@@ -1440,7 +1457,7 @@
                                                         <li>Required containers (frappe, db, redis) will be created and started</li>
                                                         <li>Traefik reverse proxy will be configured automatically</li>
                                                         <li>Database and admin passwords will be auto-generated securely</li>
-                                                        <li>Site will be accessible via your domain once setup completes (5-15 minutes)</li>
+                                                        <li>Site will be accessible via your domain once setup completes (5 minutes)</li>
                                                     </ul>
                                                 </div>
 
@@ -1456,27 +1473,190 @@
                                             </form>
                                         </div>
                                     </div>
+                                </div>
+                                <div class="col-md-8">
 
                                     <!-- Site Creation Progress -->
-                                    <div class="frappe-cloud-card mt-4" id="site-creation-progress" style="display: none;">
+                                    <div class="frappe-cloud-card" id="site-creation-progress" style="display: none;">
                                         <div class="card-header bg-success text-white">
                                             <h6 class="mb-0">
-                                                <i class="bi bi-hourglass-split"></i> Site Creation Progress
+                                                <i class="bi bi-gear-fill spin-icon"></i> Site Creation in Progress
                                             </h6>
                                         </div>
                                         <div class="card-body">
-                                            <div class="progress mb-3" style="height: 25px;">
+                                            <div class="progress mb-3" style="height: 30px; border-radius: 10px; box-shadow: inset 0 1px 2px rgba(0,0,0,.1);">
                                                 <div class="progress-bar progress-bar-striped progress-bar-animated" 
                                                      role="progressbar" id="creation-progress-bar" 
-                                                     style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                                     style="width: 0%; font-weight: 600; font-size: 14px; transition: width 0.5s ease-in-out;" 
+                                                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                                     0%
                                                 </div>
                                             </div>
-                                            <div id="creation-status" class="mb-2">
-                                                <strong>Status:</strong> <span id="creation-status-text">Initializing...</span>
+                                            <div id="creation-status" class="mb-3 p-3 bg-light rounded">
+                                                <div class="d-flex align-items-center">
+                                                    <i class="bi bi-info-circle text-primary me-2"></i>
+                                                    <strong>Status:</strong> <span id="creation-status-text" class="ms-2 text-muted">Initializing...</span>
+                                                </div>
                                             </div>
                                             <div class="operation-log" id="site-creation-log" style="max-height: 400px;">
                                                 <div class="text-muted">Waiting for process to start...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <style>
+                                        @keyframes spin {
+                                            from { transform: rotate(0deg); }
+                                            to { transform: rotate(360deg); }
+                                        }
+                                        .spin-icon {
+                                            animation: spin 2s linear infinite;
+                                            display: inline-block;
+                                        }
+                                        .progress {
+                                            background-color: #e9ecef;
+                                        }
+                                        .progress-bar {
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                        }
+                                    </style>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Danger Zone Panel Tab -->
+                        <div class="tab-pane fade" id="danger-zone-panel" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="alert alert-danger border-danger" style="border-width: 3px;">
+                                        <h4 class="alert-heading">
+                                            <i class="bi bi-exclamation-triangle-fill"></i> ⚠️ DANGER ZONE ⚠️
+                                        </h4>
+                                        <p class="mb-0">
+                                            <strong>Warning:</strong> The operations in this section are <strong>irreversible</strong> and may result in data loss. 
+                                            Please proceed with extreme caution and ensure you have backups before performing any actions.
+                                        </p>
+                                    </div>
+                                    
+                                    <!-- Site Selection for Danger Operations -->
+                                    <div class="frappe-cloud-card mb-4">
+                                        <div class="card-header bg-danger text-white">
+                                            <h5 class="mb-0">
+                                                <i class="bi bi-server"></i> Select Site/Container
+                                            </h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <select class="form-select form-select-lg" id="danger-site-select">
+                                                <option value="">-- Choose a site --</option>
+                                                {% for project_name, project_containers in container_groups.items() %}
+                                                    {% if project_containers %}
+                                                        {% set actual_name = project_containers[0].name.rsplit('-', 1)[0] %}
+                                                        <option value="{{ actual_name }}" data-display-name="{{ project_name }}">{{ project_name }}</option>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </select>
+                                            <div class="form-text text-danger">
+                                                <i class="bi bi-exclamation-circle"></i> <strong>Select carefully!</strong> All operations below will affect this site.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Dangerous Operations -->
+                                    <div class="row">
+                                        <!-- Rebuild with Custom Apps Preservation -->
+                                        <div class="col-md-4">
+                                            <div class="card border-warning mb-3">
+                                                <div class="card-header bg-warning text-dark">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-arrow-clockwise"></i> Rebuild with Apps Preservation
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <p class="card-text">
+                                                        <small>
+                                                            Rebuild containers while preserving custom apps. This will:
+                                                            <ul class="small mt-2">
+                                                                <li>Backup custom apps</li>
+                                                                <li>Rebuild containers</li>
+                                                                <li>Restore custom apps</li>
+                                                                <li>Update apps.txt</li>
+                                                            </ul>
+                                                        </small>
+                                                    </p>
+                                                    <button class="btn btn-warning w-100" id="rebuild-with-apps-btn">
+                                                        <i class="bi bi-hammer"></i> Rebuild with Apps
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Fix Restart Policies -->
+                                        <div class="col-md-4">
+                                            <div class="card border-info mb-3">
+                                                <div class="card-header bg-info text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-arrow-repeat"></i> Fix Restart Policies
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <p class="card-text">
+                                                        <small>
+                                                            Set containers to auto-restart after system reboot:
+                                                            <ul class="small mt-2">
+                                                                <li>Updates all Frappe containers</li>
+                                                                <li>Sets restart=unless-stopped</li>
+                                                                <li>Starts stopped containers</li>
+                                                            </ul>
+                                                        </small>
+                                                    </p>
+                                                    <button class="btn btn-info w-100" id="fix-restart-policies-btn">
+                                                        <i class="bi bi-gear"></i> Fix Restart Policies
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Complete Site Removal -->
+                                        <div class="col-md-4">
+                                            <div class="card border-danger mb-3">
+                                                <div class="card-header bg-danger text-white">
+                                                    <h6 class="mb-0">
+                                                        <i class="bi bi-trash-fill"></i> Complete Site Removal
+                                                    </h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <p class="card-text">
+                                                        <small class="text-danger">
+                                                            <strong>⚠️ IRREVERSIBLE!</strong> This will permanently delete:
+                                                            <ul class="small mt-2">
+                                                                <li>All containers</li>
+                                                                <li>Site folders</li>
+                                                                <li>VS Code folders</li>
+                                                                <li>Hosts file entries</li>
+                                                            </ul>
+                                                        </small>
+                                                    </p>
+                                                    <button class="btn btn-danger w-100" id="complete-site-removal-btn">
+                                                        <i class="bi bi-x-octagon"></i> Complete Removal
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Output Display -->
+                                    <div class="frappe-cloud-card mt-4">
+                                        <div class="card-header bg-dark text-white">
+                                            <h6 class="mb-0">
+                                                <i class="bi bi-terminal"></i> Operation Output
+                                            </h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="operation-log" id="danger-zone-output" style="min-height: 400px; max-height: 600px; background-color: #1a1a1a; color: #00ff41; font-family: 'Courier New', monospace;">
+                                                <div class="text-muted text-center py-5">
+                                                    <i class="bi bi-shield-exclamation"></i> Select a site and choose an operation above...
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1514,7 +1694,10 @@
 {% block custom_js %}
 <script src="{{ url_for('static', filename='js/ssh-manager.js') }}"></script>
 <script>
-// Global Loader Management
+  // Global configuration
+  const FRAPPE_BASE_DIR = "{{ base_dir }}";
+  
+  // Global Loader Management
 class LoaderManager {
     static show(message = 'Processing...') {
         const loader = document.getElementById('globalLoader');
@@ -1765,17 +1948,206 @@ class FrappeAppManager {
             
             const data = await response.json();
             
-            if (data.error) {
+            // Check if this is a background task
+            if (data.is_background_task && data.task_id) {
+                // Show progress modal and track task
+                await this.trackBackgroundTask(data.task_id, description);
+            } else if (data.error) {
                 this.addToLog('error', `Error: ${data.error}`);
+                await Swal.fire({
+                    title: 'Error',
+                    html: `<pre style="text-align: left; max-height: 400px; overflow-y: auto;">${data.error}</pre>`,
+                    icon: 'error',
+                    width: '600px'
+                });
             } else {
                 this.addToLog('success', `Success: ${description}`);
                 if (data.output) {
                     this.addToLog('info', data.output);
+                    await Swal.fire({
+                        title: 'Success',
+                        html: `<div style="text-align: left;"><strong>${description}</strong><pre style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px;">${data.output}</pre></div>`,
+                        icon: 'success',
+                        width: '700px',
+                        confirmButtonText: 'OK'
+                    });
                 }
             }
         } catch (error) {
             this.addToLog('error', `Network error: ${error.message}`);
+            await Swal.fire({
+                title: 'Network Error',
+                text: error.message,
+                icon: 'error'
+            });
         }
+    }
+    
+    async trackBackgroundTask(taskId, description) {
+        // Show progress modal with SweetAlert
+        let timerInterval;
+        const swalInstance = Swal.fire({
+            title: description,
+            html: `
+                <div style="text-align: center; padding: 20px;">
+                    <div class="progress" style="height: 30px; margin-bottom: 15px;">
+                        <div id="task-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%; background-color: #007bff;" 
+                             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            <span id="task-progress-text" style="font-weight: bold; line-height: 30px;">0%</span>
+                        </div>
+                    </div>
+                    <div id="task-status-message" style="margin-bottom: 15px; font-weight: bold; color: #333;">
+                        Initializing...
+                    </div>
+                    <div id="task-output-container" style="max-height: 300px; overflow-y: auto; text-align: left; background: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; padding: 10px; border-radius: 5px; font-size: 12px; white-space: pre-wrap;">
+                        Waiting for output...
+                    </div>
+                </div>
+            `,
+            width: '800px',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            showCancelButton: true,
+            cancelButtonText: 'Close',
+            didOpen: () => {
+                // Start polling for task status
+                const pollTaskStatus = async () => {
+                    try {
+                        const response = await fetch(`/api/tasks/status/${taskId}`);
+                        const result = await response.json();
+                        
+                        if (result.success && result.task) {
+                            const task = result.task;
+                            
+                            // Update progress bar
+                            const progressBar = document.getElementById('task-progress-bar');
+                            const progressText = document.getElementById('task-progress-text');
+                            if (progressBar && progressText) {
+                                progressBar.style.width = `${task.progress}%`;
+                                progressBar.setAttribute('aria-valuenow', task.progress);
+                                progressText.textContent = `${task.progress}%`;
+                                
+                                // Change color based on status
+                                if (task.status === 'completed') {
+                                    progressBar.style.backgroundColor = '#28a745';
+                                } else if (task.status === 'failed') {
+                                    progressBar.style.backgroundColor = '#dc3545';
+                                }
+                            }
+                            
+                            // Update status message
+                            const statusMessage = document.getElementById('task-status-message');
+                            if (statusMessage) {
+                                statusMessage.textContent = task.message || 'Processing...';
+                                
+                                // Color based on status
+                                if (task.status === 'completed') {
+                                    statusMessage.style.color = '#28a745';
+                                } else if (task.status === 'failed') {
+                                    statusMessage.style.color = '#dc3545';
+                                } else if (task.status === 'running') {
+                                    statusMessage.style.color = '#007bff';
+                                }
+                            }
+                            
+                            // Update output
+                            const outputContainer = document.getElementById('task-output-container');
+                            if (outputContainer) {
+                                // Always update output if task has been fetched
+                                if (task.output !== undefined) {
+                                    // Show output or appropriate message
+                                    const displayText = task.output ? task.output : (task.status === 'pending' ? 'Initializing...' : 'Processing...');
+                                    outputContainer.textContent = displayText;
+                                    // Auto-scroll to bottom
+                                    outputContainer.scrollTop = outputContainer.scrollHeight;
+                                }
+                            }
+                            
+                            // Check if task is complete
+                            if (task.status === 'completed') {
+                                clearInterval(timerInterval);
+                                this.addToLog('success', `${description} completed successfully`);
+                                
+                                // Show completion with clean HTML
+                                Swal.update({
+                                    title: '✅ Completed Successfully!',
+                                    html: `
+                                        <div style="text-align: center; padding: 20px;">
+                                            <div class="alert alert-success" style="margin-bottom: 15px;">
+                                                <strong>${description}</strong> completed successfully!
+                                            </div>
+                                            ${task.output ? `
+                                                <details style="text-align: left;">
+                                                    <summary style="cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                                                        <strong>View Output</strong>
+                                                    </summary>
+                                                    <div style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; padding: 10px; border-radius: 5px; font-size: 12px; white-space: pre-wrap;">
+                                                        ${task.output}
+                                                    </div>
+                                                </details>
+                                            ` : ''}
+                                        </div>
+                                    `,
+                                    icon: 'success',
+                                    showConfirmButton: true,
+                                    showCancelButton: false,
+                                    confirmButtonText: 'OK'
+                                });
+                            } else if (task.status === 'failed') {
+                                clearInterval(timerInterval);
+                                this.addToLog('error', `${description} failed: ${task.error}`);
+                                
+                                // Show error with clean HTML
+                                Swal.update({
+                                    title: '❌ Task Failed',
+                                    html: `
+                                        <div style="text-align: center; padding: 20px;">
+                                            <div class="alert alert-danger" style="margin-bottom: 15px;">
+                                                <strong>Error:</strong> ${task.error || 'Unknown error'}
+                                            </div>
+                                            ${task.output ? `
+                                                <details style="text-align: left;">
+                                                    <summary style="cursor: pointer; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                                                        <strong>View Output</strong>
+                                                    </summary>
+                                                    <div style="max-height: 300px; overflow-y: auto; background: #1e1e1e; color: #ff4444; font-family: 'Courier New', monospace; padding: 10px; border-radius: 5px; font-size: 12px; white-space: pre-wrap;">
+                                                        ${task.output}
+                                                    </div>
+                                                </details>
+                                            ` : ''}
+                                        </div>
+                                    `,
+                                    icon: 'error',
+                                    showConfirmButton: true,
+                                    showCancelButton: false,
+                                    confirmButtonText: 'OK'
+                                });
+                            }
+                        } else {
+                            clearInterval(timerInterval);
+                            throw new Error('Failed to get task status');
+                        }
+                    } catch (error) {
+                        clearInterval(timerInterval);
+                        console.error('Error polling task:', error);
+                        this.addToLog('error', `Error tracking task: ${error.message}`);
+                    }
+                };
+                
+                // Poll immediately, then every second
+                pollTaskStatus();
+                timerInterval = setInterval(pollTaskStatus, 1000);
+            },
+            willClose: () => {
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                }
+            }
+        });
+        
+        return swalInstance;
     }
     
     addToLog(type, message) {
@@ -1921,15 +2293,26 @@ class FrappeAppManager {
             
             this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
             
+            // Check if this is a background task
+            if (result.is_background_task && result.task_id) {
+                LoaderManager.setButtonLoading(getAppBtn, false);
+                this.addToLog('info', `Heavy command running in background: ${result.task_id}`);
+                
+                // Track the background task with progress modal
+                await this.trackBackgroundTask(result.task_id, `Getting app from ${repoUrl}`);
+                
+                // Refresh the apps list after completion
+                await this.loadAppsForContainer();
+            }
             // Check if we have output and no error (streaming responses don't have success field)
-            if (result.output && !result.error) {
+            else if (result.output && !result.error) {
                 this.addToLog('success', `Successfully got app from ${repoUrl}`);
                 if (result.output) {
                     this.addToLog('info', result.output);
                 }
                 // Refresh the apps list to show the newly installed app
                 await this.loadAppsForContainer();
-            } else {
+            } else if (result.error) {
                 this.addToLog('error', `Failed to get app: ${result.error || 'Unknown error'}`);
                 if (result.error) {
                     this.addToLog('error', result.error);
@@ -1990,13 +2373,26 @@ class FrappeAppManager {
                 
                 this.addToLog('info', `Command result: ${JSON.stringify(result)}`);
                 
+            // Check if this is a background task
+            if (result.is_background_task && result.task_id) {
+                LoaderManager.setButtonLoading(installAppBtn, false);
+                this.addToLog('info', `Heavy command running in background: ${result.task_id}`);
+                
+                // Track the background task with progress modal
+                await this.trackBackgroundTask(result.task_id, `Installing ${appName} on ${siteName}`);
+                
+                // Refresh the apps list after completion
+                await this.loadAppsForContainer();
+            }
                 // Check if we have output and no error (streaming responses don't have success field)
-                if (result.output && !result.error) {
+                else if (result.output && !result.error) {
                     this.addToLog('success', `Successfully installed app ${appName} on site ${siteName}`);
                     if (result.output) {
                         this.addToLog('info', result.output);
                     }
-                } else {
+                    // Refresh the apps list to show the newly installed app
+                    await this.loadAppsForContainer();
+                } else if (result.error) {
                     this.addToLog('error', `Failed to install app: ${result.error || 'Unknown error'}`);
                     if (result.error) {
                         this.addToLog('error', result.error);
@@ -3006,19 +3402,13 @@ class FrappeAppManager {
 
             const data = await response.json();
 
-            if (data.success) {
-                this.addToLog('success', `Backup created successfully for ${siteName}`);
-                this.addToLog('info', data.output);
-
-                await Swal.fire({
-                    title: 'Success!',
-                    text: 'Backup created successfully',
-                    icon: 'success'
-                });
-
-                // Refresh backups list
+            if (data.success && data.task_id) {
+                // Show progress modal and track task
+                await this.trackBackgroundTask(data.task_id, `Creating Backup: ${siteName}`);
+                
+                // Refresh backups list after completion
                 this.loadBackupsList();
-            } else {
+            } else if (data.error) {
                 this.addToLog('error', `Failed to create backup: ${data.error}`);
                 await Swal.fire({
                     title: 'Error',
@@ -3301,16 +3691,10 @@ class FrappeAppManager {
 
             const data = await response.json();
 
-            if (data.success) {
-                this.addToLog('success', `Backup restored successfully for ${siteName}`);
-                this.addToLog('info', data.output);
-
-                await Swal.fire({
-                    title: 'Success!',
-                    text: 'Backup restored successfully',
-                    icon: 'success'
-                });
-            } else {
+            if (data.success && data.task_id) {
+                // Show progress modal and track task
+                await this.trackBackgroundTask(data.task_id, `Restoring Backup: ${siteName}`);
+            } else if (data.error) {
                 this.addToLog('error', `Failed to restore backup: ${data.error}`);
                 await Swal.fire({
                     title: 'Error',
@@ -3854,13 +4238,19 @@ class FrappeAppManager {
                     
                     if (index === 0) {
                         option.textContent += ' (Latest - Recommended)';
+                        option.selected = true;  // Auto-select latest version
                     }
                     
                     versionSelect.appendChild(option);
                 });
+                
+                // Also set the select value to ensure it's selected
+                if (data.versions.length > 0) {
+                    versionSelect.value = data.versions[0];
+                }
 
                 this.versionsLoaded = true;
-                this.addToLog('success', `Loaded ${data.versions.length} ERPNext versions`);
+                this.addToLog('success', `Loaded ${data.versions.length} ERPNext versions (latest auto-selected)`);
             } else {
                 // Fallback to hardcoded versions
                 this.loadFallbackVersions(versionSelect);
@@ -3887,14 +4277,20 @@ class FrappeAppManager {
             option.textContent = version;
             
             if (index === 0) {
-                option.textContent += ' (Latest)';
+                option.textContent += ' (Latest - Recommended)';
+                option.selected = true;  // Auto-select latest version
             }
             
             versionSelect.appendChild(option);
         });
+        
+        // Also set the select value to ensure it's selected
+        if (fallbackVersions.length > 0) {
+            versionSelect.value = fallbackVersions[0];
+        }
 
         this.versionsLoaded = true;
-        this.addToLog('warning', 'Using fallback version list');
+        this.addToLog('warning', 'Using fallback version list (latest auto-selected)');
     }
 
     resetSiteForm() {
@@ -3968,7 +4364,7 @@ class FrappeAppManager {
                     <hr>
                     <p class="text-warning mb-0">
                         <i class="bi bi-exclamation-triangle"></i> 
-                        This process may take 5-15 minutes. Please do not close this page.
+                        This process may take 5 minutes. Please do not close this page.
                     </p>
                 </div>
             `,
@@ -3990,9 +4386,11 @@ class FrappeAppManager {
         if (progressSection) {
             progressSection.style.display = 'block';
             progressBar.style.width = '10%';
+            progressBar.setAttribute('aria-valuenow', 10);
             progressBar.textContent = '10%';
+            progressBar.classList.add('bg-info');
             statusText.textContent = 'Starting site creation...';
-            creationLog.innerHTML = '<div class="text-info">Initializing site creation process...</div>';
+            creationLog.innerHTML = '<div class="text-info"><i class="bi bi-hourglass-split"></i> Initializing site creation process...</div>';
         }
 
         try {
@@ -4029,12 +4427,26 @@ class FrappeAppManager {
                         if (statusData.success && statusData.task) {
                             const task = statusData.task;
                             
-                            // Update progress bar
-                            progressBar.style.width = `${task.progress}%`;
-                            progressBar.textContent = `${task.progress}%`;
+                            // Update progress bar with validation
+                            const progress = Math.min(100, Math.max(0, parseInt(task.progress) || 0));
+                            progressBar.style.width = `${progress}%`;
+                            progressBar.setAttribute('aria-valuenow', progress);
+                            progressBar.textContent = `${progress}%`;
+                            
+                            // Update progress bar color based on completion
+                            if (progress < 33) {
+                                progressBar.classList.remove('bg-warning', 'bg-success');
+                                progressBar.classList.add('bg-info');
+                            } else if (progress < 75) {
+                                progressBar.classList.remove('bg-info', 'bg-success');
+                                progressBar.classList.add('bg-warning');
+                            } else {
+                                progressBar.classList.remove('bg-info', 'bg-warning');
+                                progressBar.classList.add('bg-success');
+                            }
                             
                             // Update status text
-                            statusText.textContent = task.message;
+                            statusText.textContent = task.message || 'Processing...';
                             
                             // Update log with real-time output
                             if (creationLog) {
@@ -4100,8 +4512,8 @@ class FrappeAppManager {
                                                 .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
                                                 .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
                                                 .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
-                                                .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
-                                                .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                .replace(/🚀/g, '<i class="bi bi-rocket-takeoff text-success"></i>')
+                                                .replace(/🐳/g, '<i class="bi bi-code-square text-info"></i>')
                                                 .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
                                                 .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
                                                 .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
@@ -4114,11 +4526,11 @@ class FrappeAppManager {
                                                 .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
                                                 .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
                                                 .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
-                                                .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
-                                                .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                .replace(/💾/g, '<i class="bi bi-database-fill text-info"></i>')
+                                                .replace(/🗂️|🗂/g, '<i class="bi bi-folder2-open text-warning"></i>')
                                                 .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
                                                 .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
-                                                .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                                .replace(/🔥/g, '<i class="bi bi-brightness-high-fill text-danger"></i>');
                                             
                                             return formattedLine;
                                         })
@@ -4243,7 +4655,9 @@ class FrappeAppManager {
                                 
                                 // Format credentials with icons
                                 let formattedCredentials = '';
+                                let rawCredentials = '';
                                 if (task.result.credentials) {
+                                    rawCredentials = task.result.credentials;
                                     formattedCredentials = task.result.credentials
                                         .split('\n')
                                         .map(line => {
@@ -4271,16 +4685,44 @@ class FrappeAppManager {
                                             </div>
                                         ` : ''}
                                         ${formattedCredentials ? `
-                                            <div class="alert alert-info text-start">
-                                                <h6><i class="bi bi-shield-lock"></i> Credentials:</h6>
-                                                <div style="font-family: monospace; line-height: 1.8;">
+                                            <div class="alert alert-info text-start position-relative">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="mb-0"><i class="bi bi-shield-lock"></i> Credentials:</h6>
+                                                    <button class="btn btn-sm btn-outline-primary copy-credentials-btn" 
+                                                            onclick="window.copyCredentialsToClipboard()"
+                                                            title="Copy credentials to clipboard">
+                                                        <i class="bi bi-clipboard"></i> Copy
+                                                    </button>
+                                                </div>
+                                                <div id="credentials-text" style="font-family: monospace; line-height: 1.8;" data-raw-credentials="${this.escapeHtml(rawCredentials)}">
                                                     ${formattedCredentials}
                                                 </div>
                                             </div>
                                         ` : ''}
                                     `,
                                     icon: 'success',
-                                    width: '600px'
+                                    width: '600px',
+                                    didOpen: () => {
+                                        // Setup copy functionality
+                                        window.copyCredentialsToClipboard = () => {
+                                            const credentialsDiv = document.getElementById('credentials-text');
+                                            const rawText = credentialsDiv.getAttribute('data-raw-credentials');
+                                            
+                                            // Copy to clipboard
+                                            navigator.clipboard.writeText(rawText).then(() => {
+                                                // Visual feedback
+                                                const copyBtn = document.querySelector('.copy-credentials-btn');
+                                                const originalHTML = copyBtn.innerHTML;
+                                                copyBtn.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Copied!';
+                                                copyBtn.classList.remove('btn-outline-primary');
+                                                copyBtn.classList.add('btn-success');
+                                                
+                                                
+                                            }).catch(err => {
+                                                console.error('Failed to copy:', err);
+                                            });
+                                        };
+                                    }
                                 });
                                 
                                 // Reset form
@@ -4331,8 +4773,8 @@ class FrappeAppManager {
                                                     .replace(/❌/g, '<i class="bi bi-x-circle-fill text-danger"></i>')
                                                     .replace(/⚠️|⚠/g, '<i class="bi bi-exclamation-triangle-fill text-warning"></i>')
                                                     .replace(/🔍/g, '<i class="bi bi-search text-info"></i>')
-                                                    .replace(/🚀/g, '<i class="bi bi-rocket-takeoff-fill text-success"></i>')
-                                                    .replace(/🐳/g, '<i class="bi bi-badge-docker text-info"></i>')
+                                                    .replace(/🚀/g, '<i class="bi bi-rocket-takeoff text-success"></i>')
+                                                    .replace(/🐳/g, '<i class="bi bi-code-square text-info"></i>')
                                                     .replace(/🔧/g, '<i class="bi bi-tools text-secondary"></i>')
                                                     .replace(/💡/g, '<i class="bi bi-lightbulb-fill text-warning"></i>')
                                                     .replace(/🌐/g, '<i class="bi bi-globe text-primary"></i>')
@@ -4342,11 +4784,14 @@ class FrappeAppManager {
                                                     .replace(/👤/g, '<i class="bi bi-person-circle text-primary"></i>')
                                                     .replace(/🔑/g, '<i class="bi bi-key-fill text-warning"></i>')
                                                     .replace(/🔐/g, '<i class="bi bi-shield-lock-fill text-success"></i>')
-                                                    .replace(/💾/g, '<i class="bi bi-save-fill text-info"></i>')
-                                                    .replace(/🗂️|🗂/g, '<i class="bi bi-folder-fill text-warning"></i>')
+                                                    .replace(/💾/g, '<i class="bi bi-database-fill text-info"></i>')
+                                                    .replace(/🗂️|🗂/g, '<i class="bi bi-folder2-open text-warning"></i>')
                                                     .replace(/🎯/g, '<i class="bi bi-bullseye text-danger"></i>')
                                                     .replace(/⭐/g, '<i class="bi bi-star-fill text-warning"></i>')
-                                                    .replace(/🔥/g, '<i class="bi bi-fire text-danger"></i>');
+                                                    .replace(/🔥/g, '<i class="bi bi-brightness-high-fill text-danger"></i>')
+                                                    .replace(/📋/g, '<i class="bi bi-clipboard-fill text-info"></i>')
+                                                    .replace(/📝/g, '<i class="bi bi-pencil-square text-primary"></i>')
+                                                    .replace(/📁/g, '<i class="bi bi-folder-fill text-warning"></i>');
                                             })
                                             .join('<br>');
                                         
@@ -4618,5 +5063,397 @@ function createToastContainer() {
     document.body.appendChild(container);
     return container;
 }
+
+// ==================== DANGER ZONE OPERATIONS ====================
+{% raw %}
+// 1. Rebuild with Custom Apps Preservation
+document.getElementById('rebuild-with-apps-btn')?.addEventListener('click', async function() {
+    const siteName = document.getElementById('danger-site-select').value;
+    
+    if (!siteName) {
+        showToast('Please select a site first', 'error');
+        return;
+    }
+    
+    const result = await Swal.fire({
+        title: 'Rebuild with Apps Preservation?',
+        html: `
+            <div class="text-start">
+                <p>This will rebuild <strong>${siteName}</strong> while preserving custom apps:</p>
+                <div class="alert alert-info">
+                    <h6>Process Steps:</h6>
+                    <ol>
+                        <li>Backup all custom apps (except frappe & erpnext)</li>
+                        <li>Stop all containers</li>
+                        <li>Rebuild containers</li>
+                        <li>Wait for containers to be ready</li>
+                        <li>Reinstall all custom apps</li>
+                        <li>Update apps.txt</li>
+                    </ol>
+                </div>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> <strong>Note:</strong> This process may take 5-15 minutes depending on the number of apps.
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ffc107',
+        confirmButtonText: 'Yes, Rebuild with Apps',
+        cancelButtonText: 'Cancel'
+    });
+    
+    if (result.isConfirmed) {
+        // Use threading + polling (like site creation)
+        const outputElement = document.getElementById('danger-zone-output');
+        outputElement.innerHTML = '<div class="text-info"><i class="bi bi-arrow-repeat spin"></i> Starting rebuild process...</div>';
+        LoaderManager.show('Rebuilding containers...');
+        
+        // Start rebuild task
+        fetch('/api/frappe/rebuild-with-apps', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ site_name: siteName })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                // Start polling for status
+                pollDangerZoneStatus(data.task_id, 'rebuild', outputElement);
+            } else {
+                LoaderManager.hide();
+                outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start rebuild'}</div>`;
+                showToast('Failed to start rebuild', 'error');
+            }
+        })
+        .catch(error => {
+            LoaderManager.hide();
+            outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
+            showToast('Failed to start rebuild', 'error');
+        });
+    }
+});
+
+function getCSRFToken() {
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    return csrfInput ? csrfInput.value : '';
+}
+
+// Universal Danger Zone polling function
+function pollDangerZoneStatus(taskId, operationType, outputElement, siteName = null, onComplete = null) {
+    const endpoints = {
+        'rebuild': '/api/frappe/rebuild-with-apps/status/',
+        'restart-policy': '/api/frappe/fix-restart-policies/status/',
+        'site-removal': '/api/frappe/remove-site/status/'
+    };
+    
+    const endpoint = endpoints[operationType] + taskId;
+    
+    const pollInterval = setInterval(() => {
+        fetch(endpoint)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.task) {
+                    const task = data.task;
+                    
+                    // Update output
+                    if ('output' in task) {
+                        const safeOutput = (task.output || 'Starting...').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        outputElement.innerHTML = '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + 
+                            safeOutput + 
+                            '</pre>';
+                        outputElement.scrollTop = outputElement.scrollHeight;
+                    }
+                    
+                    // Check if completed
+                    if (task.status === 'completed') {
+                        clearInterval(pollInterval);
+                        LoaderManager.hide();
+                        
+                        // Call completion callback if provided
+                        if (onComplete && typeof onComplete === 'function') {
+                            onComplete();
+                        }
+                        
+                        if (operationType === 'rebuild') {
+                            showToast('Rebuild completed successfully!', 'success');
+                            Swal.fire({
+                                title: 'Success!',
+                                text: `Rebuild completed successfully for ${task.site_name}`,
+                                icon: 'success',
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                location.reload();
+                            });
+                        } else if (operationType === 'restart-policy') {
+                            showToast('Restart policies fixed successfully!', 'success');
+                            Swal.fire({
+                                title: 'Success!',
+                                text: 'All restart policies have been fixed',
+                                icon: 'success',
+                                confirmButtonText: 'OK'
+                            });
+                        } else if (operationType === 'site-removal') {
+                            showToast('Site removed successfully!', 'success');
+                            Swal.fire({
+                                title: 'Site Removed',
+                                html: `
+                                    <div class="alert alert-success">
+                                        <h5><i class="bi bi-check-circle-fill"></i> Complete Removal Successful</h5>
+                                        <p>Site <strong>${siteName}</strong> has been completely removed from the system.</p>
+                                    </div>
+                                    <p>All containers, folders, and configuration have been deleted.</p>
+                                `,
+                                icon: 'success',
+                                confirmButtonColor: '#28a745'
+                            }).then(() => {
+                                // location.reload();
+                            });
+                        }
+                    } else if (task.status === 'failed') {
+                        clearInterval(pollInterval);
+                        LoaderManager.hide();
+                        
+                        // Call completion callback if provided (even on failure to reset button state)
+                        if (onComplete && typeof onComplete === 'function') {
+                            onComplete();
+                        }
+                        
+                        const errorMsg = task.error || 'Unknown error';
+                        outputElement.innerHTML += `<br><div class="text-danger"><strong>❌ Error:</strong> ${errorMsg}</div>`;
+                        showToast(`${operationType.replace('-', ' ')} failed`, 'error');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Polling error:', error);
+            });
+    }, 2000); // Poll every 2 seconds
+}
+
+// 2. Fix Restart Policies (with threading + polling)
+document.getElementById('fix-restart-policies-btn')?.addEventListener('click', async function() {
+    const result = await Swal.fire({
+        title: 'Fix Restart Policies?',
+        html: `
+            <div class="text-start">
+                <p>This will fix restart policies for <strong>ALL Frappe containers</strong>:</p>
+                <div class="alert alert-info">
+                    <h6>What will happen:</h6>
+                    <ul>
+                        <li>Find all containers ending with -db, -redis, -app</li>
+                        <li>Update restart policy to "unless-stopped"</li>
+                        <li>Start any stopped containers</li>
+                        <li>Containers will auto-start after system reboot</li>
+                    </ul>
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#17a2b8',
+        confirmButtonText: 'Yes, Fix Policies',
+        cancelButtonText: 'Cancel'
+    });
+    
+    if (result.isConfirmed) {
+        const outputElement = document.getElementById('danger-zone-output');
+        outputElement.innerHTML = '<div class="text-info"><i class="bi bi-gear-fill spin"></i> Starting restart policy fix...</div>';
+        LoaderManager.show('Fixing restart policies...');
+        
+        // Start fix task
+        fetch('/api/frappe/fix-restart-policies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                // Start polling for status
+                pollDangerZoneStatus(data.task_id, 'restart-policy', outputElement);
+            } else {
+                LoaderManager.hide();
+                outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start task'}</div>`;
+                showToast('Failed to start restart policy fix', 'error');
+            }
+        })
+        .catch(error => {
+            LoaderManager.hide();
+            outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
+            showToast('Failed to start restart policy fix', 'error');
+        });
+    }
+});
+
+// 3. Complete Site Removal (with double confirmation and throttling)
+let isRemovalInProgress = false;
+
+document.getElementById('complete-site-removal-btn')?.addEventListener('click', async function() {
+    // Throttling: Prevent multiple simultaneous operations
+    if (isRemovalInProgress) {
+        showToast('A removal operation is already in progress. Please wait...', 'warning');
+        return;
+    }
+    
+    const siteName = document.getElementById('danger-site-select').value;
+    
+    if (!siteName) {
+        showToast('Please select a site first', 'error');
+        return;
+    }
+    
+    const outputElement = document.getElementById('danger-zone-output');
+    const removeBtn = document.getElementById('complete-site-removal-btn');
+    const originalBtnHTML = removeBtn.innerHTML;
+    
+    try {
+        // Convert underscores to dots for domain name (JavaScript replacement)
+        const siteDomain = siteName.replace(/_/g, '.');
+        
+        // First confirmation
+        const firstConfirm = await Swal.fire({
+            title: '⚠️ COMPLETE SITE REMOVAL ⚠️',
+            html: `
+                <div class="text-start">
+                    <div class="alert alert-danger">
+                        <h5><i class="bi bi-exclamation-octagon-fill"></i> CRITICAL WARNING!</h5>
+                        <p><strong>This will PERMANENTLY remove ALL data for:</strong></p>
+                        <h4 class="text-center my-3">${siteName}</h4>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <h6>What will be deleted:</h6>
+                        <ul>
+                            <li>✗ All Docker containers (app, db, redis)</li>
+                            <li>✗ All database data</li>
+                            <li>✗ Site folder: <code>${siteName}/</code></li>
+                            <li>✗ Development folder: <code>~/frappe-docker/${siteName}-frappe-bench/</code></li>
+                            <li>✗ Hosts file entries</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="alert alert-danger">
+                        <p class="mb-0"><strong>⚠️ THIS ACTION CANNOT BE UNDONE!</strong></p>
+                        <p class="mb-0">Make sure you have backups before proceeding.</p>
+                    </div>
+                    
+                    <p class="text-center mt-3">Check the output below to see what will be removed.</p>
+                </div>
+            `,
+            icon: 'error',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            confirmButtonText: 'I Understand, Continue',
+            cancelButtonText: 'Cancel',
+            width: '700px'
+        });
+        
+        if (!firstConfirm.isConfirmed) {
+            outputElement.innerHTML = '<div class="text-warning"><i class="bi bi-x-circle"></i> Operation cancelled by user</div>';
+            return;
+        }
+        
+        // Second confirmation - Type DELETE
+        const secondConfirm = await Swal.fire({
+            title: 'FINAL CONFIRMATION REQUIRED',
+            html: `
+                <div class="text-start">
+                    <div class="alert alert-danger text-center">
+                        <h4>⚠️ LAST CHANCE TO CANCEL ⚠️</h4>
+                        <p class="mb-0">You are about to permanently delete:</p>
+                        <h3 class="my-3">${siteName}</h3>
+                    </div>
+                    
+                    <p class="text-danger text-center mb-3">
+                        <strong>Type exactly:</strong> <code class="fs-5">DELETE</code>
+                    </p>
+                </div>
+            `,
+            input: 'text',
+            inputPlaceholder: 'Type DELETE to confirm',
+            icon: 'error',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            confirmButtonText: 'Permanently Delete Everything',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (value !== 'DELETE') {
+                    return 'You must type DELETE exactly (in capital letters)';
+                }
+            },
+            width: '600px'
+        });
+        
+        if (!secondConfirm.isConfirmed) {
+            outputElement.innerHTML = '<div class="text-warning"><i class="bi bi-x-circle"></i> Operation cancelled - confirmation failed</div>';
+            return;
+        }
+        
+        // Set throttle flag and disable button
+        isRemovalInProgress = true;
+        removeBtn.disabled = true;
+        removeBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processing...';
+        
+        // Execute site removal with threading + polling
+        outputElement.innerHTML = '<div class="text-danger"><i class="bi bi-trash-fill spin"></i> Starting complete site removal...</div>';
+        LoaderManager.show('Removing site completely...');
+        
+        // Start removal task
+        fetch('/api/frappe/remove-site', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ site_name: siteName })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.task_id) {
+                // Start polling for status (will reset button state when done)
+                pollDangerZoneStatus(data.task_id, 'site-removal', outputElement, siteName, () => {
+                    // Reset button state after completion
+                    isRemovalInProgress = false;
+                    removeBtn.disabled = false;
+                    removeBtn.innerHTML = originalBtnHTML;
+                });
+            } else {
+                // Reset button state on error
+                isRemovalInProgress = false;
+                removeBtn.disabled = false;
+                removeBtn.innerHTML = originalBtnHTML;
+                LoaderManager.hide();
+                outputElement.innerHTML = `<div class="text-danger">❌ Error: ${data.error || 'Failed to start removal'}</div>`;
+                showToast('Failed to start site removal', 'error');
+            }
+        })
+        .catch(error => {
+            // Reset button state on error
+            isRemovalInProgress = false;
+            removeBtn.disabled = false;
+            removeBtn.innerHTML = originalBtnHTML;
+            LoaderManager.hide();
+            outputElement.innerHTML = `<div class="text-danger">❌ Error: ${error.message}</div>`;
+            showToast('Failed to start site removal', 'error');
+        });
+        
+    } catch (error) {
+        // Reset button state on error
+        isRemovalInProgress = false;
+        removeBtn.disabled = false;
+        removeBtn.innerHTML = originalBtnHTML;
+        showToast('Error during site removal', 'error');
+        LoaderManager.hide();
+    }
+});
+
+console.log('✅ Danger Zone operations initialized');
+{% endraw %}
 </script>
 {% endblock %}

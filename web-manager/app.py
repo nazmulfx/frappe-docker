@@ -12,6 +12,7 @@ import re
 import secrets
 import time
 import logging
+import shlex
 from logging.handlers import RotatingFileHandler
 import pyotp
 import base64
@@ -22,7 +23,9 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 from config import Config
-from models import db, User, AuditLog, create_default_admin
+from models import db, User, AuditLog, Role, Permission, create_default_admin, init_rbac_system
+from permissions import require_permission, require_any_permission, require_role, get_current_user, check_permission
+from middleware import init_middleware
 
 
 
@@ -46,9 +49,10 @@ db.init_app(app)
 app.register_blueprint(ssh_bp)
 app.register_blueprint(ssh_pages_bp)
 
+# Initialize RBAC Middleware - filters all requests through permission checking
+init_middleware(app)
 
-# Context processor to make CSRF token available in all templates
-@app.context_processor
+# Context processor to make CSRF token and user info available in all templates
 @app.context_processor
 def inject_csrf_token():
     try:
@@ -56,6 +60,20 @@ def inject_csrf_token():
     except RuntimeError:
         # No request context, return empty token
         return dict(csrf_token=None)
+
+@app.context_processor
+def inject_user_permissions():
+    """Make current user and their permissions available in all templates"""
+    try:
+        current_user = get_current_user()
+        if current_user:
+            return {
+                'current_user': current_user,
+                'has_permission': lambda perm: current_user.has_permission(perm)
+            }
+        return {'current_user': None, 'has_permission': lambda perm: False}
+    except:
+        return {'current_user': None, 'has_permission': lambda perm: False}
 
 # Rate limiting storage
 login_attempts = {}
@@ -66,6 +84,9 @@ blocked_ips = {}
 
 # Global dictionary to store site creation tasks status
 site_creation_tasks = {}
+
+# Global dictionary to store background tasks (backup, restore, migrate, etc.)
+background_tasks = {}
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -482,23 +503,39 @@ def check_database_connectivity(container):
         return False
     
 def log_command_execution(command, container, success, error_message=None):
-    """Helper function to log command execution"""
-    username = session.get('username', 'unknown')
-    status = 'success' if success else 'failed'
-    message = f"Executed command '{command}' in container {container}"
-    if error_message:
-        message += f" - Error: {error_message}"
+    """Helper function to log command execution (thread-safe)"""
+    from flask import has_request_context
     
-    log_entry = AuditLog(
-        user_id=session.get('user_id'),
-        username=username,
-        ip_address=request.remote_addr,
-        event_type='command_execution',
-        message=message,
-        status=status
-    )
-    db.session.add(log_entry)
-    db.session.commit()
+    try:
+        # Check if we're in a request context (not in background thread)
+        if has_request_context():
+            username = session.get('username', 'system')
+            user_id = session.get('user_id')
+            ip_address = request.remote_addr
+        else:
+            # Background thread - use system defaults
+            username = 'system'
+            user_id = None
+            ip_address = '127.0.0.1'
+        
+        status = 'success' if success else 'failed'
+        message = f"Executed command '{command}' in container {container}"
+        if error_message:
+            message += f" - Error: {error_message}"
+        
+        log_entry = AuditLog(
+            user_id=user_id,
+            username=username,
+            ip_address=ip_address,
+            event_type='command_execution',
+            message=message,
+            status=status
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+    except Exception as e:
+        # Don't fail the main operation if logging fails
+        logger.error(f"Failed to log command execution: {str(e)}")
 
 
 def require_auth(f):
@@ -1133,15 +1170,47 @@ def toggle_2fa(user_id):
 # User Management Routes (Admin Only)
 @app.route('/users')
 @require_auth
-@require_admin
+@require_permission('view_users')
 def user_management():
     """User management panel"""
     users = User.query.all()
-    return render_template('user_management.html', users=users)
+    roles = Role.query.all()
+    permissions = Permission.query.all()
+    
+    # Check if current user can manage roles
+    current_user = get_current_user()
+    can_manage_roles = current_user.has_permission('manage_roles') if current_user else False
+    
+    return render_template('user_management.html', 
+                         users=users, 
+                         roles=roles, 
+                         permissions=permissions,
+                         can_manage_roles=can_manage_roles)
+
+@app.route('/roles')
+@require_auth
+@require_permission('manage_roles')
+def role_management():
+    """Role and permission management panel"""
+    roles = Role.query.all()
+    permissions_objs = Permission.query.all()
+    
+    # Group permissions by category
+    permissions = {}
+    for perm in permissions_objs:
+        category = perm.category or 'other'
+        if category not in permissions:
+            permissions[category] = []
+        permissions[category].append(perm.to_dict())
+    
+    return render_template('role_management.html', 
+                         roles=roles, 
+                         permissions=permissions,
+                         permissions_objs=permissions_objs)
 
 @app.route('/api/users', methods=['POST'])
 @require_auth
-@require_admin
+@require_permission('create_users')
 @require_csrf
 def create_user():
     """Create new user"""
@@ -1150,6 +1219,7 @@ def create_user():
     email = data.get('email', '').strip()
     password = data.get('password', '')
     is_admin = data.get('is_admin', False)
+    role_ids = data.get('role_ids', [])
     
     # Validate input
     if not username or not email or not password:
@@ -1170,24 +1240,52 @@ def create_user():
         username=username,
         email=email,
         is_admin=is_admin,
-        is_active=True,
+        is_active=data.get('is_active', True),  # Default to True if not specified
         totp_enabled=False  # 2FA disabled by default
     )
     user.set_password(password)
     
     db.session.add(user)
+    db.session.flush()  # Flush to get user ID
+    
+    # Assign roles
+    if role_ids:
+        for role_id in role_ids:
+            role = Role.query.get(role_id)
+            if role:
+                user.roles.append(role)
+    else:
+        # If no roles assigned and not admin, assign viewer role by default
+        if not is_admin:
+            viewer_role = Role.query.filter_by(name='viewer').first()
+            if viewer_role:
+                user.roles.append(viewer_role)
+    
+    # If user is admin, ensure they have admin role
+    if is_admin:
+        admin_role = Role.query.filter_by(name='admin').first()
+        if admin_role and admin_role not in user.roles:
+            user.roles.append(admin_role)
+    
     db.session.commit()
     
     # Log user creation
     client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
     admin_username = session.get('username', 'unknown')
-    log_audit("user_created", admin_username, client_ip, f"Created user: {username}", "success", session.get('user_id'))
+    role_names = [r.display_name for r in user.roles]
+    log_audit("user_created", admin_username, client_ip, 
+              f"Created user: {username} with roles: {', '.join(role_names) if role_names else 'None'}", 
+              "success", session.get('user_id'))
     
-    return jsonify({'success': True, 'message': 'User created successfully'})
+    return jsonify({
+        'success': True, 
+        'message': 'User created successfully',
+        'user': user.to_dict()
+    })
 
 @app.route('/api/users/<int:user_id>', methods=['PUT'])
 @require_auth
-@require_admin
+@require_permission('edit_users')
 @require_csrf
 def update_user(user_id):
     """Update user"""
@@ -1215,16 +1313,30 @@ def update_user(user_id):
                 return jsonify({'success': False, 'message': 'Email already exists'})
             user.email = new_email
     
+    # Handle password update
     if 'password' in data and data['password']:
-        if len(data['password']) < 8:
-            return jsonify({'success': False, 'message': 'Password must be at least 8 characters long'})
-        user.set_password(data['password'])
+        new_password = data['password'].strip() if isinstance(data['password'], str) else data['password']
+        if new_password:  # Only update if not empty after stripping
+            if len(new_password) < 8:
+                return jsonify({'success': False, 'message': 'Password must be at least 8 characters long'})
+            user.set_password(new_password)
+            logger.info(f"Password updated for user: {user.username}")
+            # Log password change
+            log_audit("password_changed", session.get('username', 'unknown'), 
+                     request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr),
+                     f"Password changed for user: {user.username}", "success", session.get('user_id'))
     
     if 'is_admin' in data:
         user.is_admin = data['is_admin']
     
     if 'is_active' in data:
         user.is_active = data['is_active']
+    
+    if 'totp_enabled' in data:
+        user.totp_enabled = data['totp_enabled']
+        # If disabling 2FA, clear the TOTP secret
+        if not data['totp_enabled']:
+            user.totp_secret = None
     
     db.session.commit()
     
@@ -1237,7 +1349,7 @@ def update_user(user_id):
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @require_auth
-@require_admin
+@require_permission('delete_users')
 @require_csrf
 def delete_user(user_id):
     """Delete user"""
@@ -1264,7 +1376,7 @@ def delete_user(user_id):
 
 @app.route('/api/users/<int:user_id>/unlock', methods=['POST'])
 @require_auth
-@require_admin
+@require_permission('edit_users')
 @require_csrf
 def unlock_user(user_id):
     """Unlock user account"""
@@ -1281,6 +1393,220 @@ def unlock_user(user_id):
     log_audit("user_unlocked", admin_username, client_ip, f"Unlocked user: {user.username}", "success", session.get('user_id'))
     
     return jsonify({'success': True, 'message': 'User unlocked successfully'})
+
+# Role Management Routes
+@app.route('/api/roles', methods=['GET'])
+@require_auth
+@require_permission('manage_roles')
+def get_roles():
+    """Get all roles"""
+    roles = Role.query.all()
+    return jsonify({
+        'success': True,
+        'roles': [role.to_dict() for role in roles]
+    })
+
+@app.route('/api/permissions', methods=['GET'])
+@require_auth
+@require_permission('manage_roles')
+def get_permissions():
+    """Get all permissions"""
+    permissions = Permission.query.all()
+    # Group permissions by category
+    grouped = {}
+    for perm in permissions:
+        category = perm.category or 'other'
+        if category not in grouped:
+            grouped[category] = []
+        grouped[category].append(perm.to_dict())
+    
+    return jsonify({
+        'success': True,
+        'permissions': grouped
+    })
+
+@app.route('/api/users/<int:user_id>/roles', methods=['GET'])
+@require_auth
+@require_permission('view_users')
+def get_user_roles(user_id):
+    """Get user's roles and status"""
+    user = User.query.get_or_404(user_id)
+    return jsonify({
+        'success': True,
+        'roles': [role.to_dict() for role in user.roles],
+        'permissions': [p.name for p in user.get_all_permissions()],
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'is_active': user.is_active,
+            'totp_enabled': user.totp_enabled,
+            'is_admin': user.is_admin
+        }
+    })
+
+@app.route('/api/users/<int:user_id>/roles', methods=['POST'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def assign_user_roles(user_id):
+    """Assign roles to user"""
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    role_ids = data.get('role_ids', [])
+    
+    # Clear existing roles
+    user.roles.clear()
+    
+    # Assign new roles
+    for role_id in role_ids:
+        role = Role.query.get(role_id)
+        if role:
+            user.roles.append(role)
+    
+    db.session.commit()
+    
+    # Log role assignment
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    role_names = [role.display_name for role in user.roles]
+    log_audit("roles_assigned", admin_username, client_ip, 
+              f"Assigned roles to {user.username}: {', '.join(role_names)}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Roles assigned successfully',
+        'roles': [role.to_dict() for role in user.roles]
+    })
+
+@app.route('/api/roles/<int:role_id>/permissions', methods=['POST'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def update_role_permissions(role_id):
+    """Update permissions for a role"""
+    role = Role.query.get_or_404(role_id)
+    
+    # Prevent modifying system roles
+    if role.is_system:
+        return jsonify({
+            'success': False,
+            'message': 'Cannot modify system roles. Create a custom role instead.'
+        }), 403
+    
+    data = request.json
+    permission_ids = data.get('permission_ids', [])
+    
+    # Clear existing permissions
+    role.permissions.clear()
+    
+    # Assign new permissions
+    for perm_id in permission_ids:
+        permission = Permission.query.get(perm_id)
+        if permission:
+            role.permissions.append(permission)
+    
+    db.session.commit()
+    
+    # Log permission update
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    log_audit("role_permissions_updated", admin_username, client_ip, 
+              f"Updated permissions for role: {role.display_name}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Role permissions updated successfully',
+        'role': role.to_dict()
+    })
+
+@app.route('/api/roles', methods=['POST'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def create_role():
+    """Create a new custom role"""
+    data = request.json
+    name = data.get('name', '').strip().lower().replace(' ', '_')
+    display_name = data.get('display_name', '').strip()
+    description = data.get('description', '').strip()
+    permission_ids = data.get('permission_ids', [])
+    
+    if not name or not display_name:
+        return jsonify({
+            'success': False,
+            'message': 'Name and display name are required'
+        }), 400
+    
+    # Check if role already exists
+    if Role.query.filter_by(name=name).first():
+        return jsonify({
+            'success': False,
+            'message': 'Role with this name already exists'
+        }), 400
+    
+    # Create role
+    role = Role(
+        name=name,
+        display_name=display_name,
+        description=description,
+        is_system=False
+    )
+    
+    # Add permissions
+    for perm_id in permission_ids:
+        permission = Permission.query.get(perm_id)
+        if permission:
+            role.permissions.append(permission)
+    
+    db.session.add(role)
+    db.session.commit()
+    
+    # Log role creation
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    log_audit("role_created", admin_username, client_ip, 
+              f"Created role: {role.display_name}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Role created successfully',
+        'role': role.to_dict()
+    })
+
+@app.route('/api/roles/<int:role_id>', methods=['DELETE'])
+@require_auth
+@require_permission('manage_roles')
+@require_csrf
+def delete_role(role_id):
+    """Delete a custom role"""
+    role = Role.query.get_or_404(role_id)
+    
+    # Prevent deleting system roles
+    if role.is_system:
+        return jsonify({
+            'success': False,
+            'message': 'Cannot delete system roles'
+        }), 403
+    
+    role_name = role.display_name
+    db.session.delete(role)
+    db.session.commit()
+    
+    # Log role deletion
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    admin_username = session.get('username', 'unknown')
+    log_audit("role_deleted", admin_username, client_ip, 
+              f"Deleted role: {role_name}", 
+              "success", session.get('user_id'))
+    
+    return jsonify({
+        'success': True,
+        'message': 'Role deleted successfully'
+    })
 
 # Audit Log Routes
 @app.route('/audit-logs')
@@ -1371,14 +1697,35 @@ def app_installation():
         formatted_name = SecureDockerManager.format_project_name(project_name)
         formatted_container_groups[formatted_name] = containers
     
-    return render_template('app_installation.html', container_groups=formatted_container_groups)
+    # Get base directory dynamically (parent of web-manager directory)
+    import os
+    web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(web_manager_dir)
+    
+    return render_template('app_installation.html', 
+                         container_groups=formatted_container_groups,
+                         base_dir=base_dir)
 
 @require_auth
 @app.route('/api/frappe/execute-command', methods=['POST'])
 @require_auth
 def execute_command_api():
-    """UNIVERSAL TERMINAL - Execute ANY command in ANY container"""
+    """
+    SECURE TERMINAL - Execute validated commands with comprehensive security checks
+    
+    Security Features:
+    - RBAC permission checking
+    - Command whitelist/blacklist validation
+    - Input sanitization
+    - Container name validation
+    - Path traversal protection
+    - Audit logging
+    - Rate limiting
+    """
     try:
+        from command_security import validate_command_security, command_validator
+        from models import AuditLog, User, db
+        
         # Initialize variables
         output = ''
         error = ''
@@ -1388,15 +1735,108 @@ def execute_command_api():
         command = data.get('command')
         current_dir = data.get('current_dir', '/home/frappe/frappe-bench')
         
+        # Get current user info for audit
+        user_id = session.get('user_id')
+        username = session.get('username', 'unknown')
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        
+        # Basic input validation
         if not container:
-            return jsonify({'error': 'Container name is required'})
+            return jsonify({'error': 'Container name is required'}), 400
         
         if not command:
-            return jsonify({'error': 'Command is required'})
+            return jsonify({'error': 'Command is required'}), 400
         
-        # UNIVERSAL TERMINAL - NO RESTRICTIONS!
-        # Accept any container name and any command
-        # Let Docker handle the validation
+        # Get user object for permission checking
+        user = User.query.get(user_id) if user_id else None
+        if not user:
+            logger.error(f"User not found for command execution: {user_id}")
+            return jsonify({'error': 'User not found'}), 401
+        
+        # Check if user has execute_commands permission
+        has_execute_permission = user.has_permission('execute_commands')
+        has_privileged_permission = user.has_permission('execute_privileged_commands')
+        
+        if not has_execute_permission:
+            # Log unauthorized attempt
+            try:
+                audit_log = AuditLog(
+                    user_id=user_id,
+                    username=username,
+                    ip_address=client_ip,
+                    event_type='command_execution_denied',
+                    message=f'Unauthorized command execution attempt: {command[:100]}',
+                    status='blocked'
+                )
+                db.session.add(audit_log)
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Failed to log unauthorized attempt: {str(e)}")
+            
+            return jsonify({
+                'error': 'Permission Denied',
+                'message': 'You do not have permission to execute commands. Contact your administrator.',
+                'required_permission': 'execute_commands'
+            }), 403
+        
+        # Comprehensive security validation
+        is_valid, error_msg, security_info = validate_command_security(
+            command=command,
+            container=container,
+            current_dir=current_dir,
+            allow_privileged=has_privileged_permission
+        )
+        
+        if not is_valid:
+            # Log blocked command
+            try:
+                audit_log = AuditLog(
+                    user_id=user_id,
+                    username=username,
+                    ip_address=client_ip,
+                    event_type='command_blocked',
+                    message=f'Blocked command: {command[:200]} | Reason: {error_msg} | Risk: {security_info.get("risk_level")}',
+                    status='blocked'
+                )
+                db.session.add(audit_log)
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Failed to log blocked command: {str(e)}")
+            
+            logger.warning(f"Command blocked for user {username}: {command} - {error_msg}")
+            return jsonify({
+                'error': 'Command Blocked',
+                'message': error_msg,
+                'security_info': {
+                    'risk_level': security_info.get('risk_level'),
+                    'risk_score': security_info.get('risk_score')
+                }
+            }), 403
+        
+        # Validate container exists
+        try:
+            check_container_cmd = ["sudo", "docker", "inspect", container, "--format", "{{.State.Running}}"]
+            result = subprocess.run(check_container_cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return jsonify({'error': f'Container "{container}" not found or not accessible'}), 404
+        except Exception as e:
+            logger.error(f"Container validation failed: {str(e)}")
+            return jsonify({'error': 'Failed to validate container'}), 500
+        
+        # Log command execution attempt
+        try:
+            audit_log = AuditLog(
+                user_id=user_id,
+                username=username,
+                ip_address=client_ip,
+                event_type='command_executed',
+                message=f'Executing command in {container}: {command[:200]} | Risk: {security_info.get("risk_level")}',
+                status='success'
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log command execution: {str(e)}")
         
         # Handle cd command specially
         if command.startswith('cd ') or command == 'cd':
@@ -1427,8 +1867,10 @@ def execute_command_api():
                     current_dir = target_dir
                 
                 # Verify the directory exists
-                check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"[ -d '{current_dir}' ] && echo 'exists' || echo 'not_exists'"]
-                process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                # SECURITY FIX: Use shlex.quote() to prevent command injection
+                escaped_dir = shlex.quote(current_dir)
+                check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"[ -d {escaped_dir} ] && echo 'exists' || echo 'not_exists'"]
+                process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
                 stdout, stderr = process.communicate()
                 
                 if 'exists' in stdout.decode():
@@ -1450,19 +1892,31 @@ def execute_command_api():
             # Extract the file pattern
             file_pattern = command.split(' ', 2)[2]
             
+            # SECURITY FIX: Use shlex.quote() to prevent command injection
+            escaped_dir = shlex.quote(current_dir)
+            escaped_pattern = shlex.quote(file_pattern)
+            
             # First check if the file exists (improved logic)
-            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && ls {file_pattern} 2>/dev/null"]
-            process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            check_cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {escaped_dir} && ls {escaped_pattern} 2>/dev/null"]
+            process = subprocess.Popen(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                return jsonify({'error': 'Command timed out'}), 408
             
             # If ls command failed or returned empty, file doesn't exist
             if process.returncode != 0 or not stdout.decode().strip():
                 return jsonify({'error': f"tail: cannot open '{file_pattern}' for reading: No such file or directory"})
             
             # Get initial content (last 10 lines)
-            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {current_dir} && tail -n 10 {file_pattern}"]
+            cmd = ["sudo", "docker", "exec", "-u", "root", container, "bash", "-c", f"cd {escaped_dir} && tail -n 10 {escaped_pattern}"]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            try:
+                stdout, stderr = process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                return jsonify({'error': 'Tail command timed out'}), 408
             
             output = stdout.decode()
             error = stderr.decode()
@@ -1480,6 +1934,53 @@ def execute_command_api():
         # UNIVERSAL TERMINAL - Execute command with REAL-TIME streaming
         # Use -w flag for working directory and -it for interactive TTY
         cmd = ["sudo", "docker", "exec", "-w", current_dir, container, "bash", "-c", command]
+        
+        # Detect heavy commands that should run in background
+        heavy_commands = ['bench migrate', 'bench get-app', 'bench install-app', 'bench build', 'bench update', 'bench backup', 'bench restore']
+        
+        # Check for exact matches and also patterns like "bench --site site_name install-app"
+        is_heavy_command = any(command.lower().strip().startswith(hc) for hc in heavy_commands)
+        
+        # Also check for bench commands with --site parameter that contain heavy operations
+        if not is_heavy_command and command.lower().strip().startswith('bench --site') and any(op in command.lower() for op in ['install-app', 'migrate', 'build', 'update', 'backup', 'restore']):
+            is_heavy_command = True
+        
+        # For heavy commands, use threading for background execution
+        if is_heavy_command:
+            # Generate unique task ID
+            task_id = str(uuid.uuid4())
+            
+            # Initialize task in background_tasks
+            background_tasks[task_id] = {
+                'type': 'command',
+                'status': 'pending',
+                'progress': 0,
+                'message': f'Initializing command: {command}',
+                'output': '',
+                'error': None,
+                'container': container,
+                'command': command,
+                'current_dir': current_dir,
+                'created_at': datetime.now().isoformat(),
+                'result': None
+            }
+            
+            # Start background thread
+            thread = threading.Thread(
+                target=run_heavy_command_task,
+                args=(task_id, container, command, current_dir)
+            )
+            thread.daemon = True
+            thread.start()
+            
+            # Return task ID immediately
+            return jsonify({
+                'success': True,
+                'task_id': task_id,
+                'message': f'Heavy command started in background. Use /api/tasks/status/{task_id} to check progress.',
+                'current_dir': current_dir,
+                'is_background_task': True
+            })
         
         # For bench commands, use streaming approach
         if command.lower().startswith('bench '):
@@ -1641,13 +2142,49 @@ def execute_command_api():
         
         formatted_output = format_command_output(output, error, command_type)
         
+        # Log successful command completion
+        try:
+            audit_log = AuditLog(
+                user_id=user_id,
+                username=username,
+                ip_address=client_ip,
+                event_type='command_completed',
+                message=f'Command completed in {container}: {command[:100]}',
+                status='success'
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log command completion: {str(e)}")
+        
         return jsonify({
             'output': formatted_output['formatted_output'],
-            'current_dir': current_dir
+            'current_dir': current_dir,
+            'security_validated': True
         })
     except Exception as e:
+        # Log command execution failure
+        try:
+            user_id = session.get('user_id')
+            username = session.get('username', 'unknown')
+            client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+            command = request.json.get('command', 'unknown') if request.json else 'unknown'
+            
+            audit_log = AuditLog(
+                user_id=user_id,
+                username=username,
+                ip_address=client_ip,
+                event_type='command_failed',
+                message=f'Command execution error: {command[:100]} | Error: {str(e)[:200]}',
+                status='error'
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+        except Exception as log_error:
+            logger.error(f"Failed to log command failure: {str(log_error)}")
+        
         logger.error(f"Error executing command: {str(e)}")
-        return jsonify({'error': str(e)})
+        return jsonify({'error': str(e), 'security_validated': False}), 500
 
 
 
@@ -1757,7 +2294,7 @@ def container_action_api(container_name, action):
         })
     
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'message': str(e), 'error': str(e)}), 500
 
 @app.route('/api/container/<container_name>/logs')
 @require_auth
@@ -1951,7 +2488,7 @@ def clear_terminal_logs():
 @app.route('/api/frappe/backup/create', methods=['POST'])
 @require_auth
 def create_backup():
-    """Create a backup of a Frappe site"""
+    """Create a backup of a Frappe site (using threading for background processing)"""
     try:
         data = request.json
         container = data.get('container')
@@ -1963,69 +2500,37 @@ def create_backup():
         if not container or not site_name:
             return jsonify({'error': 'Container and site_name are required'}), 400
         
-        # Build the bench backup command
-        backup_command = f"bench --site {site_name} backup"
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
         
-        if include_files:
-            if include_private_files and include_public_files:
-                backup_command += " --with-files"
-            elif include_private_files:
-                backup_command += " --with-private-files"
-            elif include_public_files:
-                backup_command += " --with-public-files"
+        # Initialize task in background_tasks
+        background_tasks[task_id] = {
+            'type': 'backup',
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Initializing backup task...',
+            'output': '',
+            'error': None,
+            'container': container,
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'result': None
+        }
         
-        # Execute the backup command
-        cmd = ["sudo", "docker", "exec", container, "bash", "-c", backup_command]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        # Start background thread
+        thread = threading.Thread(
+            target=run_backup_task,
+            args=(task_id, container, site_name, include_files, include_private_files, include_public_files)
+        )
+        thread.daemon = True
+        thread.start()
         
-        output_lines = []
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
-            output_lines.append(line.rstrip())
-        
-        process.wait()
-        output = '\n'.join(output_lines)
-        
-        if process.returncode == 0:
-            # Get the backup file paths from output
-            backup_info = {
-                'database': None,
-                'private_files': None,
-                'public_files': None
-            }
-            
-            for line in output_lines:
-                if 'database' in line.lower() and ('.sql' in line or '.gz' in line):
-                    # Extract backup file path
-                    import re
-                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.(sql\.gz|sql)', line)
-                    if path_match:
-                        backup_info['database'] = path_match.group(0)
-                elif 'private' in line.lower() and '.tar' in line:
-                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
-                    if path_match:
-                        backup_info['private_files'] = path_match.group(0)
-                elif 'public' in line.lower() and '.tar' in line:
-                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
-                    if path_match:
-                        backup_info['public_files'] = path_match.group(0)
-            
-            log_command_execution(backup_command, container, True, None)
-            
-            return jsonify({
-                'success': True,
-                'output': output,
-                'backup_info': backup_info,
-                'message': 'Backup created successfully'
-            })
-        else:
-            log_command_execution(backup_command, container, False, output)
-            return jsonify({
-                'error': output or 'Backup failed',
-                'success': False
-            }), 500
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Backup task started. Use /api/tasks/status/<task_id> to check progress.'
+        })
             
     except Exception as e:
         logger.error(f"Error creating backup: {str(e)}")
@@ -2062,10 +2567,18 @@ def list_backups():
                         size = parts[4]
                         date = ' '.join(parts[5:8])
                         
-                        backup_type = 'database' if 'database' in filename else \
-                                    'private_files' if 'private' in filename else \
-                                    'public_files' if 'public' in filename else \
-                                    'files' if 'files' in filename else 'unknown'
+                        # Determine backup type based on Frappe naming convention
+                        if 'database' in filename and ('.sql' in filename or '.gz' in filename):
+                            backup_type = 'database'
+                        elif 'private-files' in filename or 'private_files' in filename:
+                            backup_type = 'private_files'
+                        elif 'files' in filename and 'private' not in filename:
+                            # Public files are named *-files.tar (without 'private')
+                            backup_type = 'public_files'
+                        elif 'site_config_backup' in filename:
+                            backup_type = 'config'
+                        else:
+                            backup_type = 'unknown'
                         
                         backups.append({
                             'filename': filename,
@@ -2093,7 +2606,7 @@ def list_backups():
 @app.route('/api/frappe/backup/restore', methods=['POST'])
 @require_auth
 def restore_backup():
-    """Restore a backup for a Frappe site"""
+    """Restore a backup for a Frappe site (using threading for background processing)"""
     try:
         data = request.json
         container = data.get('container')
@@ -2110,72 +2623,37 @@ def restore_backup():
         if not mysql_root_password:
             return jsonify({'error': 'MySQL root password is required'}), 400
         
-        # Escape single quotes in password for shell safety
-        escaped_password = mysql_root_password.replace("'", "'\\''")
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
         
-        # Create a temporary MySQL config file with password to avoid prompts
-        mysql_config_content = f"""[client]
-user=root
-password={escaped_password}
-host=db
-"""
+        # Initialize task in background_tasks
+        background_tasks[task_id] = {
+            'type': 'restore',
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Initializing restore task...',
+            'output': '',
+            'error': None,
+            'container': container,
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'result': None
+        }
         
-        # Create the config file in the container
-        create_config_cmd = f"cat > /tmp/mysql_restore.cnf << 'EOFMYSQL'\n{mysql_config_content}\nEOFMYSQL"
-        cmd_create = ["sudo", "docker", "exec", container, "bash", "-c", create_config_cmd]
-        subprocess.run(cmd_create, capture_output=True)
+        # Start background thread
+        thread = threading.Thread(
+            target=run_restore_task,
+            args=(task_id, container, site_name, backup_path, private_files_path, public_files_path, mysql_root_password, admin_password)
+        )
+        thread.daemon = True
+        thread.start()
         
-        # Build the restore command using the config file
-        # Use --defaults-file to specify MySQL config with password
-        restore_command = f"bench --site {site_name} --force restore {backup_path} --mariadb-root-password '{escaped_password}'"
-        
-        # Add file restore options
-        restore_options = []
-        if private_files_path:
-            restore_options.append(f"--with-private-files {private_files_path}")
-        if public_files_path:
-            restore_options.append(f"--with-public-files {public_files_path}")
-        
-        if restore_options:
-            restore_command += " " + " ".join(restore_options)
-        
-        # Add admin password option if provided
-        if admin_password:
-            escaped_admin_password = admin_password.replace("'", "'\\''")
-            restore_command += f" --admin-password '{escaped_admin_password}'"
-        
-        # Execute the restore command
-        cmd = ["sudo", "docker", "exec", container, "bash", "-c", restore_command]
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        
-        output_lines = []
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
-            output_lines.append(line.rstrip())
-        
-        process.wait()
-        output = '\n'.join(output_lines)
-        
-        # Clean up the temporary config file
-        cleanup_cmd = ["sudo", "docker", "exec", container, "bash", "-c", "rm -f /tmp/mysql_restore.cnf"]
-        subprocess.run(cleanup_cmd, capture_output=True)
-        
-        if process.returncode == 0:
-            log_command_execution(f"bench restore (site: {site_name})", container, True, None)
-            
-            return jsonify({
-                'success': True,
-                'output': output,
-                'message': 'Backup restored successfully'
-            })
-        else:
-            log_command_execution(f"bench restore (site: {site_name})", container, False, output)
-            return jsonify({
-                'error': output or 'Restore failed',
-                'success': False
-            }), 500
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Restore task started. Use /api/tasks/status/<task_id> to check progress.'
+        })
             
     except Exception as e:
         logger.error(f"Error restoring backup: {str(e)}")
@@ -2359,6 +2837,163 @@ def delete_backup():
         logger.error(f"Error deleting backup: {str(e)}")
         return jsonify({'error': str(e), 'success': False}), 500
 
+
+# ============================================================================
+# BACKGROUND TASK STATUS API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/tasks/status/<task_id>', methods=['GET'])
+@require_auth
+def get_task_status(task_id):
+    """Get the status of a background task"""
+    try:
+        # Check both background_tasks and site_creation_tasks
+        if task_id in background_tasks:
+            task = background_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'task': task
+            })
+        elif task_id in site_creation_tasks:
+            task = site_creation_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'task': task
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Task not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting task status: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@app.route('/api/tasks/list', methods=['GET'])
+@require_auth
+def list_tasks():
+    """List all background tasks"""
+    try:
+        # Get task type filter from query params
+        task_type = request.args.get('type')
+        status = request.args.get('status')
+        
+        # Combine all tasks
+        all_tasks = {}
+        
+        # Add background_tasks
+        for task_id, task in background_tasks.items():
+            if task_type and task.get('type') != task_type:
+                continue
+            if status and task.get('status') != status:
+                continue
+            all_tasks[task_id] = task
+        
+        # Add site_creation_tasks
+        for task_id, task in site_creation_tasks.items():
+            if task_type and task_type != 'site_creation':
+                continue
+            if status and task.get('status') != status:
+                continue
+            # Add type for consistency
+            task_copy = task.copy()
+            task_copy['type'] = 'site_creation'
+            all_tasks[task_id] = task_copy
+        
+        return jsonify({
+            'success': True,
+            'tasks': all_tasks,
+            'count': len(all_tasks)
+        })
+            
+    except Exception as e:
+        logger.error(f"Error listing tasks: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@app.route('/api/tasks/delete/<task_id>', methods=['DELETE'])
+@require_auth
+def delete_task(task_id):
+    """Delete a completed or failed task from the list"""
+    try:
+        # Check both background_tasks and site_creation_tasks
+        if task_id in background_tasks:
+            task = background_tasks[task_id]
+            # Only allow deletion of completed or failed tasks
+            if task.get('status') not in ['completed', 'failed', 'cancelled']:
+                return jsonify({
+                    'success': False,
+                    'error': 'Cannot delete running tasks'
+                }), 400
+            
+            del background_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'message': 'Task deleted successfully'
+            })
+        elif task_id in site_creation_tasks:
+            task = site_creation_tasks[task_id]
+            # Only allow deletion of completed or failed tasks
+            if task.get('status') not in ['completed', 'failed', 'cancelled']:
+                return jsonify({
+                    'success': False,
+                    'error': 'Cannot delete running tasks'
+                }), 400
+            
+            del site_creation_tasks[task_id]
+            return jsonify({
+                'success': True,
+                'message': 'Task deleted successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Task not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting task: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@app.route('/api/tasks/clear', methods=['POST'])
+@require_auth
+def clear_completed_tasks():
+    """Clear all completed and failed tasks"""
+    try:
+        # Clear from background_tasks
+        tasks_to_delete = [
+            task_id for task_id, task in background_tasks.items()
+            if task.get('status') in ['completed', 'failed', 'cancelled']
+        ]
+        
+        for task_id in tasks_to_delete:
+            del background_tasks[task_id]
+        
+        # Clear from site_creation_tasks
+        site_tasks_to_delete = [
+            task_id for task_id, task in site_creation_tasks.items()
+            if task.get('status') in ['completed', 'failed', 'cancelled']
+        ]
+        
+        for task_id in site_tasks_to_delete:
+            del site_creation_tasks[task_id]
+        
+        total_cleared = len(tasks_to_delete) + len(site_tasks_to_delete)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleared {total_cleared} completed/failed tasks',
+            'count': total_cleared
+        })
+            
+    except Exception as e:
+        logger.error(f"Error clearing tasks: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
 @app.route('/api/frappe/get-erpnext-versions', methods=['GET'])
 @require_auth
 def get_erpnext_versions():
@@ -2461,6 +3096,471 @@ def clean_ansi_codes(text):
     
     return text
 
+# ============================================================================
+# BACKGROUND TASK FUNCTIONS FOR HEAVY OPERATIONS
+# ============================================================================
+
+def run_backup_task(task_id, container, site_name, include_files, include_private_files, include_public_files):
+    """Background task to create a backup"""
+    try:
+        # Update task status
+        background_tasks[task_id]['status'] = 'running'
+        background_tasks[task_id]['progress'] = 10
+        background_tasks[task_id]['message'] = 'Starting backup process...'
+        
+        # Build the bench backup command
+        backup_command = f"bench --site {site_name} backup"
+        
+        if include_files:
+            if include_private_files and include_public_files:
+                backup_command += " --with-files"
+            elif include_private_files:
+                backup_command += " --with-private-files"
+            elif include_public_files:
+                backup_command += " --with-public-files"
+        
+        background_tasks[task_id]['progress'] = 20
+        background_tasks[task_id]['message'] = 'Executing backup command...'
+        
+        # Execute the backup command
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", backup_command]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            output_lines.append(line.rstrip())
+            # Update output in real-time
+            background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Update progress based on output
+            if 'Backing up' in line or 'backup' in line.lower():
+                if background_tasks[task_id]['progress'] < 60:
+                    background_tasks[task_id]['progress'] = 50
+                    background_tasks[task_id]['message'] = 'Creating database backup...'
+            elif 'files' in line.lower():
+                if background_tasks[task_id]['progress'] < 80:
+                    background_tasks[task_id]['progress'] = 70
+                    background_tasks[task_id]['message'] = 'Backing up files...'
+        
+        process.wait()
+        output = '\n'.join(output_lines)
+        
+        if process.returncode == 0:
+            # Get the backup file paths from output
+            backup_info = {
+                'database': None,
+                'private_files': None,
+                'public_files': None
+            }
+            
+            for line in output_lines:
+                if 'database' in line.lower() and ('.sql' in line or '.gz' in line):
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.(sql\.gz|sql)', line)
+                    if path_match:
+                        backup_info['database'] = path_match.group(0)
+                elif 'private' in line.lower() and '.tar' in line:
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
+                    if path_match:
+                        backup_info['private_files'] = path_match.group(0)
+                elif 'public' in line.lower() and '.tar' in line:
+                    path_match = re.search(r'/home/frappe/frappe-bench/sites/[^\s]+\.tar', line)
+                    if path_match:
+                        backup_info['public_files'] = path_match.group(0)
+            
+            log_command_execution(backup_command, container, True, None)
+            
+            background_tasks[task_id]['status'] = 'completed'
+            background_tasks[task_id]['progress'] = 100
+            background_tasks[task_id]['message'] = 'Backup created successfully!'
+            background_tasks[task_id]['result'] = {
+                'success': True,
+                'output': output,
+                'backup_info': backup_info
+            }
+        else:
+            log_command_execution(backup_command, container, False, output)
+            background_tasks[task_id]['status'] = 'failed'
+            background_tasks[task_id]['error'] = output or 'Backup failed'
+            background_tasks[task_id]['result'] = {
+                'success': False,
+                'error': output or 'Backup failed'
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in backup task {task_id}: {str(e)}")
+        background_tasks[task_id]['status'] = 'failed'
+        background_tasks[task_id]['error'] = str(e)
+        background_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def run_restore_task(task_id, container, site_name, backup_path, private_files_path, public_files_path, mysql_root_password, admin_password):
+    """Background task to restore a backup"""
+    try:
+        # Update task status
+        background_tasks[task_id]['status'] = 'running'
+        background_tasks[task_id]['progress'] = 10
+        background_tasks[task_id]['message'] = 'Starting restore process...'
+        
+        # Escape single quotes in password for shell safety
+        escaped_password = mysql_root_password.replace("'", "'\\''")
+        
+        # Create a temporary MySQL config file with password to avoid prompts
+        mysql_config_content = f"""[client]
+user=root
+password={escaped_password}
+host=db
+"""
+        
+        background_tasks[task_id]['progress'] = 20
+        background_tasks[task_id]['message'] = 'Creating MySQL configuration...'
+        
+        # Create the config file in the container
+        create_config_cmd = f"cat > /tmp/mysql_restore.cnf << 'EOFMYSQL'\n{mysql_config_content}\nEOFMYSQL"
+        cmd_create = ["sudo", "docker", "exec", container, "bash", "-c", create_config_cmd]
+        subprocess.run(cmd_create, capture_output=True)
+        
+        # Build the restore command
+        restore_command = f"bench --site {site_name} --force restore {backup_path} --mariadb-root-password '{escaped_password}'"
+        
+        # Add file restore options
+        restore_options = []
+        if private_files_path:
+            restore_options.append(f"--with-private-files {private_files_path}")
+        if public_files_path:
+            restore_options.append(f"--with-public-files {public_files_path}")
+        
+        if restore_options:
+            restore_command += " " + " ".join(restore_options)
+        
+        # Add admin password option if provided
+        if admin_password:
+            escaped_admin_password = admin_password.replace("'", "'\\''")
+            restore_command += f" --admin-password '{escaped_admin_password}'"
+        
+        background_tasks[task_id]['progress'] = 30
+        background_tasks[task_id]['message'] = 'Executing restore command...'
+        
+        # Execute the restore command
+        cmd = ["sudo", "docker", "exec", container, "bash", "-c", restore_command]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        output_lines = []
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                break
+            output_lines.append(line.rstrip())
+            # Update output in real-time
+            background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Update progress based on output
+            if 'database' in line.lower() or 'restoring' in line.lower():
+                if background_tasks[task_id]['progress'] < 70:
+                    background_tasks[task_id]['progress'] = 50
+                    background_tasks[task_id]['message'] = 'Restoring database...'
+            elif 'files' in line.lower():
+                if background_tasks[task_id]['progress'] < 90:
+                    background_tasks[task_id]['progress'] = 80
+                    background_tasks[task_id]['message'] = 'Restoring files...'
+        
+        process.wait()
+        output = '\n'.join(output_lines)
+        
+        # Clean up the temporary config file
+        cleanup_cmd = ["sudo", "docker", "exec", container, "bash", "-c", "rm -f /tmp/mysql_restore.cnf"]
+        subprocess.run(cleanup_cmd, capture_output=True)
+        
+        if process.returncode == 0:
+            log_command_execution(f"bench restore (site: {site_name})", container, True, None)
+            
+            background_tasks[task_id]['status'] = 'completed'
+            background_tasks[task_id]['progress'] = 100
+            background_tasks[task_id]['message'] = 'Backup restored successfully!'
+            background_tasks[task_id]['result'] = {
+                'success': True,
+                'output': output
+            }
+        else:
+            log_command_execution(f"bench restore (site: {site_name})", container, False, output)
+            background_tasks[task_id]['status'] = 'failed'
+            background_tasks[task_id]['error'] = output or 'Restore failed'
+            background_tasks[task_id]['result'] = {
+                'success': False,
+                'error': output or 'Restore failed'
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in restore task {task_id}: {str(e)}")
+        background_tasks[task_id]['status'] = 'failed'
+        background_tasks[task_id]['error'] = str(e)
+        background_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def run_heavy_command_task(task_id, container, command, current_dir):
+    """Background task for heavy commands like bench migrate"""
+    try:
+        # Update task status
+        background_tasks[task_id]['status'] = 'running'
+        background_tasks[task_id]['progress'] = 10
+        background_tasks[task_id]['message'] = f'Executing: {command}'
+        
+        # Execute command
+        cmd = ["sudo", "docker", "exec", "-w", current_dir, container, "bash", "-c", command]
+        
+        background_tasks[task_id]['progress'] = 20
+        background_tasks[task_id]['message'] = 'Processing command...'
+        
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+        
+        output_lines = []
+        
+        # Special handling for bench migrate command
+        if command.lower().strip() == 'bench migrate':
+            current_app = None
+            last_progress = 0
+            
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                line = line.rstrip()
+                
+                # Extract meaningful information from migrate output
+                if 'Migrating' in line and 'local' in line:
+                    site_name = line.split('Migrating ')[1].split('\n')[0]
+                    output_lines.append(f"🔄 Starting migration for site: {site_name}")
+                    background_tasks[task_id]['progress'] = 30
+                    background_tasks[task_id]['message'] = f'Migrating site: {site_name}'
+                
+                elif 'Updating DocTypes for' in line and '%' in line:
+                    parts = line.split('Updating DocTypes for ')
+                    if len(parts) > 1:
+                        app_part = parts[1].split(' : ')[0]
+                        progress_part = parts[1].split(' : ')[1] if ' : ' in parts[1] else ''
+                        
+                        if '%' in progress_part:
+                            percent = progress_part.split('%')[0].split()[-1]
+                            try:
+                                percent_int = int(percent)
+                                if percent_int >= last_progress + 10:
+                                    output_lines.append(f"📊 Updating DocTypes for {app_part}: {percent_int}%")
+                                    last_progress = percent_int
+                                    # Map progress to 40-80 range
+                                    background_tasks[task_id]['progress'] = min(40 + int(percent_int * 0.4), 80)
+                                    background_tasks[task_id]['message'] = f'Updating DocTypes: {percent_int}%'
+                            except ValueError:
+                                pass
+                
+                elif 'Updating Dashboard for' in line:
+                    app_name = line.split('Updating Dashboard for ')[1]
+                    output_lines.append(f"📈 Updating Dashboard for {app_name}")
+                    background_tasks[task_id]['progress'] = 85
+                    background_tasks[task_id]['message'] = 'Updating dashboards...'
+                
+                elif 'Updating customizations for' in line:
+                    doctype = line.split('Updating customizations for ')[1]
+                    output_lines.append(f"🔧 Updating customizations for {doctype}")
+                
+                elif 'Executing `after_migrate` hooks' in line:
+                    output_lines.append("⚡ Executing post-migration hooks...")
+                    background_tasks[task_id]['progress'] = 90
+                    background_tasks[task_id]['message'] = 'Executing post-migration hooks...'
+                
+                elif 'Queued rebuilding of search index' in line:
+                    site_name = line.split('Queued rebuilding of search index for ')[1]
+                    output_lines.append(f"🔍 Queued search index rebuild for {site_name}")
+                
+                elif line.strip() and not any(x in line for x in ['[', ']', '=']):
+                    output_lines.append(line)
+                
+                # Update output in real-time
+                background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Get final output
+            output = '\n'.join(output_lines)
+            
+            # Check if process completed successfully
+            process.wait()
+            if process.returncode != 0:
+                background_tasks[task_id]['status'] = 'failed'
+                background_tasks[task_id]['error'] = f"Migration failed with exit code {process.returncode}"
+                background_tasks[task_id]['result'] = {
+                    'success': False,
+                    'error': f"Migration failed with exit code {process.returncode}"
+                }
+            else:
+                output += "\n\n✅ Migration completed successfully!"
+                background_tasks[task_id]['status'] = 'completed'
+                background_tasks[task_id]['progress'] = 100
+                background_tasks[task_id]['message'] = 'Migration completed successfully!'
+                background_tasks[task_id]['output'] = output
+                background_tasks[task_id]['result'] = {
+                    'success': True,
+                    'output': output
+                }
+        
+        # Special handling for bench install-app command
+        elif command.lower().strip().startswith('bench --site') and 'install-app' in command.lower():
+            app_name = None
+            site_name = None
+            last_progress = 0
+            
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                line = line.rstrip()
+                
+                # Extract app and site names from command
+                if app_name is None or site_name is None:
+                    if '--site' in command:
+                        parts = command.split('--site')
+                        if len(parts) > 1:
+                            site_part = parts[1].strip().split()[0]
+                            site_name = site_part
+                    if 'install-app' in command:
+                        parts = command.split('install-app')
+                        if len(parts) > 1:
+                            app_part = parts[1].strip().split()[0]
+                            app_name = app_part
+                
+                # Parse install-app specific output
+                if 'Installing' in line and 'app' in line.lower():
+                    output_lines.append(f"🚀 Starting installation of {app_name or 'app'} on site {site_name or 'site'}")
+                    background_tasks[task_id]['progress'] = 20
+                    background_tasks[task_id]['message'] = f'Installing {app_name or "app"} on {site_name or "site"}'
+                
+                elif 'Installing app' in line:
+                    output_lines.append(f"📦 {line}")
+                    background_tasks[task_id]['progress'] = 30
+                    background_tasks[task_id]['message'] = 'Installing application files...'
+                
+                elif 'Building' in line or 'Compiling' in line:
+                    output_lines.append(f"🔨 {line}")
+                    background_tasks[task_id]['progress'] = 40
+                    background_tasks[task_id]['message'] = 'Building application...'
+                
+                elif 'Installing dependencies' in line or 'pip install' in line.lower():
+                    output_lines.append(f"📚 {line}")
+                    background_tasks[task_id]['progress'] = 50
+                    background_tasks[task_id]['message'] = 'Installing dependencies...'
+                
+                elif 'Creating' in line and 'doctype' in line.lower():
+                    output_lines.append(f"📋 {line}")
+                    background_tasks[task_id]['progress'] = 60
+                    background_tasks[task_id]['message'] = 'Creating database tables...'
+                
+                elif 'Migrating' in line and 'local' in line:
+                    output_lines.append(f"🔄 {line}")
+                    background_tasks[task_id]['progress'] = 70
+                    background_tasks[task_id]['message'] = 'Running database migrations...'
+                
+                elif 'Updating DocTypes' in line:
+                    output_lines.append(f"📊 {line}")
+                    background_tasks[task_id]['progress'] = 80
+                    background_tasks[task_id]['message'] = 'Updating DocTypes...'
+                
+                elif 'Building assets' in line or 'Compiling assets' in line:
+                    output_lines.append(f"🎨 {line}")
+                    background_tasks[task_id]['progress'] = 85
+                    background_tasks[task_id]['message'] = 'Building frontend assets...'
+                
+                elif 'Successfully installed' in line or 'Installation completed' in line:
+                    output_lines.append(f"✅ {line}")
+                    background_tasks[task_id]['progress'] = 95
+                    background_tasks[task_id]['message'] = 'Installation completed!'
+                
+                elif line.strip() and not any(x in line for x in ['[', ']', '=', 'INFO', 'DEBUG']):
+                    # Include important lines but filter out noise
+                    if any(keyword in line.lower() for keyword in ['error', 'warning', 'success', 'installing', 'creating', 'building', 'migrating']):
+                        output_lines.append(line)
+                
+                # Update output in real-time
+                background_tasks[task_id]['output'] = '\n'.join(output_lines)
+            
+            # Get final output
+            output = '\n'.join(output_lines)
+            
+            # Check if process completed successfully
+            process.wait()
+            if process.returncode != 0:
+                background_tasks[task_id]['status'] = 'failed'
+                background_tasks[task_id]['error'] = f"App installation failed with exit code {process.returncode}"
+                background_tasks[task_id]['result'] = {
+                    'success': False,
+                    'error': f"App installation failed with exit code {process.returncode}",
+                    'output': output
+                }
+            else:
+                output += f"\n\n✅ App '{app_name or 'application'}' installed successfully on site '{site_name or 'site'}'!"
+                background_tasks[task_id]['status'] = 'completed'
+                background_tasks[task_id]['progress'] = 100
+                background_tasks[task_id]['message'] = f'App {app_name or "application"} installed successfully!'
+                background_tasks[task_id]['output'] = output
+                background_tasks[task_id]['result'] = {
+                    'success': True,
+                    'output': output
+                }
+        
+        else:
+            # For other commands, use standard approach
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                output_lines.append(line.rstrip())
+                # Update output in real-time
+                background_tasks[task_id]['output'] = '\n'.join(output_lines)
+                
+                # Update progress gradually
+                current_progress = background_tasks[task_id]['progress']
+                if current_progress < 90:
+                    background_tasks[task_id]['progress'] = min(current_progress + 5, 90)
+            
+            # Get final output
+            output = '\n'.join(output_lines)
+            
+            # Check if process completed successfully
+            process.wait()
+            if process.returncode != 0:
+                background_tasks[task_id]['status'] = 'failed'
+                background_tasks[task_id]['error'] = f"Command failed with exit code {process.returncode}"
+                background_tasks[task_id]['result'] = {
+                    'success': False,
+                    'output': output,
+                    'error': f"Command failed with exit code {process.returncode}"
+                }
+            else:
+                background_tasks[task_id]['status'] = 'completed'
+                background_tasks[task_id]['progress'] = 100
+                background_tasks[task_id]['message'] = 'Command completed successfully!'
+                background_tasks[task_id]['output'] = output
+                background_tasks[task_id]['result'] = {
+                    'success': True,
+                    'output': output
+                }
+            
+    except Exception as e:
+        logger.error(f"Error in command task {task_id}: {str(e)}")
+        background_tasks[task_id]['status'] = 'failed'
+        background_tasks[task_id]['error'] = str(e)
+        background_tasks[task_id]['result'] = {
+            'success': False,
+            'error': str(e)
+        }
+
+
 def run_site_creation_task(task_id, domain_name, erpnext_version, environment, script_path, base_dir):
     """Background task to create a site"""
     try:
@@ -2469,14 +3569,14 @@ def run_site_creation_task(task_id, domain_name, erpnext_version, environment, s
         
         # Update task status
         site_creation_tasks[task_id]['status'] = 'running'
-        site_creation_tasks[task_id]['progress'] = 10
+        site_creation_tasks[task_id]['progress'] = 2
         site_creation_tasks[task_id]['message'] = 'Starting site creation...'
         
         # Log the site creation attempt
         logger.info(f"Creating new site: {site_name} ({domain_name}) with ERPNext {erpnext_version} in {environment} environment")
         
         # Update progress
-        site_creation_tasks[task_id]['progress'] = 20
+        site_creation_tasks[task_id]['progress'] = 5
         site_creation_tasks[task_id]['message'] = 'Creating expect automation script...'
         site_creation_tasks[task_id]['output'] = ''  # Initialize output
         
@@ -2526,7 +3626,7 @@ expect eof
             os.chmod(expect_file, 0o755)
             
             # Update progress
-            site_creation_tasks[task_id]['progress'] = 30
+            site_creation_tasks[task_id]['progress'] = 20
             site_creation_tasks[task_id]['message'] = 'Running site generation script...'
             
             # Execute expect script with real-time output capture
@@ -2542,8 +3642,8 @@ expect eof
             )
             
             # Update progress while running
-            site_creation_tasks[task_id]['progress'] = 50
-            site_creation_tasks[task_id]['message'] = 'Installing Frappe/ERPNext... This may take 5-15 minutes...'
+            site_creation_tasks[task_id]['progress'] = 25
+            site_creation_tasks[task_id]['message'] = 'Installing Frappe/ERPNext... This may take 5 minutes...'
             
             # Read output line by line in real-time
             output_lines = []
@@ -2554,16 +3654,25 @@ expect eof
                     # Update task with latest output (keep last 100 lines for performance)
                     site_creation_tasks[task_id]['output'] = '\n'.join(output_lines[-100:])
                     
-                    # Update progress based on output keywords
-                    if 'Pulling' in line or 'Downloading' in line:
-                        site_creation_tasks[task_id]['progress'] = 40
+                    # Get current progress to ensure it never goes backward
+                    current_progress = site_creation_tasks[task_id]['progress']
+                    
+                    # Update progress based on output keywords (only increase, never decrease)
+                    if ('Pulling' in line or 'Downloading' in line or 'Download' in line) and current_progress < 45:
+                        site_creation_tasks[task_id]['progress'] = 35
                         site_creation_tasks[task_id]['message'] = 'Downloading Docker images...'
-                    elif 'Building' in line or 'Creating' in line:
-                        site_creation_tasks[task_id]['progress'] = 60
+                    elif ('Building' in line or 'Built' in line) and current_progress < 55:
+                        site_creation_tasks[task_id]['progress'] = 40
+                        site_creation_tasks[task_id]['message'] = 'Building Docker images...'
+                    elif ('Creating' in line and 'container' in line.lower()) and current_progress < 65:
+                        site_creation_tasks[task_id]['progress'] = 50
                         site_creation_tasks[task_id]['message'] = 'Creating containers...'
-                    elif 'Starting' in line or 'Started' in line:
-                        site_creation_tasks[task_id]['progress'] = 75
+                    elif ('Starting' in line or 'Started' in line) and current_progress < 75:
+                        site_creation_tasks[task_id]['progress'] = 55
                         site_creation_tasks[task_id]['message'] = 'Starting containers...'
+                    elif ('done' in line.lower() or 'complete' in line.lower()) and current_progress < 85:
+                        site_creation_tasks[task_id]['progress'] = 65
+                        site_creation_tasks[task_id]['message'] = 'Finalizing setup...'
             
             # Wait for process to complete
             process.wait()
@@ -2790,9 +3899,734 @@ def get_site_creation_status(task_id):
         'task': site_creation_tasks[task_id]
     })
 
+# ==================== REBUILD OPERATIONS WITH THREADING ====================
+# Store rebuild tasks (similar to site_creation_tasks)
+rebuild_tasks = {}
+
+def run_rebuild_task(task_id, site_name, base_dir):
+    """Background task to rebuild containers with apps preservation"""
+    try:
+        rebuild_tasks[task_id]['status'] = 'running'
+        rebuild_tasks[task_id]['progress'] = 5
+        rebuild_tasks[task_id]['output'] = ''
+        
+        def append_output(msg):
+            rebuild_tasks[task_id]['output'] += msg + '\n'
+        
+        append_output(f'🔄 Starting rebuild for {site_name}...')
+        append_output(f'📍 Base directory: {base_dir}')
+        
+        # Detect docker compose command
+        try:
+            subprocess.run(['docker', 'compose', 'version'], capture_output=True, check=True)
+            docker_compose_cmd = 'docker compose'
+        except:
+            docker_compose_cmd = 'docker-compose'
+        
+        append_output(f'✅ Using: {docker_compose_cmd}')
+        rebuild_tasks[task_id]['progress'] = 10
+        
+        # Find compose file
+        compose_file_local = f"{base_dir}/Docker-Local/{site_name}/{site_name}-docker-compose.yml"
+        compose_file_vps = f"{base_dir}/Docker-on-VPS/{site_name}/{site_name}-docker-compose.yml"
+        
+        compose_file = None
+        work_dir = None
+        
+        if os.path.exists(compose_file_local):
+            compose_file = compose_file_local
+            work_dir = f"{base_dir}/Docker-Local/{site_name}"
+            append_output(f'📁 Found in: Docker-Local/{site_name}/')
+        elif os.path.exists(compose_file_vps):
+            compose_file = compose_file_vps
+            work_dir = f"{base_dir}/Docker-on-VPS/{site_name}"
+            append_output(f'📁 Found in: Docker-on-VPS/{site_name}/')
+        else:
+            rebuild_tasks[task_id]['status'] = 'failed'
+            rebuild_tasks[task_id]['error'] = f'Docker compose file not found for {site_name}'
+            return
+        
+        container_name = f"{site_name}-app"
+        rebuild_tasks[task_id]['progress'] = 20
+        
+        # Backup apps list
+        append_output('\n💾 Backing up apps list...')
+        try:
+            backup_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && cat sites/apps.txt"'
+            result = subprocess.run(backup_cmd, shell=True, capture_output=True, text=True, timeout=30)
+            apps_backup = result.stdout
+            if apps_backup:
+                append_output('✅ Apps backed up')
+        except Exception as e:
+            apps_backup = None
+            append_output(f'⚠️  Could not backup apps: {str(e)}')
+        
+        rebuild_tasks[task_id]['progress'] = 30
+        
+        # Stop containers
+        append_output('\n⏹️  Stopping containers...')
+        stop_cmd = f'{docker_compose_cmd} -f "{compose_file}" down'
+        result = subprocess.run(stop_cmd, shell=True, cwd=work_dir, capture_output=True, text=True, timeout=120)
+        append_output(result.stdout)
+        if result.stderr:
+            append_output(result.stderr)
+        
+        rebuild_tasks[task_id]['progress'] = 50
+        
+        # Rebuild and start
+        append_output('\n🔨 Rebuilding containers...')
+        rebuild_cmd = f'{docker_compose_cmd} -f "{compose_file}" up -d --build'
+        process = subprocess.Popen(rebuild_cmd, shell=True, cwd=work_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        
+        for line in process.stdout:
+            append_output(line.rstrip())
+            
+        process.wait()
+        rebuild_tasks[task_id]['progress'] = 80
+        
+        # Wait for container to be ready
+        append_output('\n⏳ Waiting for container to be ready...')
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            check_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && bench --version"'
+            result = subprocess.run(check_cmd, shell=True, capture_output=True, timeout=10)
+            if result.returncode == 0:
+                append_output('✅ Container is ready!')
+                break
+            append_output(f'   Attempt {attempt + 1}/{max_attempts} - Waiting...')
+            time.sleep(10)
+            rebuild_tasks[task_id]['progress'] = 80 + (attempt * 0.5)
+        else:
+            rebuild_tasks[task_id]['status'] = 'failed'
+            rebuild_tasks[task_id]['error'] = 'Container did not become ready in time'
+            return
+        
+        # Restore apps list
+        if apps_backup:
+            append_output('\n📋 Restoring apps list...')
+            restore_cmd = f'echo "{apps_backup}" | docker exec -i {container_name} bash -c "cat > /home/frappe/frappe-bench/sites/apps.txt"'
+            subprocess.run(restore_cmd, shell=True, timeout=30)
+            append_output('✅ Apps list restored')
+        
+        rebuild_tasks[task_id]['progress'] = 100
+        rebuild_tasks[task_id]['status'] = 'completed'
+        append_output('\n🎉 Rebuild completed successfully!')
+        
+    except Exception as e:
+        logger.error(f"Error in rebuild task: {str(e)}")
+        rebuild_tasks[task_id]['status'] = 'failed'
+        rebuild_tasks[task_id]['error'] = str(e)
+        rebuild_tasks[task_id]['output'] += f'\n❌ Error: {str(e)}'
+
+@app.route('/api/frappe/rebuild-with-apps', methods=['POST'])
+@require_auth
+def rebuild_with_apps():
+    """Start rebuild task as a background thread"""
+    try:
+        data = request.json
+        site_name = data.get('site_name')
+        
+        if not site_name:
+            return jsonify({'error': 'Site name is required', 'success': False}), 400
+        
+        # Get base directory
+        web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(web_manager_dir)
+        
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        rebuild_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'output': '',
+            'error': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_rebuild_task,
+            args=(task_id, site_name, base_dir)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Rebuild started in background',
+            'site_name': site_name
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting rebuild: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/rebuild-with-apps/status/<task_id>', methods=['GET'])
+@require_auth
+def get_rebuild_status(task_id):
+    """Get status of rebuild task"""
+    if task_id not in rebuild_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': rebuild_tasks[task_id]
+    })
+
+# ==================== FIX RESTART POLICIES WITH THREADING ====================
+restart_policy_tasks = {}
+
+def run_fix_restart_policies_task(task_id):
+    """Background task to fix restart policies for all containers"""
+    try:
+        restart_policy_tasks[task_id]['status'] = 'running'
+        restart_policy_tasks[task_id]['progress'] = 10
+        restart_policy_tasks[task_id]['output'] = ''
+        
+        def append_output(msg):
+            restart_policy_tasks[task_id]['output'] += msg + '\n'
+        
+        append_output('🔧 Starting restart policy fix for all containers...')
+        append_output('')
+        
+        # Get all unique site names
+        cmd = "docker ps -a --format '{{.Names}}' | grep -E '.*-(db|redis|app)$' | sed 's/-(db|redis|app)$//' | sort -u"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            restart_policy_tasks[task_id]['status'] = 'failed'
+            restart_policy_tasks[task_id]['error'] = 'Failed to get container list'
+            return
+        
+        sites = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        
+        if not sites:
+            append_output('ℹ️  No Frappe containers found')
+            restart_policy_tasks[task_id]['status'] = 'completed'
+            restart_policy_tasks[task_id]['progress'] = 100
+            return
+        
+        total_sites = len(sites)
+        append_output(f'📋 Found {total_sites} site(s) to process')
+        append_output('')
+        
+        for idx, site in enumerate(sites):
+            if not site:
+                continue
+                
+            append_output(f'🔄 Processing {site}...')
+            progress = 10 + (idx * 80 // total_sites)
+            restart_policy_tasks[task_id]['progress'] = progress
+            
+            for container in [f'{site}-db', f'{site}-redis', f'{site}-app']:
+                # Check if container exists
+                check_cmd = f"docker ps -a --format '{{{{.Names}}}}' | grep -q '^{container}$'"
+                check_result = subprocess.run(check_cmd, shell=True, capture_output=True, timeout=10)
+                
+                if check_result.returncode != 0:
+                    continue
+                
+                # Get current policy
+                policy_cmd = f'docker inspect {container} --format="{{{{.HostConfig.RestartPolicy.Name}}}}"'
+                policy_result = subprocess.run(policy_cmd, shell=True, capture_output=True, text=True, timeout=10)
+                current_policy = policy_result.stdout.strip() if policy_result.returncode == 0 else 'unknown'
+                
+                # Update if not already unless-stopped
+                if current_policy != 'unless-stopped':
+                    append_output(f'  ✏️  Updating {container} restart policy...')
+                    update_cmd = f'docker update --restart=unless-stopped {container}'
+                    subprocess.run(update_cmd, shell=True, capture_output=True, timeout=30)
+                
+                # Check if stopped and start it
+                status_cmd = f'docker inspect {container} --format="{{{{.State.Status}}}}"'
+                status_result = subprocess.run(status_cmd, shell=True, capture_output=True, text=True, timeout=10)
+                status = status_result.stdout.strip() if status_result.returncode == 0 else ''
+                
+                if status != 'running':
+                    append_output(f'  ▶️  Starting {container}...')
+                    start_cmd = f'docker start {container}'
+                    subprocess.run(start_cmd, shell=True, capture_output=True, timeout=30)
+            
+            append_output(f'  ✅ {site} done')
+            append_output('')
+        
+        restart_policy_tasks[task_id]['progress'] = 100
+        restart_policy_tasks[task_id]['status'] = 'completed'
+        append_output('🎉 All restart policies fixed!')
+        append_output('✅ Containers will now start automatically after system restart')
+        
+    except Exception as e:
+        logger.error(f"Error in fix restart policies task: {str(e)}")
+        restart_policy_tasks[task_id]['status'] = 'failed'
+        restart_policy_tasks[task_id]['error'] = str(e)
+        restart_policy_tasks[task_id]['output'] += f'\n❌ Error: {str(e)}'
+
+@app.route('/api/frappe/fix-restart-policies', methods=['POST'])
+@require_auth
+def fix_restart_policies():
+    """Start fix restart policies task as a background thread"""
+    try:
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        restart_policy_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'created_at': datetime.now().isoformat(),
+            'output': '',
+            'error': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_fix_restart_policies_task,
+            args=(task_id,)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Restart policy fix started in background'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting restart policy fix: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/fix-restart-policies/status/<task_id>', methods=['GET'])
+@require_auth
+def get_restart_policy_status(task_id):
+    """Get status of restart policy fix task"""
+    if task_id not in restart_policy_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': restart_policy_tasks[task_id]
+    })
+
+# ==================== COMPLETE SITE REMOVAL WITH THREADING ====================
+site_removal_tasks = {}
+
+def run_site_removal_task(task_id, site_name, base_dir):
+    """Background task to completely remove a site"""
+    try:
+        site_removal_tasks[task_id]['status'] = 'running'
+        site_removal_tasks[task_id]['progress'] = 5
+        site_removal_tasks[task_id]['output'] = ''
+        
+        def append_output(msg):
+            site_removal_tasks[task_id]['output'] += msg + '\n'
+        
+        append_output(f'🗑️  Starting complete removal of {site_name}...')
+        append_output(f'📍 Base directory: {base_dir}')
+        append_output('')
+        
+        # Show preview of what will be removed
+        append_output('=' * 60)
+        append_output('📋 PREVIEW: Resources to be removed')
+        append_output('=' * 60)
+        
+        # Preview containers
+        containers_cmd = f'docker ps -a --filter "name=^{site_name}-" --format "{{{{.Names}}}}"'
+        containers_result = subprocess.run(containers_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if containers_result.stdout.strip():
+            append_output('🐳 Containers:')
+            for container in containers_result.stdout.strip().split('\n'):
+                if container:
+                    append_output(f'   • {container}')
+        else:
+            append_output('🐳 Containers: None found')
+        
+        # Preview volumes
+        volumes_cmd = f'docker volume ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
+        volumes_result = subprocess.run(volumes_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if volumes_result.stdout.strip():
+            append_output('📦 Volumes:')
+            for volume in volumes_result.stdout.strip().split('\n'):
+                if volume:
+                    append_output(f'   • {volume}')
+        else:
+            append_output('📦 Volumes: None found')
+        
+        # Preview networks
+        networks_cmd = f'docker network ls --filter "name={site_name}" --format "{{{{.Name}}}}"'
+        networks_result = subprocess.run(networks_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if networks_result.stdout.strip():
+            append_output('🌐 Networks:')
+            for network in networks_result.stdout.strip().split('\n'):
+                if network and network not in ['bridge', 'host', 'none']:
+                    append_output(f'   • {network}')
+        else:
+            append_output('🌐 Networks: None found')
+        
+        # Preview folders
+        append_output('📁 Folders:')
+        site_folder_local = f"{base_dir}/Docker-Local/{site_name}"
+        site_folder_vps = f"{base_dir}/Docker-on-VPS/{site_name}"
+        if os.path.exists(site_folder_local):
+            append_output(f'   • {site_folder_local}')
+        if os.path.exists(site_folder_vps):
+            append_output(f'   • {site_folder_vps}')
+        
+        # Preview dev folder
+        if os.environ.get('SUDO_USER'):
+            preview_home_dir = os.path.expanduser(f"~{os.environ['SUDO_USER']}")
+        else:
+            preview_home_dir = os.path.expanduser("~")
+        preview_dev_folder = f"{preview_home_dir}/frappe-docker/{site_name}-frappe-bench"
+        if os.path.exists(preview_dev_folder):
+            append_output(f'   • {preview_dev_folder}')
+        
+        # Preview hosts entry
+        site_domain = site_name.replace('_', '.')
+        check_hosts_cmd = f'grep "{site_domain}" /etc/hosts 2>/dev/null'
+        check_result = subprocess.run(check_hosts_cmd, shell=True, capture_output=True)
+        if check_result.returncode == 0:
+            append_output(f'🌍 Hosts entry: {site_domain}')
+        
+        append_output('=' * 60)
+        append_output('')
+        
+        # Stop and remove containers (with force)
+        append_output('⏹️  Stopping containers...')
+        stop_cmd = f'docker stop $(docker ps -q --filter "name=^{site_name}-") 2>/dev/null || true'
+        subprocess.run(stop_cmd, shell=True, capture_output=True, timeout=120)
+        site_removal_tasks[task_id]['progress'] = 15
+        
+        append_output('🗑️  Force removing containers (app, db, redis)...')
+        # Force remove with -f flag to ensure removal even if running
+        rm_cmd = f'docker rm -f $(docker ps -aq --filter "name=^{site_name}-") 2>/dev/null || true'
+        rm_result = subprocess.run(rm_cmd, shell=True, capture_output=True, text=True, timeout=60)
+        
+        # Also try individual container removal to be thorough
+        for container_type in ['app', 'db', 'redis', 'socketio', 'scheduler', 'worker']:
+            container_name = f'{site_name}-{container_type}'
+            rm_individual = f'docker rm -f {container_name} 2>/dev/null || true'
+            subprocess.run(rm_individual, shell=True, capture_output=True, timeout=30)
+        
+        append_output('✅ All containers forcefully removed')
+        site_removal_tasks[task_id]['progress'] = 25
+        
+        # Remove Docker volumes (force removal)
+        append_output('')
+        append_output('📦 Removing Docker volumes (all data)...')
+        
+        # Get list of volumes for this site (multiple patterns)
+        volume_patterns = [
+            f'docker volume ls -q --filter "name={site_name}"',
+            f'docker volume ls -q | grep {site_name}',
+        ]
+        
+        volumes_found = set()
+        for pattern_cmd in volume_patterns:
+            try:
+                result = subprocess.run(pattern_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                if result.stdout.strip():
+                    for vol in result.stdout.strip().split('\n'):
+                        if vol and site_name in vol:
+                            volumes_found.add(vol)
+            except:
+                pass
+        
+        if volumes_found:
+            for volume in volumes_found:
+                append_output(f'  🗑️  Force removing volume: {volume}')
+                # Force remove with -f flag
+                rm_vol_cmd = f'docker volume rm -f {volume} 2>/dev/null || true'
+                subprocess.run(rm_vol_cmd, shell=True, capture_output=True, timeout=30)
+            append_output(f'✅ Removed {len(volumes_found)} Docker volume(s)')
+        else:
+            append_output('  ℹ️  No volumes found')
+        
+        # Also try to remove common volume patterns
+        common_volumes = [
+            f'{site_name}_db-data',
+            f'{site_name}_redis-data',
+            f'{site_name}_sites',
+            f'{site_name}-db-data',
+            f'{site_name}-redis-data',
+            f'{site_name}-sites',
+        ]
+        for vol in common_volumes:
+            subprocess.run(f'docker volume rm -f {vol} 2>/dev/null', shell=True, capture_output=True, timeout=10)
+        
+        site_removal_tasks[task_id]['progress'] = 35
+        
+        # Remove Docker networks (force removal)
+        append_output('')
+        append_output('🌐 Removing Docker networks...')
+        
+        # Get list of networks for this site (multiple methods)
+        network_patterns = [
+            f'docker network ls -q --filter "name={site_name}"',
+            f'docker network ls -q | grep {site_name}',
+        ]
+        
+        networks_found = set()
+        for pattern_cmd in network_patterns:
+            try:
+                result = subprocess.run(pattern_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                if result.stdout.strip():
+                    for net in result.stdout.strip().split('\n'):
+                        if net and site_name in net:
+                            networks_found.add(net)
+            except:
+                pass
+        
+        # Exclude system networks
+        system_networks = {'bridge', 'host', 'none', 'traefik-net', 'traefik-public'}
+        networks_to_remove = networks_found - system_networks
+        
+        if networks_to_remove:
+            for network in networks_to_remove:
+                append_output(f'  🗑️  Removing network: {network}')
+                rm_net_cmd = f'docker network rm {network} 2>/dev/null || true'
+                subprocess.run(rm_net_cmd, shell=True, capture_output=True, timeout=30)
+            append_output(f'✅ Removed {len(networks_to_remove)} Docker network(s)')
+        else:
+            append_output('  ℹ️  No custom networks found')
+        
+        # Also try common network patterns
+        common_networks = [
+            f'{site_name}_default',
+            f'{site_name}-network',
+            f'{site_name}_network',
+        ]
+        for net in common_networks:
+            subprocess.run(f'docker network rm {net} 2>/dev/null', shell=True, capture_output=True, timeout=10)
+        
+        site_removal_tasks[task_id]['progress'] = 40
+        
+        # Remove Docker images related to this site
+        append_output('')
+        append_output('🖼️  Removing Docker images...')
+        
+        # Find images tagged with site name
+        images_cmd = f'docker images --format "{{{{.Repository}}}}:{{{{.Tag}}}}" | grep {site_name}'
+        images_result = subprocess.run(images_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        
+        if images_result.stdout.strip():
+            images = images_result.stdout.strip().split('\n')
+            images_removed = 0
+            for image in images:
+                if image and site_name in image:
+                    append_output(f'  🗑️  Removing image: {image}')
+                    rm_img_cmd = f'docker rmi -f {image} 2>/dev/null || true'
+                    subprocess.run(rm_img_cmd, shell=True, capture_output=True, timeout=30)
+                    images_removed += 1
+            if images_removed > 0:
+                append_output(f'✅ Removed {images_removed} Docker image(s)')
+        else:
+            append_output('  ℹ️  No custom images found')
+        
+        site_removal_tasks[task_id]['progress'] = 50
+        
+        # Remove site folders and configuration files
+        append_output('')
+        append_output('📁 Removing site folders and configurations...')
+        
+        folders_removed = 0
+        
+        # Remove Docker-Local folder
+        site_folder_local = f"{base_dir}/Docker-Local/{site_name}"
+        if os.path.exists(site_folder_local):
+            append_output(f'  🗑️  Removing: {site_folder_local}')
+            rm_local_cmd = f'sudo rm -rf "{site_folder_local}"'
+            subprocess.run(rm_local_cmd, shell=True, timeout=60)
+            append_output('  ✅ Docker-Local folder removed')
+            folders_removed += 1
+        
+        # Remove Docker-on-VPS folder
+        site_folder_vps = f"{base_dir}/Docker-on-VPS/{site_name}"
+        if os.path.exists(site_folder_vps):
+            append_output(f'  🗑️  Removing: {site_folder_vps}')
+            rm_vps_cmd = f'sudo rm -rf "{site_folder_vps}"'
+            subprocess.run(rm_vps_cmd, shell=True, timeout=60)
+            append_output('  ✅ Docker-on-VPS folder removed')
+            folders_removed += 1
+        
+        # Remove any docker-compose files in root
+        compose_files = [
+            f"{base_dir}/{site_name}-docker-compose.yml",
+            f"{base_dir}/{site_name}_local/{site_name}_local-docker-compose.yml",
+            f"{base_dir}/erp{site_name}/{site_name}-docker-compose.yml",
+        ]
+        for compose_file in compose_files:
+            if os.path.exists(compose_file):
+                append_output(f'  🗑️  Removing compose file: {compose_file}')
+                subprocess.run(f'sudo rm -f "{compose_file}"', shell=True, timeout=10)
+        
+        if folders_removed == 0:
+            append_output('  ℹ️  No site folders found')
+        
+        site_removal_tasks[task_id]['progress'] = 65
+        
+        # Remove development folder
+        append_output('')
+        append_output('💻 Removing development folder...')
+        
+        # Detect actual user home directory (same logic as docker-manager.sh)
+        if os.environ.get('SUDO_USER'):
+            home_dir = os.path.expanduser(f"~{os.environ['SUDO_USER']}")
+        else:
+            home_dir = os.path.expanduser("~")
+        
+        dev_folder = f"{home_dir}/frappe-docker/{site_name}-frappe-bench"
+        
+        if os.path.exists(dev_folder):
+            append_output(f'  🗑️  Removing: {dev_folder}')
+            rm_dev_cmd = f'sudo rm -rf "{dev_folder}"'
+            subprocess.run(rm_dev_cmd, shell=True, timeout=60)
+            append_output('  ✅ Development folder removed')
+        else:
+            append_output(f'  ℹ️  Development folder not found: {dev_folder}')
+        
+        site_removal_tasks[task_id]['progress'] = 85
+        
+        # Update hosts file
+        append_output('')
+        append_output('📝 Updating hosts file...')
+        site_domain = site_name.replace('_', '.')
+        
+        # Check if entry exists
+        check_hosts_cmd = f'grep "{site_domain}" /etc/hosts 2>/dev/null'
+        check_result = subprocess.run(check_hosts_cmd, shell=True, capture_output=True)
+        
+        if check_result.returncode == 0:
+            append_output(f'  🗑️  Removing hosts entry for {site_domain}')
+            sed_cmd = f'sudo sed -i "/{site_domain}/d" /etc/hosts'
+            subprocess.run(sed_cmd, shell=True, timeout=30)
+            append_output('  ✅ Hosts file updated')
+        else:
+            append_output('  ℹ️  No hosts entry found')
+        
+        site_removal_tasks[task_id]['progress'] = 90
+        
+        # Docker system cleanup
+        append_output('')
+        append_output('🧹 Cleaning up unused Docker resources...')
+        cleanup_cmd = 'docker system prune -a --volumes -f'
+        cleanup_result = subprocess.run(cleanup_cmd, shell=True, capture_output=True, text=True, timeout=300)
+        if cleanup_result.returncode == 0:
+            append_output('  ✅ Docker cleanup completed')
+        
+        # Show final disk usage
+        append_output('')
+        append_output('📊 Updated Docker Space Usage:')
+        df_cmd = 'docker system df'
+        df_result = subprocess.run(df_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if df_result.stdout:
+            for line in df_result.stdout.strip().split('\n'):
+                append_output(f'  {line}')
+        
+        site_removal_tasks[task_id]['progress'] = 100
+        site_removal_tasks[task_id]['status'] = 'completed'
+        append_output('')
+        append_output('=' * 60)
+        append_output('🎉 COMPLETE CLEANUP FINISHED!')
+        append_output('=' * 60)
+        append_output(f'✅ All traces of {site_name} have been removed from the system')
+        append_output('')
+        append_output('✅ Successfully removed:')
+        append_output('  ✔ Docker containers (app, db, redis, worker, scheduler, socketio)')
+        append_output('  ✔ Docker volumes (all persistent data)')
+        append_output('  ✔ Docker networks (custom networks)')
+        append_output('  ✔ Docker images (site-specific images)')
+        append_output('  ✔ Site folders (Docker-Local, Docker-on-VPS)')
+        append_output('  ✔ Configuration files (docker-compose.yml)')
+        append_output('  ✔ Development folders (frappe-bench)')
+        append_output('  ✔ Hosts file entries')
+        append_output('  ✔ Unused Docker resources (system prune)')
+        append_output('')
+        append_output('✨ Complete site removal finished successfully!')
+        append_output(f'💾 Disk space has been reclaimed')
+        append_output('')
+        append_output('⚠️  Note: You may need to refresh the page to see updated container list')
+        
+    except Exception as e:
+        logger.error(f"Error in site removal task: {str(e)}")
+        site_removal_tasks[task_id]['status'] = 'failed'
+        site_removal_tasks[task_id]['error'] = str(e)
+        site_removal_tasks[task_id]['output'] += f'\n❌ Error: {str(e)}'
+
+@app.route('/api/frappe/remove-site', methods=['POST'])
+@require_auth
+def remove_site_completely():
+    """Start complete site removal task as a background thread"""
+    try:
+        data = request.json
+        site_name = data.get('site_name')
+        
+        if not site_name:
+            return jsonify({'error': 'Site name is required', 'success': False}), 400
+        
+        # Get base directory
+        web_manager_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(web_manager_dir)
+        
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Initialize task status
+        site_removal_tasks[task_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'message': 'Task queued...',
+            'site_name': site_name,
+            'created_at': datetime.now().isoformat(),
+            'output': '',
+            'error': None
+        }
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=run_site_removal_task,
+            args=(task_id, site_name, base_dir)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        # Return task ID immediately
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Site removal started in background',
+            'site_name': site_name
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting site removal: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/frappe/remove-site/status/<task_id>', methods=['GET'])
+@require_auth
+def get_site_removal_status(task_id):
+    """Get status of site removal task"""
+    if task_id not in site_removal_tasks:
+        return jsonify({'error': 'Task not found', 'success': False}), 404
+    
+    return jsonify({
+        'success': True,
+        'task': site_removal_tasks[task_id]
+    })
+
 if __name__ == '__main__':
     with app.app_context():
-        create_default_admin()
+        # Initialize database and RBAC system
+        db.create_all()
+        init_rbac_system()
     app.run(host='0.0.0.0', port=5000, debug=False)
 
 
