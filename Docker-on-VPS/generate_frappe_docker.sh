@@ -218,7 +218,7 @@ generate_docker_compose() {
       - "traefik.http.routers.${safe_site_name}-app-https.tls.certresolver=myresolver"
       - "traefik.http.routers.${safe_site_name}-app-https.service=${safe_site_name}-app"
       - "traefik.http.services.${safe_site_name}-websocket.loadbalancer.server.port=9000"
-      - "traefik.http.routers.${safe_site_name}-websocket.rule=PathPrefix(\`/socket.io\`)"
+      - "traefik.http.routers.${safe_site_name}-websocket.rule=Host(\`${site_name}\`) && PathPrefix(\`/socket.io\`)"
       - "traefik.http.routers.${safe_site_name}-websocket.entrypoints=websecure"
       - "traefik.http.routers.${safe_site_name}-websocket.tls=true"
       - "traefik.http.routers.${safe_site_name}-websocket.tls.certresolver=myresolver"
@@ -235,7 +235,7 @@ EOF
       - "traefik.http.routers.${safe_site_name}-app-http.entrypoints=web"
       - "traefik.http.routers.${safe_site_name}-app-http.service=${safe_site_name}-app"
       - "traefik.http.services.${safe_site_name}-websocket.loadbalancer.server.port=9000"
-      - "traefik.http.routers.${safe_site_name}-websocket.rule=PathPrefix(\`/socket.io\`)"
+      - "traefik.http.routers.${safe_site_name}-websocket.rule=Host(\`${site_name}\`) && PathPrefix(\`/socket.io\`)"
       - "traefik.http.routers.${safe_site_name}-websocket.entrypoints=web"
       - "traefik.http.routers.${safe_site_name}-websocket.service=${safe_site_name}-websocket"
 EOF
@@ -289,7 +289,6 @@ ${app_labels}
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
       - apps:/home/frappe/frappe-bench/apps
-      - ${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/home/frappe/frappe-bench/apps
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -859,34 +858,14 @@ fi
 # Create site directory
 mkdir -p "$safe_site_name"
 
-# Determine the VS Code development directory
-# Use the actual user's home directory, not root's home when running with sudo
-ACTUAL_USER_HOME=$(eval echo ~$SUDO_USER)
-if [ -z "$ACTUAL_USER_HOME" ] || [ "$ACTUAL_USER_HOME" = "~$SUDO_USER" ]; then
-    # Fallback to current user's home if SUDO_USER is not set
-    ACTUAL_USER_HOME="$HOME"
-fi
-
-VSCODE_DIR="${ACTUAL_USER_HOME}/frappe-docker"
-if [ ! -d "$VSCODE_DIR" ]; then
-    mkdir -p "$VSCODE_DIR"
-    echo -e "${GREEN}📁 Created VS Code development directory: ${VSCODE_DIR}${NC}"
-fi
-
-# Create frappe-bench directory for VS Code development
-mkdir -p "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
-echo -e "${GREEN}📁 Created frappe-bench directory: ${VSCODE_DIR}/${safe_site_name}-frappe-bench${NC}"
-
 # Select ERPNext version
 select_erpnext_version
 erpnext_version=$SELECTED_ERPNEXT_VERSION
 
-# Copy Frappe apps to the mounted directory for VS Code development
-echo -e "${BLUE}📦 Copying Frappe apps to mounted directory...${NC}"
-sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
-docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:$erpnext_version bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
-echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
-echo -e "${BLUE}   💡 You can now open this folder in VS Code for development${NC}"
+# Note: Apps are stored in Docker named volumes, not mounted from host
+# This ensures custom apps persist across container restarts
+echo -e "${BLUE}💡 Apps will be stored in Docker volumes for persistence${NC}"
+echo -e "${BLUE}💡 Custom apps installed with 'bench get-app' will be preserved${NC}"
 
 # Create .env file
 DB_PASSWORD=$(generate_password)
@@ -963,17 +942,6 @@ fi
 APP_CONTAINER=$(docker ps --filter "name=${safe_site_name}-app" --format "{{.Names}}" | head -1)
 if [ -z "$APP_CONTAINER" ]; then
     APP_CONTAINER="${safe_site_name}-app"
-fi
-
-# Ensure Frappe apps are available in the mounted directory
-echo -e "${BLUE}🔧 Ensuring Frappe apps are available for VS Code development...${NC}"
-if [ ! -d "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps/frappe" ]; then
-    echo -e "${YELLOW}📦 Apps not found, copying from container...${NC}"
-    sudo chown -R $USER:$USER "${VSCODE_DIR}/${safe_site_name}-frappe-bench"
-    docker run --rm --user root -v "${VSCODE_DIR}/${safe_site_name}-frappe-bench/apps:/apps" frappe/erpnext:$erpnext_version bash -c "cp -r /home/frappe/frappe-bench/apps/* /apps/ && chown -R 1000:1000 /apps"
-    echo -e "${GREEN}✅ Frappe apps copied successfully${NC}"
-else
-    echo -e "${GREEN}✅ Frappe apps already available${NC}"
 fi
 
 # Ensure apps.txt includes all installed apps
