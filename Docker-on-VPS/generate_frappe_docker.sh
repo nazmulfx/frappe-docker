@@ -249,7 +249,6 @@ services:
   app:
     image: frappe/erpnext:${erpnext_version}
     container_name: ${safe_site_name}-app
-    restart: unless-stopped
     networks:
       frappe_network:
         ipv4_address: ${subnet_base}.10
@@ -441,7 +440,6 @@ ${app_labels}
   create-site:
     image: frappe/erpnext:${erpnext_version}
     container_name: ${safe_site_name}-create-site
-    restart: "no"
     networks:
       frappe_network:
         ipv4_address: ${subnet_base}.11
@@ -550,7 +548,6 @@ ${app_labels}
   db:
     image: mariadb:10.6
     container_name: ${safe_site_name}-db
-    restart: unless-stopped
     networks:
       frappe_network:
         ipv4_address: ${subnet_base}.20
@@ -588,7 +585,6 @@ ${app_labels}
   redis:
     image: redis:6.2-alpine
     container_name: ${safe_site_name}-redis
-    restart: unless-stopped
     networks:
       frappe_network:
         ipv4_address: ${subnet_base}.30
