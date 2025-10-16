@@ -35,8 +35,28 @@ function initializeSSHEventListeners() {
         extendBtn.addEventListener('click', extendSSHAccess);
     }
     
+    // Make access type cards clickable
+    initializeAccessTypeCards();
+    
     // Load existing sessions on page load
     loadSSHSessions();
+}
+
+// Make entire access type card clickable
+function initializeAccessTypeCards() {
+    const accessCards = document.querySelectorAll('.access-type-card');
+    
+    accessCards.forEach(card => {
+        card.addEventListener('click', function(e) {
+            // Don't trigger if clicking the radio button itself
+            if (e.target.type !== 'radio') {
+                const radio = this.querySelector('input[type="radio"]');
+                if (radio) {
+                    radio.checked = true;
+                }
+            }
+        });
+    });
 }
 
 // Handle temporary SSH setup
@@ -46,8 +66,9 @@ async function handleTempSSHSetup(e) {
     const container = document.getElementById('temp-container-select').value;
     const username = document.getElementById('temp-username').value;
     const duration = document.getElementById('temp-duration').value;
-    const port = document.getElementById('temp-port').value;
-    const description = document.getElementById('temp-description').value;
+    const port = document.getElementById('temp-port')?.value || '';
+    const description = document.getElementById('temp-description')?.value || '';
+    const accessType = document.querySelector('input[name="temp-access-type"]:checked')?.value || 'public';
     
     if (!container || !username) {
         showToast('Please select a container and enter username', 'error');
@@ -68,7 +89,8 @@ async function handleTempSSHSetup(e) {
                 username: username,
                 duration: duration,
                 port: port,
-                description: description
+                description: description,
+                access_type: accessType
             })
         });
         
@@ -288,15 +310,21 @@ function updateSSHSessionsTable(sessions) {
     if (!tbody) return;
     
     if (sessions.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active SSH sessions</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No active SSH sessions</td></tr>';
         return;
     }
     
-    tbody.innerHTML = sessions.map(session => `
+    tbody.innerHTML = sessions.map(session => {
+        const accessType = session.access_type || 'public';
+        const accessBadgeClass = accessType === 'public' ? 'bg-info' : 'bg-secondary';
+        const accessIcon = accessType === 'public' ? 'globe' : 'house';
+        
+        return `
         <tr>
             <td>${session.container}</td>
             <td>${session.username}</td>
             <td>${session.port}</td>
+            <td><span class="badge ${accessBadgeClass}"><i class="bi bi-${accessIcon}"></i> ${accessType}</span></td>
             <td>${new Date(session.created_at).toLocaleString()}</td>
             <td>${new Date(session.expires_at).toLocaleString()}</td>
             <td><span class="badge bg-${session.status === 'active' ? 'success' : 'danger'}">${session.status}</span></td>
@@ -306,7 +334,8 @@ function updateSSHSessionsTable(sessions) {
                 </button>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Revoke specific session
@@ -375,9 +404,11 @@ window.revokeSession = revokeSession;
 window.updateAccessInfo = updateAccessInfo;
 window.hideSSHConnectionDetails = hideSSHConnectionDetails;
 window.initializeSSHEventListeners = initializeSSHEventListeners;
+window.initializeAccessTypeCards = initializeAccessTypeCards;
 // Export functions for global access
 window.SSHManager = {
     initializeSSHEventListeners,
+    initializeAccessTypeCards,
     handleTempSSHSetup,
     showSSHConnectionDetails,
     downloadPrivateKey,

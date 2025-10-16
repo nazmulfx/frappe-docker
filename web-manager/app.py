@@ -2321,8 +2321,9 @@ def temp_ssh_setup_compat():
     duration = int(data.get('duration', 24))
     port = data.get('port')
     description = data.get('description', '')
+    access_type = data.get('access_type', 'public')
     
-    result = ssh_manager.create_ssh_session(container, username, duration, port, description)
+    result = ssh_manager.create_ssh_session(container, username, duration, port, description, access_type)
     return jsonify(result)
 
 @app.route('/api/temp-ssh/sessions')

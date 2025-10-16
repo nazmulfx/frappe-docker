@@ -441,7 +441,7 @@ PrintMotd no"""
             logger.error(f"Fallback SSH key generation failed: {str(e)}")
             raise Exception(f"SSH key generation failed: {str(e)}")
     
-    def create_ssh_session(self, container, username='frappe', duration=24, port=None, description=''):
+    def create_ssh_session(self, container, username='frappe', duration=24, port=None, description='', access_type='public'):
         """
         Create temporary SSH session with proper setup and verification
         
@@ -451,6 +451,7 @@ PrintMotd no"""
             duration: Session duration in hours (default: 24)
             port: External port (auto-assigned if None)
             description: Session description
+            access_type: 'public' or 'private' - determines IP type to use (default: 'public')
         
         Returns:
             dict: Session information or error
@@ -488,7 +489,7 @@ PrintMotd no"""
             
             # Create session info
             expires_at = datetime.now() + timedelta(hours=duration)
-            server_ip = self._get_server_ip()
+            server_ip = self._get_server_ip(access_type)
             
             session_info = {
                 'session_id': session_id,
@@ -502,6 +503,7 @@ PrintMotd no"""
                 'created_at': datetime.now(),
                 'expires_at': expires_at,
                 'description': description,
+                'access_type': access_type,
                 'status': 'active'
             }
             
@@ -642,33 +644,62 @@ PrintMotd no"""
         except:
             return False
 
-    def _get_server_ip(self):
-        """Get server IP address - smart detection for VPS vs local"""
-        is_vps = self._is_vps_environment()
+    def _get_server_ip(self, access_type='public'):
+        """Get server IP address based on access type - SIMPLIFIED
         
-        if is_vps:
-            # VPS environment - try to get public IP first
+        Args:
+            access_type: 'public' or 'private'
+                - 'public': Get real public IP from external service
+                - 'private': Get local/private IP
+        
+        Returns:
+            str: IP address (public or private based on access_type)
+        """
+        if access_type == 'private':
+            # User wants private/local IP
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
+                s.close()
+                logger.info(f"Private IP selected - Using local IP: {ip}")
+                return ip
+            except Exception as e:
+                logger.warning(f"Could not get local IP: {str(e)}")
+                return "localhost"
+        else:
+            # User wants public IP - always try to get real public IP
             try:
                 import urllib.request
-                with urllib.request.urlopen('http://ifconfig.me', timeout=5) as response:
-                    public_ip = response.read().decode('utf-8').strip()
-                    if public_ip and self._is_valid_ip(public_ip):
-                        logger.info(f"VPS detected - Using public IP: {public_ip}")
-                        return public_ip
+                # Try multiple public IP services
+                services = [
+                    'http://ifconfig.me',
+                    'http://api.ipify.org',
+                    'http://icanhazip.com'
+                ]
+                
+                for service in services:
+                    try:
+                        with urllib.request.urlopen(service, timeout=5) as response:
+                            public_ip = response.read().decode('utf-8').strip()
+                            if public_ip and self._is_valid_ip(public_ip):
+                                logger.info(f"Public IP selected - Using real IP: {public_ip}")
+                                return public_ip
+                    except:
+                        continue
+                
+                # If all public IP services fail, fallback to local IP
+                logger.warning("Could not get public IP from any service, using local IP as fallback")
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
+                s.close()
+                logger.info(f"Fallback to local IP: {ip}")
+                return ip
+                
             except Exception as e:
-                logger.warning(f"VPS detected but could not get public IP: {str(e)}")
-        
-        # Local environment or fallback - use internal IP
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            logger.info(f"Local environment detected - Using internal IP: {ip}")
-            return ip
-        except Exception as e:
-            logger.warning(f"Could not get internal IP: {str(e)}")
-            return "localhost"
+                logger.error(f"Error getting IP: {str(e)}")
+                return "localhost"
     
     def _is_valid_ip(self, ip):
         """Validate IP address format"""
@@ -970,9 +1001,9 @@ def generate_ssh_key_pair():
     """Backward compatibility wrapper"""
     return ssh_manager.generate_ssh_key_pair()
 
-def create_temp_ssh_session(container, username='frappe', duration=24, port=None, description=''):
+def create_temp_ssh_session(container, username='frappe', duration=24, port=None, description='', access_type='public'):
     """Backward compatibility wrapper"""
-    return ssh_manager.create_ssh_session(container, username, duration, port, description)
+    return ssh_manager.create_ssh_session(container, username, duration, port, description, access_type)
 
 def get_ssh_sessions():
     """Backward compatibility wrapper"""

@@ -126,6 +126,55 @@
     transition: all 0.2s ease;
 }
 
+/* Access Type Radio Button Cards */
+.access-type-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid #e1e5e9;
+    background: #ffffff;
+}
+
+.access-type-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.access-type-card .form-check-input:checked ~ .form-check-label .card {
+    border-color: #007bff;
+}
+
+.access-type-card:has(input:checked) {
+    border-color: #007bff;
+    background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.15);
+}
+
+.access-type-card .form-check-input {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.5rem;
+    cursor: pointer;
+}
+
+.access-type-card .form-check-label {
+    cursor: pointer;
+    padding-left: 0.5rem;
+}
+
+.access-type-card .form-check-input:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.access-type-card i.bi {
+    transition: all 0.3s ease;
+}
+
+.access-type-card:hover i.bi {
+    transform: scale(1.1);
+}
+
 .frappe-cloud-card:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     border-color: #007bff;
@@ -871,19 +920,54 @@
                                                             </select>
                                                         </div>
                                                         
-                                                        <div class="mb-3">
-                                                            <label for="temp-port" class="form-label">
-                                                                <i class="bi bi-ethernet"></i> SSH Port (Auto-assigned if empty)
+                                                        <div class="mb-4">
+                                                            <label class="form-label fw-bold mb-3">
+                                                                <i class="bi bi-globe2 me-2"></i>Access Type
                                                             </label>
-                                                            <input type="number" class="form-control" id="temp-port" placeholder="e.g., 2222, 2223">
-                                                            <div class="form-text">Leave empty for auto-assignment</div>
-                                                        </div>
-                                                        
-                                                        <div class="mb-3">
-                                                            <label for="temp-description" class="form-label">
-                                                                <i class="bi bi-chat-text"></i> Description (Optional)
-                                                            </label>
-                                                            <input type="text" class="form-control" id="temp-description" placeholder="e.g., Development access, Debug session">
+                                                            <div class="row g-3">
+                                                                <div class="col-md-6">
+                                                                    <div class="card h-100 border-2 access-type-card">
+                                                                        <div class="card-body p-3">
+                                                                            <div class="form-check">
+                                                                                <input class="form-check-input" type="radio" name="temp-access-type" id="temp-access-public" value="public" checked>
+                                                                                <label class="form-check-label w-100" for="temp-access-public">
+                                                                                    <div class="d-flex align-items-center mb-2">
+                                                                                        <i class="bi bi-cloud-arrow-up text-primary fs-3 me-2"></i>
+                                                                                        <div>
+                                                                                            <h6 class="mb-0 text-primary">Public IP</h6>
+                                                                                            <small class="text-muted">Remote Access</small>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <p class="small mb-0 text-muted">
+                                                                                        Uses your server's real public IP address from the internet. Perfect for accessing from anywhere.
+                                                                                    </p>
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <div class="card h-100 border-2 access-type-card">
+                                                                        <div class="card-body p-3">
+                                                                            <div class="form-check">
+                                                                                <input class="form-check-input" type="radio" name="temp-access-type" id="temp-access-private" value="private">
+                                                                                <label class="form-check-label w-100" for="temp-access-private">
+                                                                                    <div class="d-flex align-items-center mb-2">
+                                                                                        <i class="bi bi-house-door text-secondary fs-3 me-2"></i>
+                                                                                        <div>
+                                                                                            <h6 class="mb-0 text-secondary">Private IP</h6>
+                                                                                            <small class="text-muted">Local Network</small>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <p class="small mb-0 text-muted">
+                                                                                        Uses your server's local network IP address. Only accessible from the same network.
+                                                                                    </p>
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                         
                                                         <div class="d-grid gap-2">
@@ -960,6 +1044,7 @@
                                                                     <th>Container</th>
                                                                     <th>Username</th>
                                                                     <th>Port</th>
+                                                                    <th>Access Type</th>
                                                                     <th>Created</th>
                                                                     <th>Expires</th>
                                                                     <th>Status</th>
@@ -968,7 +1053,7 @@
                                                             </thead>
                                                             <tbody id="ssh-sessions-tbody">
                                                                 <tr>
-                                                                    <td colspan="7" class="text-center text-muted">No active SSH sessions</td>
+                                                                    <td colspan="8" class="text-center text-muted">No active SSH sessions</td>
                                                                 </tr>
                                                             </tbody>
                                                         </table>
