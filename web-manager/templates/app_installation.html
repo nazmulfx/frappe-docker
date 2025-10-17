@@ -1659,10 +1659,10 @@
                                                         <small>
                                                             Rebuild containers while preserving custom apps. This will:
                                                             <ul class="small mt-2">
-                                                                <li>Backup custom apps</li>
+                                                                <li>Backup apps list & source code</li>
                                                                 <li>Rebuild containers</li>
-                                                                <li>Restore custom apps</li>
-                                                                <li>Update apps.txt</li>
+                                                                <li>Automatically restore all custom apps</li>
+                                                                <li>Run database migrations</li>
                                                             </ul>
                                                         </small>
                                                     </p>
@@ -5015,16 +5015,22 @@ document.getElementById('rebuild-with-apps-btn')?.addEventListener('click', asyn
                 <div class="alert alert-info">
                     <h6>Process Steps:</h6>
                     <ol>
-                        <li>Backup all custom apps (except frappe & erpnext)</li>
+                        <li>Backup apps list and custom app source code</li>
                         <li>Stop all containers</li>
                         <li>Rebuild containers</li>
                         <li>Wait for containers to be ready</li>
-                        <li>Reinstall all custom apps</li>
-                        <li>Update apps.txt</li>
+                        <li>Restore apps.txt file</li>
+                        <li>Automatically restore custom apps from backup</li>
+                        <li>Download missing apps from public repository</li>
+                        <li>Install all apps to site</li>
+                        <li>Run database migrations</li>
                     </ol>
                 </div>
                 <div class="alert alert-warning">
                     <i class="bi bi-exclamation-triangle"></i> <strong>Note:</strong> This process may take 5-15 minutes depending on the number of apps.
+                </div>
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i> <strong>Automated:</strong> Custom apps are automatically backed up and restored during rebuild. No manual intervention required!
                 </div>
             </div>
         `,
