@@ -3975,16 +3975,27 @@ def run_rebuild_task(task_id, site_name, base_dir):
                 if app and app not in ['frappe', 'erpnext']:
                     append_output(f'\n📦 Backing up {app} source code...')
                     try:
-                        # Copy app source code to backup directory
-                        backup_app_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench/apps && tar -czf - {app}"'
-                        backup_file = f"{backup_dir}/{app}.tar.gz"
-                        with open(backup_file, 'wb') as f:
-                            result = subprocess.run(backup_app_cmd, shell=True, stdout=f, stderr=subprocess.PIPE, timeout=120)
-                            if result.returncode == 0:
-                                custom_apps_backup[app] = backup_file
-                                append_output(f'✅ {app} source code backed up')
-                            else:
-                                append_output(f'⚠️  Could not backup {app}: {result.stderr.decode()}')
+                        # Check if app directory exists in container
+                        check_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench/apps && ls -la {app}"'
+                        check_result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True, timeout=30)
+                        
+                        if check_result.returncode == 0:
+                            # Copy app source code to backup directory
+                            backup_app_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench/apps && tar -czf - {app}"'
+                            backup_file = f"{backup_dir}/{app}.tar.gz"
+                            with open(backup_file, 'wb') as f:
+                                result = subprocess.run(backup_app_cmd, shell=True, stdout=f, stderr=subprocess.PIPE, timeout=120)
+                                if result.returncode == 0:
+                                    # Verify backup file was created and has content
+                                    if os.path.exists(backup_file) and os.path.getsize(backup_file) > 0:
+                                        custom_apps_backup[app] = backup_file
+                                        append_output(f'✅ {app} source code backed up ({os.path.getsize(backup_file)} bytes)')
+                                    else:
+                                        append_output(f'⚠️  Backup file created but is empty or missing')
+                                else:
+                                    append_output(f'⚠️  Could not backup {app}: {result.stderr.decode()}')
+                        else:
+                            append_output(f'⚠️  App directory {app} not found in container: {check_result.stderr}')
                     except Exception as e:
                         append_output(f'⚠️  Error backing up {app}: {str(e)}')
         
@@ -4060,22 +4071,30 @@ def run_rebuild_task(task_id, site_name, base_dir):
                         try:
                             # Copy backup to container and extract
                             restore_cmd = f'docker cp {custom_apps_backup[app]} {container_name}:/tmp/{app}.tar.gz'
-                            subprocess.run(restore_cmd, shell=True, timeout=30)
+                            result_cp = subprocess.run(restore_cmd, shell=True, capture_output=True, text=True, timeout=30)
                             
-                            # Extract in container
-                            extract_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench/apps && tar -xzf /tmp/{app}.tar.gz && rm /tmp/{app}.tar.gz"'
-                            result = subprocess.run(extract_cmd, shell=True, capture_output=True, text=True, timeout=120)
-                            
-                            if result.returncode == 0:
-                                append_output(f'✅ {app} restored from backup')
-                                app_restored = True
+                            if result_cp.returncode == 0:
+                                append_output(f'📦 Backup file copied to container')
+                                
+                                # Extract in container
+                                extract_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench/apps && tar -xzf /tmp/{app}.tar.gz && rm /tmp/{app}.tar.gz"'
+                                result = subprocess.run(extract_cmd, shell=True, capture_output=True, text=True, timeout=120)
+                                
+                                if result.returncode == 0:
+                                    append_output(f'✅ {app} restored from backup')
+                                    app_restored = True
+                                else:
+                                    append_output(f'⚠️  Failed to extract {app} from backup: {result.stderr}')
                             else:
-                                append_output(f'⚠️  Failed to restore {app} from backup: {result.stderr}')
+                                append_output(f'⚠️  Failed to copy backup file: {result_cp.stderr}')
                         except Exception as e:
                             append_output(f'⚠️  Error restoring {app} from backup: {str(e)}')
                     
-                    # If backup restore failed, try public repository
+                    # If backup restore failed, try different installation methods
                     if not app_restored:
+                        append_output(f'🔄 Trying alternative installation methods for {app}...')
+                        
+                        # Method 1: Try public repository
                         try:
                             install_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && bench get-app {app}"'
                             result = subprocess.run(install_cmd, shell=True, capture_output=True, text=True, timeout=300)
@@ -4086,7 +4105,45 @@ def run_rebuild_task(task_id, site_name, base_dir):
                             else:
                                 append_output(f'⚠️  {app} not found in public repository')
                         except Exception as e:
-                            append_output(f'⚠️  Error downloading {app}: {str(e)}')
+                            append_output(f'⚠️  Error downloading {app} from public repo: {str(e)}')
+                        
+                        # Method 2: Try common custom app repositories
+                        if not app_restored and app == 'hrms':
+                            try:
+                                append_output(f'🔄 Trying HRMS from FrappeHR repository...')
+                                hrms_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && bench get-app hrms --branch version-15 --repo https://github.com/frappe/hrms.git"'
+                                result = subprocess.run(hrms_cmd, shell=True, capture_output=True, text=True, timeout=300)
+                                
+                                if result.returncode == 0:
+                                    append_output(f'✅ {app} downloaded from HRMS repository')
+                                    app_restored = True
+                                else:
+                                    append_output(f'⚠️  Could not download HRMS: {result.stderr}')
+                            except Exception as e:
+                                append_output(f'⚠️  Error downloading HRMS: {str(e)}')
+                        
+                        # Method 2.5: Handle completely custom apps like house_of_ahmed
+                        if not app_restored and app == 'house_of_ahmed':
+                            append_output(f'📝 {app} appears to be a completely custom app')
+                            append_output(f'💡 For custom apps, you may need to:')
+                            append_output(f'   1. Provide the repository URL manually')
+                            append_output(f'   2. Copy the app source code to the container')
+                            append_output(f'   3. Or skip this app and install it separately later')
+                        
+                        # Method 3: Try develop branch for known apps
+                        if not app_restored:
+                            try:
+                                append_output(f'🔄 Trying {app} from develop branch...')
+                                dev_cmd = f'docker exec {container_name} bash -c "cd /home/frappe/frappe-bench && bench get-app {app} --branch develop"'
+                                result = subprocess.run(dev_cmd, shell=True, capture_output=True, text=True, timeout=300)
+                                
+                                if result.returncode == 0:
+                                    append_output(f'✅ {app} downloaded from develop branch')
+                                    app_restored = True
+                                else:
+                                    append_output(f'⚠️  Could not download {app} from develop: {result.stderr}')
+                            except Exception as e:
+                                append_output(f'⚠️  Error downloading {app} from develop: {str(e)}')
                     
                     # Install app to site if successfully obtained
                     if app_restored:
