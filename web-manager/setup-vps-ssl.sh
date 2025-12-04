@@ -563,6 +563,19 @@ show_info() {
     print_success "Setup complete! Access your Web Manager at: https://${DOMAIN}"
 }
 
+allow_port() {
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║   Allowing 5000 Port for docker-manager        ║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Allow port 5000 in UFW
+    sudo ufw allow 5000/tcp
+    echo -e "${GREEN}✔ UFW rule added: Allow port 5000 (TCP)${NC}"
+}
+
+
 # Main installation flow
 main() {
     print_header
@@ -596,6 +609,9 @@ main() {
     
     # Show final info
     show_info
+
+    # Allow docker Manager 5000 Port
+    allow_port
 }
 
 # Run main function
