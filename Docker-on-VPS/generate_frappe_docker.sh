@@ -267,10 +267,10 @@ ${app_labels}
       restart_policy:
         condition: on-failure
         max_attempts: 3
-      resources:
-        limits:
-          memory: 2G
-          cpus: '1.0'
+      # resources:
+      #   limits:
+      #     memory: 2G
+      #     cpus: '1.0'
     security_opt:
       - no-new-privileges:true
     read_only: false
